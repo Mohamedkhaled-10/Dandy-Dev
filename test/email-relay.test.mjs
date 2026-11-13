@@ -444,8 +444,16 @@ test('12. Order creation in create-order.js succeeds independently of email rela
       })
     });
 
-    const res = await POST({ request: req });
-    // In test environment without Firebase service account, it returns 500 ORDER_CREATION_FAILED
+    const res = await POST({
+      request: req,
+      clientAddress: '127.0.0.1',
+      _deps: {
+        redis: {
+          limit: async () => ({ success: true, limit: 10, remaining: 9, reset: Date.now() + 60000 })
+        }
+      }
+    });
+    // In test environment without Firebase service account, it returns 500 SERVER_CONFIG_ERROR / ORDER_CREATION_FAILED
     // (due to no DB), but does NOT crash or fail on the email service
     assert.ok(res.status === 200 || res.status === 500);
     const data = await res.json();

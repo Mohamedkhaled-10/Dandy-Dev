@@ -3,10 +3,12 @@ import crypto from 'node:crypto';
 import { initializeApp, getApps, cert } from 'firebase-admin/app';
 import { getDatabase } from 'firebase-admin/database';
 import { getOrCreateInvoiceToken } from './invoice-token.ts';
+import { claimOutboxNotification, finalizeOutboxNotification } from './notifications-outbox.ts';
 
 export type NotificationStatus =
   | 'accepted_by_mailapp'
   | 'pending'
+  | 'processing'
   | 'failed'
   | 'unknown'
   | 'skipped_no_valid_email';
@@ -1275,6 +1277,8 @@ export async function sendOrderNotification(params: {
   oldStatus?: unknown;
   retryNotificationId?: string;
   invoiceAccessToken?: string;
+  adminDb?: any;
+  encryptionKey?: string;
 }): Promise<{
   success: boolean;
   status: NotificationStatus;
@@ -1317,24 +1321,56 @@ export async function sendOrderNotification(params: {
       : `notif_order_${orderId}_status_${statusSlug}`
   );
 
-  const adminDb = getAdminDb();
+  const adminDb = params.adminDb !== undefined ? params.adminDb : getAdminDb();
 
   // Retrieve or generate secure invoice access token if not explicitly provided and not diagnostic
   let invoiceAccessToken = params.invoiceAccessToken;
   if (!invoiceAccessToken && adminDb && orderId && !orderId.startsWith('diag_')) {
     try {
-      invoiceAccessToken = await getOrCreateInvoiceToken(orderId, adminDb);
-    } catch (tokenErr) {
-      console.warn(`[EmailService] Could not resolve invoice access token for order ${orderId}:`, tokenErr);
+      invoiceAccessToken = await getOrCreateInvoiceToken(
+        orderId,
+        adminDb,
+        params.encryptionKey !== undefined ? { encryptionKey: params.encryptionKey } : {}
+      );
+    } catch (tokenErr: any) {
+      console.warn(
+        `[EmailService] Could not resolve invoice access token for order ${orderId}:`,
+        tokenErr?.code || tokenErr?.message || 'token_error'
+      );
     }
   }
 
-  // 3. Check existing outbox record to prevent double-send
+  // 3. Build deterministic outbox payload & atomically claim via RTDB .transaction() BEFORE calling relay
+  const nowIso = new Date().toISOString();
+  const hasValidCanonicalEmail = isValidEmail(canonicalEmail);
+  const outboxData: any = {
+    notificationId,
+    orderId,
+    invoiceCode,
+    channel: 'email',
+    recipientEmail: canonicalEmail || 'N/A',
+    recipientName: order.name || 'N/A',
+    eventType,
+    orderStatus: targetStatus,
+    status: hasValidCanonicalEmail ? 'pending' : 'skipped_no_valid_email',
+    attempts: 0,
+    createdAt: nowIso,
+    lastAttemptAt: nowIso
+  };
+
+  let claimId = `mem_${crypto.randomUUID()}`;
   if (adminDb) {
-    try {
-      const snap = await adminDb.ref(`notifications_outbox/${notificationId}`).once('value');
-      const existing = snap.val();
-      if (existing && existing.status === 'accepted_by_mailapp' && !retryNotificationId) {
+    const claim = await claimOutboxNotification({
+      adminDb,
+      notificationId,
+      initialRecord: outboxData,
+      allowRetryFailed: Boolean(retryNotificationId),
+      allowSkipIfNoValidEmail: true,
+      hasValidEmail: hasValidCanonicalEmail
+    });
+
+    if (!claim.claimed) {
+      if (claim.reason === 'ALREADY_SENT') {
         return {
           success: true,
           status: 'accepted_by_mailapp',
@@ -1343,9 +1379,50 @@ export async function sendOrderNotification(params: {
           message: 'Notification already accepted by MailApp previously'
         };
       }
-    } catch (e) {
-      // Non-blocking
+      if (claim.status === 'skipped_no_valid_email') {
+        return {
+          success: false,
+          status: 'skipped_no_valid_email',
+          notificationId,
+          message: 'Skipped: Order has no valid email address'
+        };
+      }
+      if (claim.reason === 'IN_FLIGHT') {
+        return {
+          success: false,
+          status: 'processing',
+          notificationId,
+          deduplicated: true,
+          message: 'Notification dispatch is already in progress by another worker'
+        };
+      }
+      if (claim.reason === 'AMBIGUOUS_UNKNOWN') {
+        return {
+          success: false,
+          status: 'unknown',
+          notificationId,
+          message: 'Notification status is unknown after timeout; automatic retry blocked to prevent duplicates'
+        };
+      }
+      return {
+        success: false,
+        status: (claim.status as NotificationStatus) || 'failed',
+        notificationId,
+        message: 'Notification could not be claimed for dispatch'
+      };
     }
+
+    claimId = claim.claimId || claimId;
+  }
+
+  // If no valid email (e.g., when adminDb is null), skip dispatch immediately
+  if (!hasValidCanonicalEmail) {
+    return {
+      success: false,
+      status: 'skipped_no_valid_email',
+      notificationId,
+      message: 'Skipped: Order has no valid email address'
+    };
   }
 
   // 4. Generate email content
@@ -1355,41 +1432,7 @@ export async function sendOrderNotification(params: {
 
   const { subject, htmlBody, textBody } = emailContent;
 
-  // 5. Initial outbox record creation
-  const nowIso = new Date().toISOString();
-  const outboxData: any = {
-    notificationId,
-    orderId,
-    invoiceCode,
-    recipientEmail: canonicalEmail || 'N/A',
-    recipientName: order.name || 'N/A',
-    eventType,
-    orderStatus: targetStatus,
-    status: isValidEmail(canonicalEmail) ? 'pending' : 'skipped_no_valid_email',
-    attempts: 0,
-    createdAt: nowIso,
-    lastAttemptAt: nowIso
-  };
-
-  if (adminDb) {
-    try {
-      await adminDb.ref(`notifications_outbox/${notificationId}`).update(outboxData);
-    } catch (e) {
-      console.warn('[EmailService] Failed to initialize outbox record:', e);
-    }
-  }
-
-  // If no valid email, skip dispatch immediately
-  if (!isValidEmail(canonicalEmail)) {
-    return {
-      success: false,
-      status: 'skipped_no_valid_email',
-      notificationId,
-      message: 'Skipped: Order has no valid email address'
-    };
-  }
-
-  // 6. Dispatch to relay
+  // 5. Dispatch to relay (strictly one owner per claim transaction)
   const dispatchResult = await dispatchToAppsScriptRelay({
     notificationId,
     recipientEmail: canonicalEmail,
@@ -1401,21 +1444,16 @@ export async function sendOrderNotification(params: {
     invoiceCode
   });
 
-  // 7. Update Firebase Outbox & Order metadata with results
+  // 6. Update Firebase Outbox & Order metadata with results
   if (adminDb) {
     try {
-      const outboxRef = adminDb.ref(`notifications_outbox/${notificationId}`);
-      await outboxRef.transaction((current: any) => {
-        const cur = current || outboxData;
-        const attempts = (cur.attempts || 0) + 1;
-        return {
-          ...cur,
-          status: dispatchResult.status,
-          attempts,
-          lastAttemptAt: new Date().toISOString(),
-          error: dispatchResult.error || null,
-          message: dispatchResult.message || null
-        };
+      await finalizeOutboxNotification({
+        adminDb,
+        notificationId,
+        claimId,
+        status: dispatchResult.status,
+        error: dispatchResult.error || null,
+        message: dispatchResult.message || null
       });
 
       // Update order latest notification status for dashboard visibility

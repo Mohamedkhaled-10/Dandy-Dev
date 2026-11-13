@@ -1,10 +1,15 @@
 export const prerender = false;
 
 // src/pages/api/create-order.js
-import { initializeApp, getApps, cert } from 'firebase-admin/app';
+import crypto from 'node:crypto';
 import { getAuth } from 'firebase-admin/auth';
 import { getDatabase } from 'firebase-admin/database';
-import { getClientIp, getOrderRateLimiter } from '../../utils/rate-limit.js';
+import { getAdminApp } from '../../utils/firebase-admin.ts';
+import {
+  getSafeClientIp,
+  extractAstroClientAddress,
+  checkServerRateLimit
+} from '../../utils/server-rate-limit.ts';
 import { verifyTurnstileToken } from '../../utils/turnstile.js';
 import {
   getPublishedPinkFridayCampaign,
@@ -12,29 +17,36 @@ import {
   calculatePinkFridayPricing
 } from '../../utils/pink-friday-server.ts';
 import { sendOrderNotification } from '../../utils/email-service.ts';
-import { getOrCreateInvoiceToken } from '../../utils/invoice-token.ts';
+import {
+  parseEncryptionKey,
+  prepareNewInvoiceAccessArtifacts,
+  isValidInvoiceTokenFormat
+} from '../../utils/invoice-token.ts';
+import {
+  isValidUuidV4,
+  computeOrderRequestFingerprint,
+  acquireOrderIdempotencyLock,
+  transitionPendingToCommitting,
+  materializeCommitPayload,
+  transitionCommittingToCompleted,
+  decryptTokenFromCommitPayload,
+  reconcileIdempotencyAfterFailure,
+  resolveCompletedReplayPayload
+} from '../../utils/order-idempotency.ts';
+import {
+  buildOrderOutboxInitialRecords,
+  dispatchTelegramOutboxNotification,
+  dispatchMakeWebhookOutboxNotification
+} from '../../utils/notifications-outbox.ts';
 import { sendTelegramNotification } from '../../utils/telegram.js';
 
-function getAdminApp() {
-  if (getApps().length > 0) {
-    return getApps()[0];
-  }
-
-  const saEnv = process.env.FIREBASE_SERVICE_ACCOUNT;
-  if (!saEnv) {
-    throw new Error('FIREBASE_SERVICE_ACCOUNT environment variable is missing');
-  }
-
-  const serviceAccount = typeof saEnv === 'string' ? JSON.parse(saEnv) : { ...saEnv };
-  if (serviceAccount.private_key && typeof serviceAccount.private_key === 'string' && serviceAccount.private_key.includes('\\n')) {
-    serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
-  }
-
-  return initializeApp({
-    credential: cert(serviceAccount),
-    databaseURL: 'https://dandy-562fc-default-rtdb.europe-west1.firebasedatabase.app'
-  });
-}
+const SECURITY_HEADERS = {
+  'Content-Type': 'application/json',
+  'Cache-Control': 'no-store, no-cache, must-revalidate, private',
+  'Pragma': 'no-cache',
+  'Referrer-Policy': 'no-referrer',
+  'X-Content-Type-Options': 'nosniff'
+};
 
 // Shipping rates by governorate in Egypt
 const shippingRates = {
@@ -72,67 +84,332 @@ function getShippingFeeForGov(govName) {
   return shippingRates[govName] !== undefined ? shippingRates[govName] : 120;
 }
 
-export async function POST({ request }) {
-  try {
-    const clientIp = getClientIp(request);
+function jsonResponse(payload, status = 200, extraHeaders = {}) {
+  return new Response(JSON.stringify(payload), {
+    status,
+    headers: {
+      ...SECURITY_HEADERS,
+      ...extraHeaders
+    }
+  });
+}
 
-    // 1. تطبيق Rate Limiting عبر Upstash Redis (10 طلبات في الدقيقة لكل IP) بمبدأ Fail Open لحماية المبيعات
-    try {
-      const orderLimiter = getOrderRateLimiter();
-      if (orderLimiter) {
-        const { success, limit, remaining, reset } = await orderLimiter.limit(clientIp);
-        if (!success) {
-          return new Response(JSON.stringify({
-            success: false,
-            error: 'RATE_LIMIT_EXCEEDED',
-            message: 'تم تجاوز الحد المسموح من الطلبات لهذا الجهاز. يرجى الانتظار دقيقة والمحاولة لاحقًا.'
-          }), {
-            status: 429,
-            headers: {
-              'Content-Type': 'application/json',
-              'X-RateLimit-Limit': String(limit),
-              'X-RateLimit-Remaining': String(remaining),
-              'X-RateLimit-Reset': String(reset)
+function serviceUnavailableResponse() {
+  return jsonResponse(
+    {
+      success: false,
+      error: 'SERVICE_TEMPORARILY_UNAVAILABLE',
+      message: 'الخدمة غير متاحة مؤقتاً، يرجى المحاولة بعد قليل.'
+    },
+    503
+  );
+}
+
+function rateLimitFailureResponse(rateLimitResult) {
+  if (!rateLimitResult || !rateLimitResult.available || rateLimitResult.reason === 'store_unavailable') {
+    return serviceUnavailableResponse();
+  }
+
+  const extraHeaders = {};
+  if (
+    typeof rateLimitResult.retryAfterSeconds === 'number' &&
+    Number.isFinite(rateLimitResult.retryAfterSeconds) &&
+    rateLimitResult.retryAfterSeconds > 0
+  ) {
+    extraHeaders['Retry-After'] = String(Math.ceil(rateLimitResult.retryAfterSeconds));
+  }
+  if (typeof rateLimitResult.limit === 'number') {
+    extraHeaders['X-RateLimit-Limit'] = String(rateLimitResult.limit);
+  }
+  if (typeof rateLimitResult.remaining === 'number') {
+    extraHeaders['X-RateLimit-Remaining'] = String(rateLimitResult.remaining);
+  }
+  if (typeof rateLimitResult.resetAt === 'number') {
+    extraHeaders['X-RateLimit-Reset'] = String(rateLimitResult.resetAt);
+  }
+
+  return jsonResponse(
+    {
+      success: false,
+      error: 'RATE_LIMIT_EXCEEDED',
+      message: 'تم تجاوز الحد المسموح من الطلبات لهذا الجهاز. يرجى الانتظار دقيقة والمحاولة لاحقًا.'
+    },
+    429,
+    extraHeaders
+  );
+}
+
+/**
+ * Fully isolated post-commit side-effects runner.
+ * Guarantees NO synchronous or asynchronous failure after order commit ever returns HTTP 500.
+ */
+async function runPostCommitSideEffectsSafely({
+  orderData,
+  orderId,
+  invoiceAccessToken,
+  adminDb,
+  stockDeductionMap = new Map(),
+  _deps = null
+}) {
+  try {
+    // 1. Preserve legacy best-effort stock deduction ONLY after fresh commit
+    const lowStockAlerts = [];
+    if (stockDeductionMap && typeof stockDeductionMap.entries === 'function') {
+      for (const [prodId, stockInfo] of stockDeductionMap.entries()) {
+        const orderedQty = stockInfo?.quantityNeeded || 0;
+        if (prodId && orderedQty > 0) {
+          try {
+            const stockRef = adminDb.ref(`products/${prodId}/stockQuantity`);
+            await stockRef.transaction((current) => {
+              if (current === null || current === undefined) return current;
+              const num = Number(current);
+              if (isNaN(num)) return current;
+              return Math.max(0, num - orderedQty);
+            });
+
+            const newSnap = await stockRef.once('value');
+            const rawQty = newSnap.val();
+            const newQty = rawQty !== null && rawQty !== undefined ? Number(rawQty) : null;
+            if (typeof newQty === 'number' && !isNaN(newQty)) {
+              if (newQty <= 0) {
+                await adminDb.ref(`products/${prodId}/isSoldOut`).set(true);
+              }
+              if (newQty <= 3) {
+                lowStockAlerts.push({
+                  productName: stockInfo.name,
+                  remainingQty: newQty
+                });
+              }
             }
-          });
+          } catch (stockErr) {
+            console.error(`Error updating stock for product ${prodId}:`, stockErr?.message || stockErr);
+          }
         }
       }
-    } catch (rateLimitErr) {
-      // Fail Open: في حالة انقطاع اتصال Upstash Redis أو حدوث خلل شبكي، لا نوقف المبيعات
-      console.warn(`[RATE-LIMIT WARNING - FAIL OPEN] Upstash Redis check failed in create-order for IP ${clientIp}. Continuing order execution. Error:`, rateLimitErr?.message || rateLimitErr);
     }
 
-    const body = await request.json().catch(() => ({}));
-    const customer = body.customer || {};
+    // 2. Outbox-fenced outbound notifications (safe even if functions throw synchronously)
+    const sendEmailFn = _deps?.sendOrderNotification || sendOrderNotification;
+    const sendTgFn = _deps?.sendTelegramNotification || sendTelegramNotification;
+
+    const emailPromise = Promise.resolve()
+      .then(() =>
+        sendEmailFn({
+          order: orderData,
+          orderId,
+          eventType: 'ORDER_CONFIRMATION',
+          invoiceAccessToken,
+          adminDb,
+          ...(_deps?.encryptionKey !== undefined ? { encryptionKey: _deps.encryptionKey } : {})
+        })
+      )
+      .catch((mailErr) => {
+        console.error('[CreateOrder] Order confirmation email dispatch failed (resilient):', mailErr?.message || mailErr);
+        return null;
+      });
+
+    const telegramOrderPromise = Promise.resolve()
+      .then(() =>
+        dispatchTelegramOutboxNotification({
+          orderId,
+          orderData,
+          adminDb,
+          sendTelegramFn: sendTgFn,
+          timeoutMs: 4000
+        })
+      )
+      .catch((tgErr) => {
+        console.error('[CreateOrder] Telegram order notification failed (resilient):', tgErr?.message || tgErr);
+        return null;
+      });
+
+    const lowStockPromises = lowStockAlerts.map((alert) =>
+      Promise.resolve()
+        .then(() =>
+          sendTgFn({
+            lowStockAlert: true,
+            productName: alert.productName,
+            remainingQty: alert.remainingQty,
+            timeoutMs: 4000
+          })
+        )
+        .catch((lsErr) => {
+          console.error(`[CreateOrder] Telegram low stock alert failed for ${alert.productName} (resilient):`, lsErr?.message || lsErr);
+          return null;
+        })
+    );
+
+    const makeWebhookPromise = Promise.resolve()
+      .then(() =>
+        dispatchMakeWebhookOutboxNotification({
+          orderId,
+          orderData,
+          adminDb,
+          fetchFn: _deps?.fetch || globalThis.fetch,
+          makeWebhookUrl: _deps?.makeWebhookUrl !== undefined ? _deps.makeWebhookUrl : process.env.MAKE_WEBHOOK_URL,
+          timeoutMs: _deps?.makeTimeoutMs || 4000
+        })
+      )
+      .catch((whErr) => {
+        console.error('Make webhook outbox dispatch failed (resilient):', whErr?.message || whErr);
+        return null;
+      });
+
+    if (typeof _deps?.afterOrderCommitted === 'function') {
+      await Promise.resolve().then(() => _deps.afterOrderCommitted({ orderId, orderData, adminDb }));
+    }
+
+    await Promise.allSettled([
+      emailPromise,
+      telegramOrderPromise,
+      ...lowStockPromises,
+      makeWebhookPromise
+    ]);
+  } catch (postCommitErr) {
+    // CRITICAL INVARIANT: Order is already committed & verified; NEVER leak post-commit failures as HTTP 500.
+    console.error(
+      `[CreateOrder] Post-commit side-effects failure isolated for ${orderId}:`,
+      postCommitErr?.code || postCommitErr?.message || 'post_commit_error'
+    );
+  }
+}
+
+export async function POST(context) {
+  const { request, _deps = null } = context || {};
+  const clientAddress = extractAstroClientAddress(context);
+
+  let idempotencyLock = null;
+  let adminDb = _deps?.adminDb || null;
+  let enteredCommitting = false;
+  let atomicCommitted = false;
+
+  try {
+    // 1. Validate Content-Type
+    const contentType = (request?.headers?.get('content-type') || '').toLowerCase();
+    if (!contentType.includes('application/json')) {
+      return jsonResponse(
+        {
+          success: false,
+          error: 'INVALID_CONTENT_TYPE',
+          message: 'نوع المحتوى غير مدعوم، يرجى إرسال JSON.'
+        },
+        415
+      );
+    }
+
+    // 2. Initialize Firebase Admin DB early if needed for distributed rate limit fallback
+    if (!adminDb && process.env.FIREBASE_SERVICE_ACCOUNT) {
+      try {
+        const app = getAdminApp();
+        adminDb = getDatabase(app);
+      } catch (initErr) {
+        console.error('[CreateOrder] Failed initializing Firebase Admin DB:', initErr?.code || initErr?.name || 'init_error');
+      }
+    }
+
+    // 3. Extract trusted client IP (fail-closed if unavailable)
+    const ipCtx = {
+      request,
+      clientAddress,
+      ...(_deps?.ipContext && typeof _deps.ipContext === 'object' ? _deps.ipContext : {})
+    };
+    const clientIp = getSafeClientIp(ipCtx);
+    if (!clientIp) {
+      return serviceUnavailableResponse();
+    }
+
+    // 4. Fail-Closed Distributed Rate Limiting (10 requests / 60s per trusted client IP)
+    const injectedRedis =
+      _deps?.redis !== undefined
+        ? _deps.redis
+        : (_deps?.orderLimiter !== undefined ? _deps.orderLimiter : undefined);
+
+    const rateLimitResult = await checkServerRateLimit({
+      namespace: 'createOrder',
+      key: clientIp,
+      maxRequests: 10,
+      windowMs: 60_000,
+      adminDb,
+      ...(injectedRedis !== undefined ? { redis: injectedRedis } : {})
+    });
+
+    if (!rateLimitResult.allowed) {
+      return rateLimitFailureResponse(rateLimitResult);
+    }
+
+    // 5. Parse JSON payload safely
+    let parsedBody;
+    try {
+      parsedBody = await request.json();
+    } catch {
+      return jsonResponse(
+        {
+          success: false,
+          error: 'INVALID_JSON',
+          message: 'صيغة البيانات المرسلة غير صالحة.'
+        },
+        400
+      );
+    }
+
+    if (!parsedBody || typeof parsedBody !== 'object' || Array.isArray(parsedBody)) {
+      return jsonResponse(
+        {
+          success: false,
+          error: 'INVALID_JSON',
+          message: 'صيغة البيانات المرسلة غير صالحة.'
+        },
+        400
+      );
+    }
+
+    const body = parsedBody;
+    const customer = (body.customer && typeof body.customer === 'object' && !Array.isArray(body.customer)) ? body.customer : {};
     const items = Array.isArray(body.items) ? body.items : [];
     const idToken = body.idToken;
     const turnstileToken = body.turnstileToken || body['cf-turnstile-response'];
 
-    // 2. التحقق الإلزامي من Cloudflare Turnstile CAPTCHA (سيرفر لسيرفر)
+    // Validate optional transitional clientRequestId (UUID v4 required when provided)
+    const hasClientRequestId = body.clientRequestId !== undefined && body.clientRequestId !== null;
+    if (hasClientRequestId && !isValidUuidV4(body.clientRequestId)) {
+      return jsonResponse(
+        {
+          success: false,
+          error: 'INVALID_CLIENT_REQUEST_ID',
+          message: 'معرف الطلب المؤقت غير صالح.'
+        },
+        400
+      );
+    }
+    const clientRequestId = hasClientRequestId ? body.clientRequestId.trim() : null;
+
+    // 6. Mandatory server-to-server Cloudflare Turnstile CAPTCHA check
     if (!turnstileToken) {
-      return new Response(JSON.stringify({
-        success: false,
-        error: 'CAPTCHA_REQUIRED',
-        message: 'يرجى إكمال اختبار التحقق الأمني (CAPTCHA) قبل تأكيد الطلب.'
-      }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' }
-      });
+      return jsonResponse(
+        {
+          success: false,
+          error: 'CAPTCHA_REQUIRED',
+          message: 'يرجى إكمال اختبار التحقق الأمني (CAPTCHA) قبل تأكيد الطلب.'
+        },
+        400
+      );
     }
 
-    const turnstileResult = await verifyTurnstileToken(turnstileToken, clientIp);
+    const verifyTurnstile = _deps?.verifyTurnstileToken || verifyTurnstileToken;
+    const turnstileResult = await verifyTurnstile(turnstileToken, clientIp);
     if (!turnstileResult.success) {
       const isConfigError = turnstileResult.error === 'SERVER_MISCONFIGURATION';
-      return new Response(JSON.stringify({
-        success: false,
-        error: turnstileResult.error || 'CAPTCHA_FAILED',
-        message: turnstileResult.message || 'فشل التحقق الأمني من الكابتشا. يرجى إعادة المحاولة.'
-      }), {
-        status: isConfigError ? 500 : 403,
-        headers: { 'Content-Type': 'application/json' }
-      });
+      return jsonResponse(
+        {
+          success: false,
+          error: turnstileResult.error || 'CAPTCHA_FAILED',
+          message: turnstileResult.message || 'فشل التحقق الأمني من الكابتشا. يرجى إعادة المحاولة.'
+        },
+        isConfigError ? 500 : 403
+      );
     }
 
+    // 7. Strict customer & cart input validation
     const name = typeof customer.name === 'string' ? customer.name.trim() : '';
     const phone = typeof customer.phone === 'string' ? customer.phone.trim() : '';
     const email = typeof customer.email === 'string' ? customer.email.trim() : 'N/A';
@@ -140,140 +417,252 @@ export async function POST({ request }) {
     const city = typeof customer.city === 'string' ? customer.city.trim() : '';
     const address = typeof customer.address === 'string' ? customer.address.trim() : '';
 
-    // التحقق الصارم من الحقول الأساسية لمطابقة database.rules.json
     if (name.length < 2) {
-      return new Response(JSON.stringify({
-        success: false,
-        error: 'INVALID_NAME',
-        message: 'الاسم يجب ألا يقل عن حرفين'
-      }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' }
-      });
+      return jsonResponse({ success: false, error: 'INVALID_NAME', message: 'الاسم يجب ألا يقل عن حرفين' }, 400);
     }
 
     if (phone.length < 10) {
-      return new Response(JSON.stringify({
-        success: false,
-        error: 'INVALID_PHONE',
-        message: 'رقم الهاتف يجب ألا يقل عن 10 أرقام'
-      }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' }
-      });
+      return jsonResponse({ success: false, error: 'INVALID_PHONE', message: 'رقم الهاتف يجب ألا يقل عن 10 أرقام' }, 400);
     }
 
     if (governorate.length < 2) {
-      return new Response(JSON.stringify({
-        success: false,
-        error: 'INVALID_GOVERNORATE',
-        message: 'يرجى اختيار المحافظة بشكل صحيح'
-      }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' }
-      });
+      return jsonResponse({ success: false, error: 'INVALID_GOVERNORATE', message: 'يرجى اختيار المحافظة بشكل صحيح' }, 400);
     }
 
     if (!city) {
-      return new Response(JSON.stringify({
-        success: false,
-        error: 'INVALID_CITY',
-        message: 'يرجى إدخال اسم المدينة أو المركز'
-      }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' }
-      });
+      return jsonResponse({ success: false, error: 'INVALID_CITY', message: 'يرجى إدخال اسم المدينة أو المركز' }, 400);
     }
 
     if (address.length < 3) {
-      return new Response(JSON.stringify({
-        success: false,
-        error: 'INVALID_ADDRESS',
-        message: 'العنوان يجب ألا يقل عن 3 أحرف'
-      }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' }
-      });
+      return jsonResponse({ success: false, error: 'INVALID_ADDRESS', message: 'العنوان يجب ألا يقل عن 3 أحرف' }, 400);
     }
 
     if (items.length === 0) {
-      return new Response(JSON.stringify({
-        success: false,
-        error: 'EMPTY_CART',
-        message: 'سلة المشتريات فارغة'
-      }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' }
-      });
+      return jsonResponse({ success: false, error: 'EMPTY_CART', message: 'سلة المشتريات فارغة' }, 400);
     }
 
-    if (!process.env.FIREBASE_SERVICE_ACCOUNT) {
-      console.error('FIREBASE_SERVICE_ACCOUNT not configured in environment.');
-      return new Response(JSON.stringify({
-        success: false,
-        error: 'SERVER_CONFIG_ERROR',
-        message: 'إعدادات السيرفر غير مكتملة.'
-      }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' }
-      });
+    // 8. Validate database & invoice token encryption configuration BEFORE any permanent DB writes
+    if (!adminDb && !process.env.FIREBASE_SERVICE_ACCOUNT) {
+      console.error('[CreateOrder] FIREBASE_SERVICE_ACCOUNT not configured in environment.');
+      return jsonResponse({ success: false, error: 'SERVER_CONFIG_ERROR', message: 'إعدادات السيرفر غير مكتملة.' }, 500);
     }
 
-    const app = getAdminApp();
-    const adminDb = getDatabase(app);
-    const adminAuth = getAuth(app);
+    if (!adminDb) {
+      const app = getAdminApp();
+      adminDb = getDatabase(app);
+    }
 
-    // التحقق من حساب العميل إن وُجد idToken
+    try {
+      parseEncryptionKey(_deps?.encryptionKey);
+    } catch {
+      console.error('[CreateOrder] DANDY_INVOICE_TOKEN_ENCRYPTION_KEY is missing or invalid.');
+      return jsonResponse(
+        {
+          success: false,
+          error: 'SERVER_CONFIG_ERROR',
+          message: 'إعدادات الأمان على السيرفر غير مكتملة.'
+        },
+        500
+      );
+    }
+
+    const adminAuth =
+      _deps?.adminAuth !== undefined
+        ? _deps.adminAuth
+        : (process.env.FIREBASE_SERVICE_ACCOUNT ? getAuth(getAdminApp()) : null);
+
+    // 9. Verify optional authenticated customer token
     let customerId = null;
-    if (idToken) {
+    if (idToken && adminAuth) {
       try {
         const decoded = await adminAuth.verifyIdToken(idToken);
         customerId = decoded.uid || null;
       } catch (tokenErr) {
-        console.warn('Could not verify idToken:', tokenErr.message);
+        console.warn('[CreateOrder] Could not verify idToken:', tokenErr?.code || tokenErr?.message || 'invalid_token');
       }
     }
 
-    // جلب المنتجات والأسعار الحقيقية من قاعدة البيانات وإعادة الحساب
+    // 10. Acquire atomic Idempotency Lock (or recover COMMITTING) if clientRequestId was supplied
+    if (clientRequestId) {
+      const requestFingerprint = computeOrderRequestFingerprint({
+        name,
+        phone,
+        email,
+        governorate,
+        city,
+        address,
+        customerId,
+        items
+      });
+
+      const idemOutcome = await acquireOrderIdempotencyLock({
+        clientRequestId,
+        requestFingerprint,
+        adminDb,
+        leaseMs: _deps?.idempotencyLeaseMs,
+        commitLeaseMs: _deps?.commitLeaseMs,
+        ttlMs: _deps?.idempotencyTtlMs
+      });
+
+      if (idemOutcome.outcome === 'CONFLICT') {
+        return jsonResponse(
+          {
+            success: false,
+            error: 'IDEMPOTENCY_CONFLICT',
+            message: 'تم استخدام معرف هذا الطلب مسبقاً ببيانات مختلفة.'
+          },
+          409
+        );
+      }
+
+      if (idemOutcome.outcome === 'EXPIRED') {
+        return jsonResponse(
+          {
+            success: false,
+            error: 'IDEMPOTENCY_KEY_EXPIRED',
+            message: 'انتهت صلاحية معرف الطلب، يرجى إعادة إرسال طلب جديد.'
+          },
+          409
+        );
+      }
+
+      if (idemOutcome.outcome === 'IN_PROGRESS') {
+        return jsonResponse(
+          {
+            success: false,
+            error: 'ORDER_IN_PROGRESS',
+            message: 'جاري معالجة هذا الطلب حالياً، يرجى الانتظار قليلاً.'
+          },
+          409,
+          { 'Retry-After': String(idemOutcome.retryAfterSeconds || 5) }
+        );
+      }
+
+      if (idemOutcome.outcome === 'COMPLETED') {
+        const replayPayload = await resolveCompletedReplayPayload({
+          record: idemOutcome.record,
+          adminDb,
+          encryptionKey: _deps?.encryptionKey
+        });
+        return jsonResponse(replayPayload, 200);
+      }
+
+      if (idemOutcome.outcome === 'RECOVER_COMMITTING') {
+        enteredCommitting = true;
+        const commitRecord = idemOutcome.record;
+        const commitPayload = commitRecord.commitPayload;
+
+        const matRes = await materializeCommitPayload({
+          commitRecord,
+          adminDb,
+          hooks: { beforeVerify: _deps?.beforeVerifyMaterialization }
+        });
+
+        if (!matRes.ok) {
+          return serviceUnavailableResponse();
+        }
+
+        const compRes = await transitionCommittingToCompleted({
+          requestKeyHash: commitRecord.requestKeyHash,
+          commitId: String(commitRecord.commitId || ''),
+          adminDb,
+          ttlMs: _deps?.idempotencyTtlMs
+        });
+
+        if (!compRes.ok) {
+          const latestSnap = await adminDb
+            .ref(`privateOrderIdempotency/${commitRecord.requestKeyHash}`)
+            .once('value');
+          const latestRec = latestSnap.val();
+          if (latestRec && latestRec.status === 'COMPLETED' && latestRec.reservedOrderId === commitPayload.orderId) {
+            const replayPayload = await resolveCompletedReplayPayload({
+              record: latestRec,
+              adminDb,
+              encryptionKey: _deps?.encryptionKey
+            });
+            return jsonResponse(replayPayload, 200);
+          }
+          return serviceUnavailableResponse();
+        }
+
+        atomicCommitted = true;
+
+        const recoveredToken = decryptTokenFromCommitPayload(commitPayload, _deps?.encryptionKey);
+
+        await runPostCommitSideEffectsSafely({
+          orderData: commitPayload.orderData,
+          orderId: commitPayload.orderId,
+          invoiceAccessToken: recoveredToken,
+          adminDb,
+          stockDeductionMap: new Map(), // Do not duplicate stock deduction on crash recovery
+          _deps
+        });
+
+        return jsonResponse(
+          {
+            success: true,
+            orderId: commitPayload.orderId,
+            invoiceCode: commitPayload.invoiceCode,
+            subtotal: commitPayload.orderData.subtotal,
+            shippingFee: commitPayload.orderData.shippingFee,
+            totalAmount: commitPayload.orderData.totalAmount,
+            invoiceAccessToken: recoveredToken,
+            message: 'تم تأكيد طلبك بنجاح'
+          },
+          200
+        );
+      }
+
+      idempotencyLock = idemOutcome.lock;
+    }
+
+    const failBusinessOrConfig = async (payload, status, errorCode) => {
+      await reconcileIdempotencyAfterFailure({ lock: idempotencyLock, adminDb, errorCode });
+      return jsonResponse(payload, status);
+    };
+
+    // 11. Fetch campaign & validate real server-side product pricing & availability
     const productsSnapshot = [];
     let subtotal = 0;
 
-    // جلب أحدث نسخة منشورة ومعتمدة لحملة Pink Friday من قاعدة البيانات
     let activeCampaign = null;
     try {
       const campSnap = await adminDb.ref('settings/pinkFriday/publishedActiveCampaign').once('value');
       activeCampaign = campSnap.val();
     } catch (campErr) {
-      console.warn('Could not fetch publishedActiveCampaign from RTDB:', campErr.message);
+      console.warn('[CreateOrder] Could not fetch publishedActiveCampaign from RTDB:', campErr?.message || campErr);
     }
-    if (!activeCampaign) {
+    if (!activeCampaign && !_deps?.skipPublishedCampaignFallback) {
       activeCampaign = await getPublishedPinkFridayCampaign();
     }
 
-    // Map to track stock deduction for individual products (including components of collection bundles)
-    const stockDeductionMap = new Map(); // productId -> { name: string, quantityNeeded: number }
+    // Track stock deduction for individual products & collection components (executed only after fresh commit)
+    const stockDeductionMap = new Map();
 
     for (const item of items) {
-      // Check if this item is a Pink Friday Collection bundle
+      if (!item || typeof item !== 'object') continue;
+
+      // Check if item is a Pink Friday Collection bundle
       if (item.type === 'collection' || item.isCollection || item.collectionId) {
         const colId = item.collectionId || item.id;
         const quantity = parseInt(item.quantity) || 1;
         if (!colId || quantity <= 0) continue;
 
-        // Verify campaign is active
-        const campStatus = (activeCampaign && activeCampaign.enabled !== false)
-          ? getCampaignStatus(activeCampaign)
-          : 'disabled';
+        const campStatus =
+          activeCampaign && activeCampaign.enabled !== false
+            ? getCampaignStatus(activeCampaign)
+            : 'disabled';
 
         if (campStatus !== 'active') {
-          return new Response(JSON.stringify({
-            success: false,
-            error: 'CAMPAIGN_COLLECTION_CONFLICT',
-            message: `عذراً، عروض Pink Friday غير متاحة حالياً أو انتهت صلاحيتها.`
-          }), {
-            status: 409,
-            headers: { 'Content-Type': 'application/json' }
-          });
+          return await failBusinessOrConfig(
+            {
+              success: false,
+              error: 'CAMPAIGN_COLLECTION_CONFLICT',
+              message: 'عذراً، عروض Pink Friday غير متاحة حالياً أو انتهت صلاحيتها.'
+            },
+            409,
+            'CAMPAIGN_COLLECTION_CONFLICT'
+          );
         }
 
         const rawColls = activeCampaign?.collections;
@@ -281,48 +670,49 @@ export async function POST({ request }) {
           ? rawColls
           : (rawColls && typeof rawColls === 'object' ? Object.values(rawColls) : []);
 
-        const collection = activeCollections.find(c => c && String(c.id) === String(colId));
+        const collection = activeCollections.find((c) => c && String(c.id) === String(colId));
 
         if (!collection || collection.active === false) {
-          return new Response(JSON.stringify({
-            success: false,
-            error: 'CAMPAIGN_COLLECTION_CONFLICT',
-            message: `عذراً، كوليكشن Pink Friday المطلوب غير متاح حالياً أو تم إلغاؤه.`
-          }), {
-            status: 409,
-            headers: { 'Content-Type': 'application/json' }
-          });
+          return await failBusinessOrConfig(
+            {
+              success: false,
+              error: 'CAMPAIGN_COLLECTION_CONFLICT',
+              message: 'عذراً، كوليكشن Pink Friday المطلوب غير متاح حالياً أو تم إلغاؤه.'
+            },
+            409,
+            'CAMPAIGN_COLLECTION_CONFLICT'
+          );
         }
 
-        // Validate items inside collection
         const collectionItemsList = Array.isArray(collection.items)
           ? collection.items
           : (collection.items && typeof collection.items === 'object' ? Object.values(collection.items) : []);
 
         if (collectionItemsList.length === 0) {
-          return new Response(JSON.stringify({
-            success: false,
-            error: 'INVALID_COLLECTION',
-            message: `عذراً، كوليكشن "${collection.name}" لا يحتوي على منتجات.`
-          }), {
-            status: 400,
-            headers: { 'Content-Type': 'application/json' }
-          });
+          return await failBusinessOrConfig(
+            {
+              success: false,
+              error: 'INVALID_COLLECTION',
+              message: `عذراً، كوليكشن "${collection.name}" لا يحتوي على منتجات.`
+            },
+            400,
+            'INVALID_COLLECTION'
+          );
         }
 
-        // Enforce duplicate restriction if allowDuplicates is false
         if (!collection.allowDuplicates) {
-          const itemPids = collectionItemsList.map(it => String(it.productId));
+          const itemPids = collectionItemsList.map((it) => String(it.productId));
           const uniquePids = new Set(itemPids);
           if (uniquePids.size !== itemPids.length) {
-            return new Response(JSON.stringify({
-              success: false,
-              error: 'COLLECTION_DUPLICATE_DISALLOWED',
-              message: `عذراً، كوليكشن "${collection.name}" يحتوي على تكرار غير مصرح به.`
-            }), {
-              status: 400,
-              headers: { 'Content-Type': 'application/json' }
-            });
+            return await failBusinessOrConfig(
+              {
+                success: false,
+                error: 'COLLECTION_DUPLICATE_DISALLOWED',
+                message: `عذراً، كوليكشن "${collection.name}" يحتوي على تكرار غير مصرح به.`
+              },
+              400,
+              'COLLECTION_DUPLICATE_DISALLOWED'
+            );
           }
         }
 
@@ -332,43 +722,49 @@ export async function POST({ request }) {
         for (const cItem of collectionItemsList) {
           const pSnap = await adminDb.ref(`products/${cItem.productId}`).once('value');
           if (!pSnap.exists()) {
-            return new Response(JSON.stringify({
-              success: false,
-              error: 'PRODUCT_NOT_FOUND',
-              message: `عذراً، أحد منتجات كوليكشن "${collection.name}" لم يعد متاحاً.`
-            }), {
-              status: 400,
-              headers: { 'Content-Type': 'application/json' }
-            });
+            return await failBusinessOrConfig(
+              {
+                success: false,
+                error: 'PRODUCT_NOT_FOUND',
+                message: `عذراً، أحد منتجات كوليكشن "${collection.name}" لم يعد متاحاً.`
+              },
+              400,
+              'PRODUCT_NOT_FOUND'
+            );
           }
 
           const pData = pSnap.val();
           if (pData.isHidden || pData.isSoldOut) {
-            return new Response(JSON.stringify({
-              success: false,
-              error: 'PRODUCT_UNAVAILABLE',
-              message: `عذراً، المنتج "${pData.name || ''}" داخل كوليكشن "${collection.name}" غير متاح حالياً.`
-            }), {
-              status: 400,
-              headers: { 'Content-Type': 'application/json' }
-            });
+            return await failBusinessOrConfig(
+              {
+                success: false,
+                error: 'PRODUCT_UNAVAILABLE',
+                message: `عذراً، المنتج "${pData.name || ''}" داخل كوليكشن "${collection.name}" غير متاح حالياً.`
+              },
+              400,
+              'PRODUCT_UNAVAILABLE'
+            );
           }
 
           const itemBasePrice = parseFloat(String(pData.price).replace(/[^0-9.-]+/g, '')) || 0;
           totalBasePrice += itemBasePrice;
 
-          // Find variant selected by customer for this specific collection item
-          const clientSelectedItems = Array.isArray(item.selectedItems) ? item.selectedItems : (Array.isArray(item.items) ? item.items : []);
-          const clientChoice = clientSelectedItems.find(csi =>
-            (csi.collectionItemId && String(csi.collectionItemId) === String(cItem.collectionItemId)) ||
-            (csi.productId && String(csi.productId) === String(cItem.productId))
+          const clientSelectedItems = Array.isArray(item.selectedItems)
+            ? item.selectedItems
+            : (Array.isArray(item.items) ? item.items : []);
+          const clientChoice = clientSelectedItems.find(
+            (csi) =>
+              (csi.collectionItemId && String(csi.collectionItemId) === String(cItem.collectionItemId)) ||
+              (csi.productId && String(csi.productId) === String(cItem.productId))
           );
 
           let variantText = '';
           if (clientChoice) {
             if (clientChoice.selectedVariant?.name) variantText = clientChoice.selectedVariant.name;
             else if (clientChoice.variantName) variantText = clientChoice.variantName;
-            else if (clientChoice.variant) variantText = typeof clientChoice.variant === 'object' ? clientChoice.variant.name : String(clientChoice.variant);
+            else if (clientChoice.variant) {
+              variantText = typeof clientChoice.variant === 'object' ? clientChoice.variant.name : String(clientChoice.variant);
+            }
           }
 
           resolvedCollectionItems.push({
@@ -380,7 +776,6 @@ export async function POST({ request }) {
             variantName: variantText
           });
 
-          // Add to stock deduction requirement
           const currentQtyNeeded = stockDeductionMap.get(cItem.productId)?.quantityNeeded || 0;
           stockDeductionMap.set(cItem.productId, {
             name: pData.name || '',
@@ -388,7 +783,6 @@ export async function POST({ request }) {
           });
         }
 
-        // Calculate effective collection bundle price
         let effectiveUnitPrice = totalBasePrice;
         if (collection.pricingType === 'package' && typeof collection.packagePrice === 'number' && collection.packagePrice > 0) {
           effectiveUnitPrice = collection.packagePrice;
@@ -399,66 +793,79 @@ export async function POST({ request }) {
         const lineTotal = effectiveUnitPrice * quantity;
         subtotal += lineTotal;
 
-        const snap = {
+        productsSnapshot.push({
           type: 'collection',
           collectionId: collection.id,
           name: collection.name || item.name || 'كوليكشن Pink Friday',
           price: totalBasePrice,
-          effectiveUnitPrice: effectiveUnitPrice,
-          lineTotal: lineTotal,
-          quantity: quantity,
+          effectiveUnitPrice,
+          lineTotal,
+          quantity,
           image: collection.coverImage || resolvedCollectionItems[0]?.image || '',
           isPinkFriday: true,
           isCollection: true,
           badgeText: collection.badgeText || 'كوليكشن Pink Friday',
           items: resolvedCollectionItems
-        };
-
-        productsSnapshot.push(snap);
+        });
         continue;
       }
 
-      // Standard Product Item Handling
+      // Standard Individual Product Handling
       const rawId = item.productId || (item.id ? String(item.id).split('::')[0] : '');
       const quantity = parseInt(item.quantity) || 1;
       if (!rawId || quantity <= 0) continue;
 
       const productSnap = await adminDb.ref(`products/${rawId}`).once('value');
       if (!productSnap.exists()) {
-        return new Response(JSON.stringify({
-          success: false,
-          error: 'PRODUCT_NOT_FOUND',
-          message: `عذراً، أحد المنتجات المطلوبة لم يعد متاحاً.`
-        }), {
-          status: 400,
-          headers: { 'Content-Type': 'application/json' }
-        });
+        return await failBusinessOrConfig(
+          {
+            success: false,
+            error: 'PRODUCT_NOT_FOUND',
+            message: 'عذراً، أحد المنتجات المطلوبة لم يعد متاحاً.'
+          },
+          400,
+          'PRODUCT_NOT_FOUND'
+        );
       }
 
       const pData = productSnap.val();
+      if (pData.isHidden || pData.isSoldOut) {
+        return await failBusinessOrConfig(
+          {
+            success: false,
+            error: 'PRODUCT_UNAVAILABLE',
+            message: `عذراً، المنتج "${pData.name || item.name || ''}" غير متاح حالياً.`
+          },
+          400,
+          'PRODUCT_UNAVAILABLE'
+        );
+      }
+
       const priceVal = parseFloat(String(pData.price).replace(/[^0-9.-]+/g, '')) || 0;
 
-      // التحقق الصارم من عروض Pink Friday من السيرفر فقط
-      const pfPricing = calculatePinkFridayPricing({
-        id: rawId,
-        price: priceVal,
-        isHidden: Boolean(pData.isHidden),
-        isSoldOut: Boolean(pData.isSoldOut),
-        onSale: Boolean(pData.onSale),
-        discount: pData.discount
-      }, activeCampaign);
+      const pfPricing = calculatePinkFridayPricing(
+        {
+          id: rawId,
+          price: priceVal,
+          isHidden: Boolean(pData.isHidden),
+          isSoldOut: Boolean(pData.isSoldOut),
+          onSale: Boolean(pData.onSale),
+          discount: pData.discount
+        },
+        activeCampaign
+      );
 
-      // في حال كان العميل يدّعي وجود عرض Pink Friday
       const isClientClaimingCampaign = Boolean(item.isPinkFriday || item.campaignPrice);
       if (isClientClaimingCampaign && !pfPricing.isEligible) {
-        return new Response(JSON.stringify({
-          success: false,
-          error: 'CAMPAIGN_OFFER_CONFLICT',
-          message: `عذراً، عرض Pink Friday للمنتج "${pData.name || item.name || ''}" لم يعد متاحاً أو تم تحديث سعره. يرجى مراجعة سلة المشتريات.`
-        }), {
-          status: 409,
-          headers: { 'Content-Type': 'application/json' }
-        });
+        return await failBusinessOrConfig(
+          {
+            success: false,
+            error: 'CAMPAIGN_OFFER_CONFLICT',
+            message: `عذراً، عرض Pink Friday للمنتج "${pData.name || item.name || ''}" لم يعد متاحاً أو تم تحديث سعره. يرجى مراجعة سلة المشتريات.`
+          },
+          409,
+          'CAMPAIGN_OFFER_CONFLICT'
+        );
       }
 
       const effectiveUnitPrice = pfPricing.isEligible ? pfPricing.campaignPrice : priceVal;
@@ -469,9 +876,9 @@ export async function POST({ request }) {
         id: rawId,
         name: pData.name || item.name || '',
         price: priceVal,
-        quantity: quantity,
-        effectiveUnitPrice: effectiveUnitPrice,
-        lineTotal: lineTotal,
+        quantity,
+        effectiveUnitPrice,
+        lineTotal,
         image: pData.image || item.image || ''
       };
 
@@ -485,13 +892,15 @@ export async function POST({ request }) {
       if (pData.discount && !pfPricing.isEligible) snap.discount = pData.discount;
       if (pData.onSale) snap.onSale = pData.onSale;
 
-      // استخراج ومعالجة الروائح والمتغيرات (مطابق لـ cart.astro)
-      const rawVariants = (Array.isArray(item.selectedVariants) && item.selectedVariants.length > 0)
-        ? item.selectedVariants
-        : (item.selectedVariant ? [item.selectedVariant] : (item.variantName ? [{ id: item.variantId || 'scent-variant', name: item.variantName }] : []));
+      const rawVariants =
+        Array.isArray(item.selectedVariants) && item.selectedVariants.length > 0
+          ? item.selectedVariants
+          : (item.selectedVariant
+              ? [item.selectedVariant]
+              : (item.variantName ? [{ id: item.variantId || 'scent-variant', name: item.variantName }] : []));
 
       if (rawVariants.length > 0) {
-        const cleanVariants = rawVariants.map(v => ({
+        const cleanVariants = rawVariants.map((v) => ({
           id: v.id || 'scent-variant',
           name: v.name || String(v)
         }));
@@ -501,11 +910,10 @@ export async function POST({ request }) {
           snap.selectedVariant = cleanVariants[0];
           snap.variantName = cleanVariants[0].name;
         } else {
-          snap.variantName = cleanVariants.map(v => v.name).join('، ');
+          snap.variantName = cleanVariants.map((v) => v.name).join('، ');
         }
       }
 
-      // Add to stock deduction map
       const currentQtyNeeded = stockDeductionMap.get(rawId)?.quantityNeeded || 0;
       stockDeductionMap.set(rawId, {
         name: pData.name || item.name || '',
@@ -516,17 +924,18 @@ export async function POST({ request }) {
     }
 
     if (productsSnapshot.length === 0) {
-      return new Response(JSON.stringify({
-        success: false,
-        error: 'NO_VALID_PRODUCTS',
-        message: 'لم يتم العثور على منتجات صالحة في الطلب'
-      }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' }
-      });
+      return await failBusinessOrConfig(
+        {
+          success: false,
+          error: 'NO_VALID_PRODUCTS',
+          message: 'لم يتم العثور على منتجات صالحة في الطلب'
+        },
+        400,
+        'NO_VALID_PRODUCTS'
+      );
     }
 
-    // حساب مصاريف الشحن مع الشحن المجاني فوق 2000 ج.م
+    // 12. Calculate shipping & total
     let shippingFee = getShippingFeeForGov(governorate);
     if (subtotal > 2000) {
       shippingFee = 0;
@@ -534,15 +943,23 @@ export async function POST({ request }) {
     const totalAmount = subtotal + shippingFee;
 
     if (totalAmount <= 0) {
-      return new Response(JSON.stringify({
-        success: false,
-        error: 'INVALID_TOTAL',
-        message: 'إجمالي الطلب غير صحيح'
-      }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' }
-      });
+      return await failBusinessOrConfig(
+        {
+          success: false,
+          error: 'INVALID_TOTAL',
+          message: 'إجمالي الطلب غير صحيح'
+        },
+        400,
+        'INVALID_TOTAL'
+      );
     }
+
+    // 13. Pre-generate orderId, encrypted invoice token & fixed-ID notifications_outbox BEFORE Commit Fencing
+    const nowIso = new Date().toISOString();
+    const orderId =
+      idempotencyLock?.reservedOrderId ||
+      adminDb.ref('orders').push().key ||
+      `ord_${crypto.randomUUID().replace(/-/g, '').slice(0, 20)}`;
 
     const invoiceCode = 'DNY-' + Math.floor(100000 + Math.random() * 900000);
 
@@ -559,165 +976,240 @@ export async function POST({ request }) {
       totalAmount: parseFloat(totalAmount.toFixed(2)),
       invoiceCode,
       status: 'New',
-      timestamp: new Date().toISOString()
+      timestamp: nowIso
     };
 
     if (customerId) {
       orderData.customerId = customerId;
     }
 
-    // حفظ الطلب في Firebase Database
-    const orderRef = adminDb.ref('orders').push();
-    await orderRef.set(orderData);
-    const orderId = orderRef.key;
-
-    // تحديث المخزون وتجميع تنبيهات المخزون المنخفض/النافد
-    const lowStockAlerts = [];
-    for (const [prodId, stockInfo] of stockDeductionMap.entries()) {
-      const orderedQty = stockInfo.quantityNeeded;
-      if (prodId && orderedQty > 0) {
-        try {
-          const stockRef = adminDb.ref(`products/${prodId}/stockQuantity`);
-          await stockRef.transaction(current => {
-            if (current === null || current === undefined) return current;
-            const num = Number(current);
-            if (isNaN(num)) return current;
-            return Math.max(0, num - orderedQty);
-          });
-
-          const newSnap = await stockRef.once('value');
-          const rawQty = newSnap.val();
-          const newQty = rawQty !== null && rawQty !== undefined ? Number(rawQty) : null;
-          if (typeof newQty === 'number' && !isNaN(newQty)) {
-            if (newQty <= 0) {
-              await adminDb.ref(`products/${prodId}/isSoldOut`).set(true);
-            }
-            if (newQty <= 3) {
-              lowStockAlerts.push({
-                productName: stockInfo.name,
-                remainingQty: newQty
-              });
-            }
-          }
-        } catch (stockErr) {
-          console.error(`Error updating stock for product ${prodId}:`, stockErr);
-        }
-      }
+    const tokenArtifacts = prepareNewInvoiceAccessArtifacts(orderId, _deps?.encryptionKey, nowIso);
+    const invoiceAccessToken = tokenArtifacts.token;
+    if (!isValidInvoiceTokenFormat(invoiceAccessToken)) {
+      throw new Error('Generated invoice access token failed validation');
     }
 
-    // 1. توليد رمز الوصول الآمن للفاتورة وحفظه في العقد الخاصة
-    let invoiceAccessToken = null;
-    try {
-      invoiceAccessToken = await getOrCreateInvoiceToken(orderId, adminDb);
-    } catch (tokenErr) {
-      console.error('[CreateOrder] Failed generating private invoice access token:', tokenErr);
-    }
-
-    // 2. إرسال إشعار تأكيد الطلب للعميل عبر Google Apps Script Mail Relay (معزول وبمهلة محددة)
-    const emailPromise = sendOrderNotification({
-      order: orderData,
-      orderId,
-      eventType: 'ORDER_CONFIRMATION',
-      invoiceAccessToken
-    }).catch(mailErr => {
-      console.error('[CreateOrder] Order confirmation email dispatch failed (resilient):', mailErr);
-      return null;
-    });
-
-    // 3. إرسال إشعار التيليجرام للطلب الجديد عبر الخدمة المركزية (منتظرة وبمهلة 4 ثوانٍ مع عزل كامل للأخطاء)
-    const telegramOrderPromise = sendTelegramNotification({
-      order: orderData,
-      orderId,
-      timeoutMs: 4000
-    }).catch(tgErr => {
-      console.error('[CreateOrder] Telegram order notification failed (resilient):', tgErr);
-      return null;
-    });
-
-    // 4. إرسال تنبيهات المخزون المنخفض/النافد عبر تيليجرام (إن وُجدت)
-    const lowStockPromises = lowStockAlerts.map(alert =>
-      sendTelegramNotification({
-        lowStockAlert: true,
-        productName: alert.productName,
-        remainingQty: alert.remainingQty,
-        timeoutMs: 4000
-      }).catch(lsErr => {
-        console.error(`[CreateOrder] Telegram low stock alert failed for ${alert.productName} (resilient):`, lsErr);
-        return null;
-      })
-    );
-
-    // 5. إرسال Webhook (Make.com) من متغير البيئة MAKE_WEBHOOK_URL
-    let makeWebhookPromise = Promise.resolve(null);
-    const makeWebhookUrl = process.env.MAKE_WEBHOOK_URL;
-    if (makeWebhookUrl) {
-      const isGmailEnabled = process.env.GMAIL_NOTIFICATIONS_ENABLED === 'true';
-      const isMakeEmailExplicitlyDisabled = process.env.DISABLE_MAKE_INVOICE_EMAIL === 'true';
-      const shouldSuppressMakeInvoiceEmail = isGmailEnabled || isMakeEmailExplicitlyDisabled;
-
-      const makePayload = {
-        ...orderData,
-        sendEmailInvoice: !shouldSuppressMakeInvoiceEmail,
-        skipEmailNotification: shouldSuppressMakeInvoiceEmail,
-        disableBrevoEmail: shouldSuppressMakeInvoiceEmail,
-        emailProvider: isGmailEnabled ? 'GMAIL_RELAY' : (shouldSuppressMakeInvoiceEmail ? 'NONE' : 'BREVO')
-      };
-
-      const makeController = new AbortController();
-      const makeTimer = setTimeout(() => makeController.abort(), 4000);
-      makeWebhookPromise = fetch(makeWebhookUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(makePayload),
-        signal: makeController.signal
-      })
-        .then(() => clearTimeout(makeTimer))
-        .catch(whErr => {
-          clearTimeout(makeTimer);
-          console.error('Make webhook sending failed (resilient):', whErr);
-          return null;
-        });
-    }
-
-    // انتظار جميع الإشعارات والمهام بالتوازي لضمان اكتمالها داخل بيئة Vercel Serverless دون تأخير تجربة العميل
-    await Promise.allSettled([
-      emailPromise,
-      telegramOrderPromise,
-      ...lowStockPromises,
-      makeWebhookPromise
-    ]);
-
-    return new Response(JSON.stringify({
-      success: true,
+    const outboxRecords = buildOrderOutboxInitialRecords({
       orderId,
       invoiceCode,
-      subtotal: orderData.subtotal,
-      shippingFee: orderData.shippingFee,
-      totalAmount: orderData.totalAmount,
-      message: 'تم تأكيد طلبك بنجاح'
-    }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' }
+      orderData,
+      nowIso
     });
 
-  } catch (error) {
-    const requestId = `req_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
-    console.error(`[CREATE-ORDER ERROR] Request ID: ${requestId} | Name: ${error?.name || 'Error'} | Message: ${error?.message || String(error)}`);
-    return new Response(JSON.stringify({
-      success: false,
-      error: 'ORDER_CREATION_FAILED',
-      requestId,
-      message: 'حدث خطأ أثناء معالجة الطلب على السيرفر. يرجى المحاولة مرة أخرى.'
-    }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' }
+    const sealedPayload = {
+      orderId,
+      invoiceCode,
+      orderData,
+      orderAccessRecord: tokenArtifacts.orderAccessRecord,
+      invoiceAccessRecord: tokenArtifacts.invoiceAccessRecord,
+      outboxRecords
+    };
+
+    // Allow deterministic concurrency tests to simulate lease expiration or concurrent takeover before commit fence
+    if (typeof _deps?.beforeAtomicCommit === 'function') {
+      await _deps.beforeAtomicCommit({ idempotencyLock, sealedPayload, adminDb, orderId });
+    }
+
+    // 14. Commit Path
+    if (idempotencyLock) {
+      // 14A. Single-Node Atomic RTDB Commit Fencing (`PENDING -> COMMITTING`)
+      const commitTx = await transitionPendingToCommitting({
+        lock: idempotencyLock,
+        sealedPayload,
+        adminDb,
+        commitLeaseMs: _deps?.commitLeaseMs
+      });
+
+      if (!commitTx.committed) {
+        if (commitTx.reason === 'PAYLOAD_TOO_LARGE') {
+          return await failBusinessOrConfig(
+            {
+              success: false,
+              error: 'PAYLOAD_TOO_LARGE',
+              message: 'حجم بيانات الطلب يتجاوز الحد المسموح.'
+            },
+            400,
+            'PAYLOAD_TOO_LARGE'
+          );
+        }
+
+        if (commitTx.reason === 'ALREADY_COMPLETED' && commitTx.record) {
+          const replayPayload = await resolveCompletedReplayPayload({
+            record: commitTx.record,
+            adminDb,
+            encryptionKey: _deps?.encryptionKey
+          });
+          return jsonResponse(replayPayload, 200);
+        }
+
+        if (commitTx.reason === 'CONFLICT') {
+          return jsonResponse(
+            {
+              success: false,
+              error: 'IDEMPOTENCY_CONFLICT',
+              message: 'تم استخدام معرف هذا الطلب مسبقاً ببيانات مختلفة.'
+            },
+            409
+          );
+        }
+
+        return jsonResponse(
+          {
+            success: false,
+            error: 'ORDER_IN_PROGRESS',
+            message: 'انتهت مهلة معالجة الطلب أو يتم تنفيذه حالياً، يرجى إعادة المحاولة.'
+          },
+          409,
+          { 'Retry-After': '5' }
+        );
+      }
+
+      enteredCommitting = true;
+
+      if (typeof _deps?.beforeMaterialize === 'function') {
+        await _deps.beforeMaterialize({
+          idempotencyLock,
+          commitId: commitTx.commitId,
+          commitRecord: commitTx.record,
+          adminDb,
+          orderId
+        });
+      }
+
+      // 14B. Idempotent Materialization + Integrity Verification
+      const matRes = await materializeCommitPayload({
+        commitRecord: commitTx.record,
+        adminDb,
+        hooks: { beforeVerify: _deps?.beforeVerifyMaterialization }
+      });
+
+      if (!matRes.ok) {
+        // Keep status in COMMITTING (NEVER downgrade to FAILED, NEVER return 200)
+        return serviceUnavailableResponse();
+      }
+
+      if (typeof _deps?.beforeFinalizeCompleted === 'function') {
+        await _deps.beforeFinalizeCompleted({
+          idempotencyLock,
+          commitId: commitTx.commitId,
+          commitRecord: commitTx.record,
+          adminDb,
+          orderId
+        });
+      }
+
+      // 14C. Atomic `COMMITTING -> COMPLETED` transition (strips temporary commitPayload PII)
+      const compRes = await transitionCommittingToCompleted({
+        requestKeyHash: idempotencyLock.requestKeyHash,
+        commitId: commitTx.commitId,
+        adminDb,
+        ttlMs: _deps?.idempotencyTtlMs
+      });
+
+      if (!compRes.ok) {
+        const latestSnap = await adminDb
+          .ref(`privateOrderIdempotency/${idempotencyLock.requestKeyHash}`)
+          .once('value');
+        const latestRec = latestSnap.val();
+        if (latestRec && latestRec.status === 'COMPLETED' && latestRec.reservedOrderId === orderId) {
+          const replayPayload = await resolveCompletedReplayPayload({
+            record: latestRec,
+            adminDb,
+            encryptionKey: _deps?.encryptionKey
+          });
+          return jsonResponse(replayPayload, 200);
+        }
+        return serviceUnavailableResponse();
+      }
+
+      atomicCommitted = true;
+
+      // 15. Fully isolated post-commit side-effects (never returns 500 on notification/stock errors)
+      await runPostCommitSideEffectsSafely({
+        orderData,
+        orderId,
+        invoiceAccessToken,
+        adminDb,
+        stockDeductionMap: compRes.alreadyCompletedByRecovery ? new Map() : stockDeductionMap,
+        _deps
+      });
+
+      return jsonResponse(
+        {
+          success: true,
+          orderId,
+          invoiceCode,
+          subtotal: orderData.subtotal,
+          shippingFee: orderData.shippingFee,
+          totalAmount: orderData.totalAmount,
+          invoiceAccessToken,
+          message: 'تم تأكيد طلبك بنجاح'
+        },
+        200
+      );
+    }
+
+    // 14D. Transitional legacy path when `clientRequestId` is omitted
+    const legacyUpdates = {
+      [`orders/${orderId}`]: orderData,
+      [`privateOrderAccess/${orderId}`]: tokenArtifacts.orderAccessRecord,
+      [`privateInvoiceAccess/${tokenArtifacts.tokenHash}`]: tokenArtifacts.invoiceAccessRecord
+    };
+    for (const [nid, rec] of Object.entries(outboxRecords)) {
+      legacyUpdates[`notifications_outbox/${nid}`] = rec;
+    }
+
+    await adminDb.ref().update(legacyUpdates);
+    atomicCommitted = true;
+
+    await runPostCommitSideEffectsSafely({
+      orderData,
+      orderId,
+      invoiceAccessToken,
+      adminDb,
+      stockDeductionMap,
+      _deps
     });
+
+    return jsonResponse(
+      {
+        success: true,
+        orderId,
+        invoiceCode,
+        subtotal: orderData.subtotal,
+        shippingFee: orderData.shippingFee,
+        totalAmount: orderData.totalAmount,
+        invoiceAccessToken,
+        message: 'تم تأكيد طلبك بنجاح'
+      },
+      200
+    );
+  } catch (error) {
+    // NEVER downgrade COMMITTING or already-committed orders to FAILED
+    if (!enteredCommitting && !atomicCommitted && idempotencyLock && adminDb) {
+      await reconcileIdempotencyAfterFailure({
+        lock: idempotencyLock,
+        adminDb,
+        errorCode: error?.code || 'ORDER_CREATION_FAILED'
+      });
+    }
+
+    const requestId = `req_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+    console.error(
+      `[CREATE-ORDER ERROR] Request ID: ${requestId} | Name: ${error?.name || 'Error'} | Message: ${error?.message || String(error)}`
+    );
+    return jsonResponse(
+      {
+        success: false,
+        error: 'ORDER_CREATION_FAILED',
+        requestId,
+        message: 'حدث خطأ أثناء معالجة الطلب على السيرفر. يرجى المحاولة مرة أخرى.'
+      },
+      500
+    );
   }
 }
 
 export async function ALL() {
-  return new Response(JSON.stringify({ error: 'Method not allowed' }), {
-    status: 405,
-    headers: { 'Content-Type': 'application/json' }
-  });
+  return jsonResponse({ success: false, error: 'Method not allowed' }, 405, { Allow: 'POST' });
 }
