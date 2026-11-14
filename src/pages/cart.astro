@@ -11,6 +11,7 @@ const turnstileSiteKey = process.env.PUBLIC_TURNSTILE_SITE_KEY || '';
 >
   <slot name="head" slot="head">
     <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+    <script is:inline src="/assets/js/order-flow-helpers.js"></script>
     <meta name="robots" content="noindex, nofollow" />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://dandy-ebon.vercel.app/cart" />
@@ -963,6 +964,23 @@ const turnstileSiteKey = process.env.PUBLIC_TURNSTILE_SITE_KEY || '';
                 <small style="color:var(--color-muted); font-size:0.75rem;">حماية أمنية مشددة لمنع الطلبات الوهمية</small>
               </div>
 
+              <div id="checkoutStatusBanner" role="alert" aria-live="polite" style="display:none; margin: 0 0 16px; padding: 14px 16px; border-radius: 10px; font-size: 0.88rem; line-height: 1.65; border: 1px solid #fecdd3; background: #fff1f2; color: #9f1239;">
+                <div style="display:flex; align-items:flex-start; gap:10px;">
+                  <i class="fas fa-exclamation-circle" style="margin-top:3px;"></i>
+                  <div style="flex:1;">
+                    <div id="checkoutStatusBannerText" style="font-weight:700;"></div>
+                    <div id="checkoutStatusBannerActions" style="display:none; margin-top:10px; gap:8px; flex-wrap:wrap;">
+                      <button type="button" id="btnResetOrderAttempt" style="display:inline-flex; align-items:center; gap:6px; padding:7px 14px; border-radius:99px; border:1px solid #be123c; background:#fff; color:#be123c; font-weight:700; font-size:0.82rem; cursor:pointer;">
+                        <i class="fas fa-redo"></i> بدء محاولة طلب جديدة
+                      </button>
+                      <a href="/track-order" style="display:inline-flex; align-items:center; gap:6px; padding:7px 14px; border-radius:99px; border:1px solid var(--border-light); background:#fff; color:var(--color-primary); font-weight:700; font-size:0.82rem; text-decoration:none;">
+                        <i class="fas fa-truck"></i> الانتقال لتتبع الطلب
+                      </a>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               <div class="checkout-nav-row">
                 <button class="btn-checkout-secondary" onclick="goToStep(2)">
                   <i class="fas fa-arrow-right"></i>
@@ -1566,10 +1584,71 @@ const turnstileSiteKey = process.env.PUBLIC_TURNSTILE_SITE_KEY || '';
       goToStep(3);
     };
 
+    function showCheckoutBanner(message, tone, options) {
+      const banner = document.getElementById('checkoutStatusBanner');
+      const textEl = document.getElementById('checkoutStatusBannerText');
+      const actionsEl = document.getElementById('checkoutStatusBannerActions');
+      const resetBtn = document.getElementById('btnResetOrderAttempt');
+      if (!banner || !textEl) return;
+
+      const isWarning = tone === 'warning';
+      banner.style.background = isWarning ? '#fffbeb' : '#fff1f2';
+      banner.style.borderColor = isWarning ? '#fde68a' : '#fecdd3';
+      banner.style.color = isWarning ? '#92400e' : '#9f1239';
+      textEl.textContent = message || 'حدث خطأ أثناء تنفيذ الطلب.';
+
+      const showNewAttemptBtn = Boolean(options && options.showNewAttemptAction);
+      if (actionsEl) {
+        actionsEl.style.display = showNewAttemptBtn ? 'flex' : 'none';
+      }
+      if (resetBtn) {
+        resetBtn.style.display = showNewAttemptBtn ? 'inline-flex' : 'none';
+      }
+      banner.style.display = 'block';
+    }
+
+    function hideCheckoutBanner() {
+      const banner = document.getElementById('checkoutStatusBanner');
+      const actionsEl = document.getElementById('checkoutStatusBannerActions');
+      if (banner) banner.style.display = 'none';
+      if (actionsEl) actionsEl.style.display = 'none';
+    }
+
+    function resetTurnstileWidgetSafely() {
+      if (typeof turnstile !== 'undefined' && typeof turnstile.reset === 'function') {
+        try {
+          turnstile.reset();
+        } catch (_) {}
+      }
+    }
+
+    document.getElementById('btnResetOrderAttempt')?.addEventListener('click', function () {
+      if (window.DandyOrderFlow) {
+        window.DandyOrderFlow.clearCheckoutAttemptState(window.sessionStorage);
+      }
+      resetTurnstileWidgetSafely();
+      showCheckoutBanner(
+        'تم تجهيز محاولة طلب جديدة. يرجى إكمال التحقق الأمني (CAPTCHA) ثم الضغط على «تأكيد وإتمام الطلب».',
+        'warning',
+        { showNewAttemptAction: false }
+      );
+      const savingTextLoader = document.getElementById('savingTextLoader');
+      if (savingTextLoader) {
+        savingTextLoader.innerHTML = '<i class="fas fa-lock" style="color:#059669; margin-left:4px;"></i> تأكيد الطلب يسجله بأمان ويوفر لك كود تتبع فوري.';
+      }
+    });
+
     window.submitFinalOrder = async function() {
       const finalBtn = document.getElementById('finalPlaceOrderBtn');
       const savingTextLoader = document.getElementById('savingTextLoader');
+      const restoreSubmitBtn = () => {
+        if (finalBtn) {
+          finalBtn.disabled = false;
+          finalBtn.innerHTML = '<i class="fas fa-check"></i> تأكيد وإتمام الطلب';
+        }
+      };
 
+      hideCheckoutBanner();
       finalBtn.disabled = true;
       finalBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري تنفيذ طلبك...';
       savingTextLoader.innerHTML = '<span style="color:var(--color-blush); font-weight:700;"><i class="fas fa-cloud-upload-alt"></i> جاري رفع تفاصيل الفاتورة وحجز منتجاتك...</span>';
@@ -1623,7 +1702,7 @@ const turnstileSiteKey = process.env.PUBLIC_TURNSTILE_SITE_KEY || '';
         }
       }
 
-      // جلب توكن التحقق الأمني من كابتشا Cloudflare Turnstile
+      // جلب توكن التحقق الأمني من كابتشا Cloudflare Turnstile (مرة واحدة لكل محاولة إرسال فعلية)
       let turnstileToken = '';
       if (typeof turnstile !== 'undefined') {
         try {
@@ -1636,15 +1715,49 @@ const turnstileSiteKey = process.env.PUBLIC_TURNSTILE_SITE_KEY || '';
       }
 
       if (!turnstileToken) {
-        alert('يرجى إكمال اختبار التحقق الأمني (CAPTCHA) قبل تأكيد الطلب.');
-        finalBtn.disabled = false;
-        finalBtn.innerHTML = '<i class="fas fa-check"></i> تأكيد وإتمام الطلب';
+        showCheckoutBanner('يرجى إكمال اختبار التحقق الأمني (CAPTCHA) قبل تأكيد الطلب.', 'warning');
+        restoreSubmitBtn();
+        savingTextLoader.innerHTML = '<i class="fas fa-shield-alt" style="color:var(--color-blush);"></i> يرجى إكمال التحقق الأمني أولاً.';
         return;
       }
 
+      let clientRequestId = null;
       try {
-        const response = await fetch('/api/create-order', {
+        const flow = window.DandyOrderFlow;
+        const customerUid = currentAuthUser && currentAuthUser.uid ? currentAuthUser.uid : null;
+        if (flow && typeof flow.computeLocalOrderFingerprintHex === 'function') {
+          const fingerprintHash = await flow.computeLocalOrderFingerprintHex({
+            name,
+            phone,
+            email: email || 'N/A',
+            governorate,
+            city,
+            address,
+            customerId: customerUid,
+            items
+          });
+          const attemptState = flow.resolveCheckoutAttemptState(window.sessionStorage, fingerprintHash);
+          clientRequestId = attemptState.clientRequestId;
+        }
+      } catch (fpErr) {
+        // Safe fallback: generate UUID v4 without storing PII
+        try {
+          clientRequestId = window.DandyOrderFlow
+            ? window.DandyOrderFlow.generateUuidV4()
+            : crypto.randomUUID();
+        } catch (_) {
+          clientRequestId = null;
+        }
+      }
+
+      let response = null;
+      let result = {};
+      let networkError = false;
+
+      try {
+        response = await fetch('/api/create-order', {
           method: 'POST',
+          cache: 'no-store',
           headers: {
             'Content-Type': 'application/json'
           },
@@ -1659,39 +1772,63 @@ const turnstileSiteKey = process.env.PUBLIC_TURNSTILE_SITE_KEY || '';
             },
             items,
             idToken,
-            turnstileToken
+            turnstileToken,
+            ...(clientRequestId ? { clientRequestId } : {})
           })
         });
 
-        const result = await response.json().catch(() => ({}));
-        if (!response.ok || !result.success) {
-          if (typeof turnstile !== 'undefined') {
-            try { turnstile.reset(); } catch(e) {}
-          }
-          throw new Error(result.message || 'حدث خطأ أثناء معالجة الطلب.');
-        }
-
-        const generatedKey = result.orderId;
-        const invoiceCode = result.invoiceCode;
-
-        localStorage.removeItem('cart');
-
-        let recent = JSON.parse(localStorage.getItem('dandy_recent_lookups')) || [];
-        recent.unshift({ code: invoiceCode, phone: phone, time: new Date().getTime() });
-        localStorage.setItem('dandy_recent_lookups', JSON.stringify(recent));
-
-        window.location.href = `/invoice?id=${encodeURIComponent(generatedKey)}&invoice=${encodeURIComponent(invoiceCode)}`;
-
-      } catch(err) {
-        console.error('Order submission error:', err);
-        if (typeof turnstile !== 'undefined') {
-          try { turnstile.reset(); } catch(e) {}
-        }
-        alert(err.message || 'حدث خطأ أثناء الاتصال بقاعدة البيانات. يرجى المحاولة مرة أخرى.');
-        finalBtn.disabled = false;
-        finalBtn.innerHTML = '<i class="fas fa-check"></i> تأكيد وإتمام الطلب';
-        savingTextLoader.innerHTML = '<i class="fas fa-exclamation-circle" style="color:var(--color-danger);"></i> حدث خطأ. يرجى المحاولة مرة أخرى.';
+        result = await response.json().catch(() => ({}));
+      } catch (fetchErr) {
+        networkError = true;
       }
+
+      const flow = window.DandyOrderFlow;
+      const outcome = flow
+        ? flow.classifyCreateOrderOutcome({
+            ok: Boolean(response && response.ok),
+            status: response ? response.status : 0,
+            result,
+            networkError
+          })
+        : {
+            action: (response && response.ok && result && result.success && result.invoiceAccessToken) ? 'SUCCESS_REDIRECT' : 'ERROR_KEEP_STATE',
+            clearCart: Boolean(response && response.ok && result && result.success && result.invoiceAccessToken),
+            clearAttempt: Boolean(response && response.ok && result && result.success && result.invoiceAccessToken),
+            resetTurnstile: !(response && response.ok && result && result.success && result.invoiceAccessToken),
+            redirectUrl: result && result.invoiceAccessToken ? '/invoice#access=' + encodeURIComponent(result.invoiceAccessToken) : '',
+            invoiceCode: result && result.invoiceCode ? result.invoiceCode : '',
+            message: (result && result.message) || 'حدث خطأ أثناء معالجة الطلب.'
+          };
+
+      if (outcome.action === 'SUCCESS_REDIRECT') {
+        if (flow) {
+          flow.clearCheckoutAttemptState(window.sessionStorage);
+          if (outcome.invoiceCode) {
+            flow.saveRecentLookupCode(window.localStorage, outcome.invoiceCode);
+          }
+        }
+        localStorage.removeItem('cart');
+        window.location.href = outcome.redirectUrl;
+        return;
+      }
+
+      // Any non-redirect outcome: NEVER clear cart, NEVER auto-retry silently, reset one-time Turnstile token
+      if (outcome.resetTurnstile) {
+        resetTurnstileWidgetSafely();
+      }
+
+      const showNewAttemptAction = Boolean(outcome.requireNewAttempt);
+      const tone =
+        outcome.action === 'ORDER_IN_PROGRESS' ||
+        outcome.action === 'RATE_LIMITED_KEEP_ID' ||
+        outcome.action === 'CAPTCHA_FAILED_KEEP_ID'
+          ? 'warning'
+          : 'error';
+
+      showCheckoutBanner(outcome.message, tone, { showNewAttemptAction });
+      restoreSubmitBtn();
+      savingTextLoader.innerHTML =
+        '<i class="fas fa-exclamation-circle" style="color:var(--color-danger);"></i> لم يتم استلام تأكيد نهائي للطلب بعد؛ سلتكِ محفوظة كما هي.';
     };
 
     renderStep1CartItems();
