@@ -478,6 +478,13 @@ import BaseLayout from '../layouts/BaseLayout.astro';
         window.location.replace('/');
         return;
       }
+      if (user.emailVerified !== true) {
+        const a = window.auth || (typeof firebase !== 'undefined' ? firebase.auth() : null);
+        Promise.resolve(a && typeof a.signOut === 'function' ? a.signOut() : null).catch(() => {}).finally(() => {
+          window.location.replace('/login?reason=email_not_verified');
+        });
+        return;
+      }
       listenToOrders();
     }
 
@@ -648,7 +655,7 @@ import BaseLayout from '../layouts/BaseLayout.astro';
           <td data-label="إشعار البريد">${notifBadge}</td>
           <td data-label="" style="text-align:center; white-space:nowrap;">
             <button class="action-badge-btn badge-btn-edit" data-order-id="${escapeHtml(o.id)}" onclick="revealOrder(this.getAttribute('data-order-id'))" title="معاينة التفاصيل"><i class="fas fa-eye"></i> معاينة</button>
-            <button class="action-badge-btn badge-btn-del" data-order-id="${escapeHtml(o.id)}" onclick="deleteOrder(this.getAttribute('data-order-id'))" title="حذف الطلب" aria-label="حذف"><i class="fas fa-trash-alt"></i></button>
+            <button class="action-badge-btn badge-btn-del" data-order-id="${escapeHtml(o.id)}" onclick="deleteOrder(this.getAttribute('data-order-id'), this)" title="حذف الطلب" aria-label="حذف"><i class="fas fa-trash-alt"></i></button>
           </td>
         `;
         ordersListArea.appendChild(tr);
@@ -968,16 +975,62 @@ import BaseLayout from '../layouts/BaseLayout.astro';
       }
     };
 
-    window.deleteOrder = async function(id) {
+    window.deleteOrder = async function(id, btnEl) {
+      if (!id) return;
       if(!confirm('هل أنتِ متأكدة من مسح هذا الطلب بالكامل من قاعدة البيانات؟ (هذا الإجراء لا يمكن التراجع عنه)')) return;
       const orderObj = rawOrders.find(o => o.id === id);
       const invoiceCode = orderObj ? (orderObj.invoiceCode || id) : id;
+      const origHtml = btnEl ? btnEl.innerHTML : '';
+
       try {
-        await db.ref(`orders/${id}`).remove();
+        const authObj = window.auth || (typeof firebase !== 'undefined' ? firebase.auth() : null);
+        const currentUser = authObj?.currentUser || null;
+        if (!currentUser || !currentUser.email || currentUser.email.toLowerCase() !== 'admin@dandy.com' || currentUser.emailVerified !== true) {
+          alert('يجب تسجيل الدخول بحساب الإدارة المفعّل لتنفيذ حذف الطلب.');
+          return;
+        }
+
+        const idToken = await currentUser.getIdToken();
+        if (!idToken) {
+          alert('تعذر التحقق من جلسة الإدارة. يرجى إعادة تسجيل الدخول.');
+          return;
+        }
+
+        if (btnEl) {
+          btnEl.disabled = true;
+          btnEl.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+        }
+
+        const res = await fetch('/api/admin/delete-order', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + idToken
+          },
+          body: JSON.stringify({ orderId: id })
+        });
+
+        const resData = await res.json().catch(() => null);
+        if (!res.ok || !resData || !resData.success) {
+          if (btnEl) {
+            btnEl.disabled = false;
+            btnEl.innerHTML = origHtml;
+          }
+          alert(resData?.message || 'فشل في مسح الطلب عبر الخادم.');
+          return;
+        }
+
+        rawOrders = rawOrders.filter(o => o.id !== id);
+        updateKPIs();
+        drawOrdersTable();
         logAdminAction('تم حذف الطلب: ' + invoiceCode);
       } catch(err) {
+        if (btnEl) {
+          btnEl.disabled = false;
+          btnEl.innerHTML = origHtml;
+        }
         console.error('Delete Error:', err);
-        alert('فشل في مسح الطلب.');
+        alert('حدث خطأ في الاتصال بالخادم أثناء حذف الطلب.');
       }
     };
 

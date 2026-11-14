@@ -17,7 +17,8 @@ export type OutboxNotificationStatus =
   | 'failed'
   | 'unknown'
   | 'skipped_no_valid_email'
-  | 'skipped_not_configured';
+  | 'skipped_not_configured'
+  | 'cancelled_order_deleted';
 
 export interface OutboxClaimResult {
   claimed: boolean;
@@ -28,6 +29,7 @@ export interface OutboxClaimResult {
     | 'AMBIGUOUS_UNKNOWN'
     | 'SKIPPED'
     | 'FAILED_BLOCKED'
+    | 'ORDER_DELETED'
     | 'CLAIM_ERROR';
   status: OutboxNotificationStatus | string;
   record?: Record<string, any> | null;
@@ -209,6 +211,10 @@ export async function claimOutboxNotification(params: {
         blockedReason = 'SKIPPED';
         return undefined;
       }
+      if (st === 'cancelled_order_deleted') {
+        blockedReason = 'ORDER_DELETED';
+        return undefined;
+      }
       if (st === 'failed' && !allowRetryFailed) {
         blockedReason = 'FAILED_BLOCKED';
         return undefined;
@@ -270,9 +276,11 @@ export async function claimOutboxNotification(params: {
           ? 'IN_FLIGHT'
           : currentStatus === 'unknown'
             ? 'AMBIGUOUS_UNKNOWN'
-            : currentStatus === 'failed'
-              ? 'FAILED_BLOCKED'
-              : 'IN_FLIGHT');
+            : currentStatus === 'cancelled_order_deleted'
+              ? 'ORDER_DELETED'
+              : currentStatus === 'failed'
+                ? 'FAILED_BLOCKED'
+                : 'IN_FLIGHT');
 
     return {
       claimed: false,
@@ -316,6 +324,7 @@ export async function finalizeOutboxNotification(params: {
     const nowIso = new Date().toISOString();
     await outboxRef.transaction((current: any) => {
       if (!isPlainObject(current)) return undefined;
+      if (current.status === 'cancelled_order_deleted') return undefined;
       if (current.claimId && current.claimId !== claimId) return undefined;
 
       const nextAttempts = (Number(current.attempts) || 0) + (status === 'skipped_not_configured' ? 0 : 1);

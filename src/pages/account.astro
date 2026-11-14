@@ -1251,6 +1251,38 @@ import BaseLayout from '../layouts/BaseLayout.astro';
         loadOrders();
         loadAddresses();
         loadWishlist();
+
+        // ربط الطلبات القديمة بالبريد المفعّل فقط عند تحقق emailVerified
+        if (user.emailVerified === true) {
+          (async function linkVerifiedCustomerOrders() {
+            const linkSessionKey = 'dandy_orders_linked_' + user.uid;
+            try {
+              if (window.sessionStorage && window.sessionStorage.getItem(linkSessionKey) === '1') {
+                return;
+              }
+            } catch (e) {}
+
+            try {
+              const idToken = await user.getIdToken();
+              const linkRes = await fetch('/api/link-customer-orders', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ idToken })
+              });
+              const linkData = await linkRes.json().catch(() => ({}));
+              if (linkRes.ok && linkData.success) {
+                try {
+                  if (window.sessionStorage) window.sessionStorage.setItem(linkSessionKey, '1');
+                } catch (e) {}
+                if (Number(linkData.linkedCount) > 0) {
+                  loadOrders();
+                }
+              }
+            } catch (linkErr) {
+              console.warn('Verified orders link notice:', linkErr);
+            }
+          })();
+        }
       });
 
       // إعداد بيانات المستخدم والهيدر
@@ -1433,17 +1465,20 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 
                       let reviewBtnHtml = '';
                       if (isDelivered && pId) {
+                        const realOrderId = String(order.id || '');
+                        const safeOrderId = escapeHtml(realOrderId).replace(/'/g, "\\'");
+                        const safeInvoiceCode = escapeHtml(invoiceCode).replace(/'/g, "\\'");
                         const existingReview = userProductReviews[pId];
                         if (existingReview) {
                           reviewBtnHtml = `
-                            <button type="button" class="btn-review-product has-review" onclick="openReviewModal('${escapeHtml(pId)}', '${escapeHtml(pName).replace(/'/g, "\\'")}', '${escapeHtml(invoiceCode)}', '${escapeHtml(pImg).replace(/'/g, "\\'")}')" title="تعديل تقييمكِ">
+                            <button type="button" class="btn-review-product has-review" onclick="openReviewModal('${escapeHtml(pId)}', '${escapeHtml(pName).replace(/'/g, "\\'")}', '${safeOrderId}', '${escapeHtml(pImg).replace(/'/g, "\\'")}', '${safeInvoiceCode}')" title="تعديل تقييمكِ">
                               <i class="fas fa-star" style="color: #f59e0b;"></i>
                               <span>عدّلي تقييمكِ (${existingReview.rating}★)</span>
                             </button>
                           `;
                         } else {
                           reviewBtnHtml = `
-                            <button type="button" class="btn-review-product" onclick="openReviewModal('${escapeHtml(pId)}', '${escapeHtml(pName).replace(/'/g, "\\'")}', '${escapeHtml(invoiceCode)}', '${escapeHtml(pImg).replace(/'/g, "\\'")}')" title="تقييم هذا المنتج">
+                            <button type="button" class="btn-review-product" onclick="openReviewModal('${escapeHtml(pId)}', '${escapeHtml(pName).replace(/'/g, "\\'")}', '${safeOrderId}', '${escapeHtml(pImg).replace(/'/g, "\\'")}', '${safeInvoiceCode}')" title="تقييم هذا المنتج">
                               <i class="far fa-star"></i>
                               <span>قيّمي هذا المنتج</span>
                             </button>
@@ -2008,7 +2043,7 @@ import BaseLayout from '../layouts/BaseLayout.astro';
         if (descEl) descEl.textContent = labels[rating] || 'اضغطي على النجوم لاختيار التقييم';
       }
 
-      window.openReviewModal = function(productId, productName, orderId, productImg) {
+      window.openReviewModal = function(productId, productName, orderId, productImg, invoiceCode) {
         activeReviewProductId = productId;
         activeReviewOrderId = orderId;
 
@@ -2022,7 +2057,7 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 
         if (nameEl) nameEl.textContent = productName || 'منتج داندي';
         if (thumbEl) thumbEl.src = productImg || '/assets/images/logo.png';
-        if (orderRefEl) orderRefEl.textContent = 'طلب رقم: #' + orderId;
+        if (orderRefEl) orderRefEl.textContent = 'طلب رقم: #' + (invoiceCode || orderId);
 
         const existing = userProductReviews[productId];
         if (existing) {

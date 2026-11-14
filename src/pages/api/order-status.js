@@ -2,9 +2,8 @@ export const prerender = false;
 
 // src/pages/api/order-status.js
 // Server-side protected API for single/bulk order status updates and notification retries
-import { initializeApp, getApps, cert } from 'firebase-admin/app';
-import { getAuth } from 'firebase-admin/auth';
-import { getDatabase } from 'firebase-admin/database';
+import { getAdminApp, getAdminDb } from '../../utils/firebase-admin.ts';
+import { verifyAdminRequest, adminUnauthorizedResponse } from '../../utils/admin-auth.js';
 import {
   sendOrderNotification,
   normalizeOrderStatus,
@@ -15,60 +14,12 @@ import {
 } from '../../utils/email-service.ts';
 import { getOrCreateInvoiceToken } from '../../utils/invoice-token.ts';
 
-function getAdminApp() {
-  if (getApps().length > 0) {
-    return getApps()[0];
+export async function POST({ request, _deps = undefined }) {
+  const authResult = await verifyAdminRequest(request, _deps);
+  if (!authResult.authorized) {
+    return adminUnauthorizedResponse(authResult);
   }
-
-  const saEnv = process.env.FIREBASE_SERVICE_ACCOUNT;
-  if (!saEnv) {
-    throw new Error('FIREBASE_SERVICE_ACCOUNT environment variable is missing');
-  }
-
-  const serviceAccount = typeof saEnv === 'string' ? JSON.parse(saEnv) : { ...saEnv };
-  if (serviceAccount.private_key && typeof serviceAccount.private_key === 'string' && serviceAccount.private_key.includes('\\n')) {
-    serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
-  }
-
-  return initializeApp({
-    credential: cert(serviceAccount),
-    databaseURL: 'https://dandy-562fc-default-rtdb.europe-west1.firebasedatabase.app'
-  });
-}
-
-async function authenticateAdmin(request) {
-  const authHeader = request.headers.get('authorization') || '';
-  if (!authHeader.startsWith('Bearer ')) {
-    return null;
-  }
-  const idToken = authHeader.substring(7).trim();
-  if (!idToken) return null;
-
-  try {
-    const app = getAdminApp();
-    const adminAuth = getAuth(app);
-    const decoded = await adminAuth.verifyIdToken(idToken);
-    if (decoded && decoded.email && decoded.email.toLowerCase() === 'admin@dandy.com') {
-      return decoded;
-    }
-  } catch (err) {
-    console.warn('[OrderStatus Admin API] Auth verification failed:', err.message);
-  }
-  return null;
-}
-
-export async function POST({ request }) {
-  const admin = await authenticateAdmin(request);
-  if (!admin) {
-    return new Response(JSON.stringify({
-      success: false,
-      error: 'UNAUTHORIZED',
-      message: 'Admin authorization required'
-    }), {
-      status: 401,
-      headers: { 'Content-Type': 'application/json' }
-    });
-  }
+  const admin = authResult.admin;
 
   let body;
   try {
@@ -85,8 +36,7 @@ export async function POST({ request }) {
   }
 
   const { action = 'UPDATE_STATUS' } = body;
-  const app = getAdminApp();
-  const db = getDatabase(app);
+  const db = _deps?.adminDb || getAdminDb();
 
   try {
     // -------------------------------------------------------------------------
@@ -262,6 +212,15 @@ export async function POST({ request }) {
           error: 'NOTIFICATION_NOT_FOUND',
           message: `Outbox notification ${notificationId} not found`
         }), { status: 404, headers: { 'Content-Type': 'application/json' } });
+      }
+
+      if (notifData.status === 'cancelled_order_deleted') {
+        return new Response(JSON.stringify({
+          success: false,
+          error: 'ORDER_DELETED',
+          message: 'تم حذف الطلب المرتبط بهذا الإشعار ولا يمكن إعادة إرساله',
+          notificationId
+        }), { status: 409, headers: { 'Content-Type': 'application/json' } });
       }
 
       // If already accepted by mailapp, reject duplicate send
@@ -471,21 +430,17 @@ export async function POST({ request }) {
   }
 }
 
-export async function GET({ request }) {
-  const admin = await authenticateAdmin(request);
-  if (!admin) {
-    return new Response(JSON.stringify({
-      success: false,
-      error: 'UNAUTHORIZED'
-    }), { status: 401, headers: { 'Content-Type': 'application/json' } });
+export async function GET({ request, _deps = undefined }) {
+  const authResult = await verifyAdminRequest(request, _deps);
+  if (!authResult.authorized) {
+    return adminUnauthorizedResponse(authResult);
   }
 
   const url = new URL(request.url);
   const orderId = url.searchParams.get('orderId');
 
   try {
-    const app = getAdminApp();
-    const db = getDatabase(app);
+    const db = _deps?.adminDb || getAdminDb();
 
     if (orderId) {
       // Query notifications related to this order

@@ -538,13 +538,38 @@ export async function POST(context) {
         );
       }
 
+      if (idemOutcome.outcome === 'DELETED') {
+        return jsonResponse(
+          {
+            success: false,
+            error: 'ORDER_DELETED',
+            message: 'تم حذف هذا الطلب إدارياً ولا يمكن إعادة إنشائه بنفس المعرف.'
+          },
+          409
+        );
+      }
+
       if (idemOutcome.outcome === 'COMPLETED') {
-        const replayPayload = await resolveCompletedReplayPayload({
-          record: idemOutcome.record,
-          adminDb,
-          encryptionKey: _deps?.encryptionKey
-        });
-        return jsonResponse(replayPayload, 200);
+        try {
+          const replayPayload = await resolveCompletedReplayPayload({
+            record: idemOutcome.record,
+            adminDb,
+            encryptionKey: _deps?.encryptionKey
+          });
+          return jsonResponse(replayPayload, 200);
+        } catch (replayErr) {
+          if (replayErr?.code === 'ORDER_DELETED') {
+            return jsonResponse(
+              {
+                success: false,
+                error: 'ORDER_DELETED',
+                message: 'تم حذف هذا الطلب إدارياً ولا يمكن إعادة إنشائه بنفس المعرف.'
+              },
+              409
+            );
+          }
+          throw replayErr;
+        }
       }
 
       if (idemOutcome.outcome === 'RECOVER_COMMITTING') {
@@ -559,6 +584,17 @@ export async function POST(context) {
         });
 
         if (!matRes.ok) {
+          if (matRes.reason === 'ORDER_ADMINISTRATIVELY_DELETED') {
+            return jsonResponse(
+              {
+                success: false,
+                error: 'ORDER_DELETED',
+                message: 'تم حذف هذا الطلب إدارياً ولا يمكن إعادة إنشائه بنفس المعرف.'
+              },
+              409
+            );
+          }
+          // Keep status in COMMITTING (NEVER downgrade to FAILED, NEVER return 200)
           return serviceUnavailableResponse();
         }
 
@@ -633,7 +669,7 @@ export async function POST(context) {
       console.warn('[CreateOrder] Could not fetch publishedActiveCampaign from RTDB:', campErr?.message || campErr);
     }
     if (!activeCampaign && !_deps?.skipPublishedCampaignFallback) {
-      activeCampaign = await getPublishedPinkFridayCampaign();
+      activeCampaign = await getPublishedPinkFridayCampaign(false, { adminDb });
     }
 
     // Track stock deduction for individual products & collection components (executed only after fresh commit)
@@ -1084,6 +1120,16 @@ export async function POST(context) {
       });
 
       if (!matRes.ok) {
+        if (matRes.reason === 'ORDER_ADMINISTRATIVELY_DELETED') {
+          return jsonResponse(
+            {
+              success: false,
+              error: 'ORDER_DELETED',
+              message: 'تم حذف هذا الطلب إدارياً ولا يمكن إعادة إنشائه بنفس المعرف.'
+            },
+            409
+          );
+        }
         // Keep status in COMMITTING (NEVER downgrade to FAILED, NEVER return 200)
         return serviceUnavailableResponse();
       }

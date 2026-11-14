@@ -14,7 +14,13 @@ export const MAX_COMMIT_PAYLOAD_BYTES = 128 * 1024; // 128 KiB safety ceiling
 
 const UUID_V4_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-export type OrderIdempotencyStatus = 'PENDING' | 'COMMITTING' | 'COMPLETED' | 'FAILED';
+export type OrderIdempotencyStatus =
+  | 'PENDING'
+  | 'COMMITTING'
+  | 'COMPLETED'
+  | 'FAILED'
+  | 'DELETING'
+  | 'DELETED';
 
 export interface OrderResponseSummary {
   orderId: string;
@@ -50,6 +56,9 @@ export interface OrderIdempotencyRecord {
   commitPayload?: SealedCommitPayload;
   completedAt?: string;
   failedAt?: string;
+  deletingAt?: string;
+  deletedAt?: string;
+  deletedBy?: string;
   lastErrorCode?: string;
   responseSummary?: OrderResponseSummary;
 }
@@ -83,6 +92,10 @@ export type AcquireIdempotencyOutcome =
     }
   | {
       outcome: 'EXPIRED';
+      record: OrderIdempotencyRecord;
+    }
+  | {
+      outcome: 'DELETED';
       record: OrderIdempotencyRecord;
     }
   | {
@@ -227,6 +240,12 @@ async function promoteExistingOrderToCompleted(params: {
   };
 
   const tx = await idemRef.transaction((current: any) => {
+    if (
+      isPlainObject(current) &&
+      (current.status === 'DELETED' || current.status === 'DELETING')
+    ) {
+      return undefined;
+    }
     if (isPlainObject(current) && current.status === 'COMPLETED') {
       return current;
     }
@@ -264,6 +283,10 @@ function classifyExistingRecord(
   requestFingerprint: string,
   nowMs: number
 ): Exclude<AcquireIdempotencyOutcome, { outcome: 'ACQUIRED' | 'RECOVER_COMMITTING' }> | null {
+  if (record.status === 'DELETED' || record.status === 'DELETING') {
+    return { outcome: 'DELETED', record };
+  }
+
   if (record.requestFingerprint !== requestFingerprint) {
     return { outcome: 'CONFLICT', record };
   }
@@ -367,7 +390,7 @@ export async function acquireOrderIdempotencyLock(params: {
       } satisfies OrderIdempotencyRecord;
     }
 
-    // Abort write without modifying COMPLETED, COMMITTING, or existing PENDING
+    // Abort write without modifying DELETED, DELETING, COMPLETED, COMMITTING, or existing PENDING
     return undefined;
   });
 
@@ -688,6 +711,16 @@ export async function materializeCommitPayload(params: {
   const confirmationOutboxId = `notif_order_${orderId}_confirmation`;
 
   try {
+    // 0. Check administrative deletion tombstone BEFORE materializing any records
+    const deletedOrderSnap = await adminDb.ref(`privateDeletedOrders/${orderId}`).once('value');
+    const deletedOrderRec = deletedOrderSnap.val();
+    if (
+      isPlainObject(deletedOrderRec) &&
+      (deletedOrderRec.status === 'DELETED' || deletedOrderRec.status === 'DELETING')
+    ) {
+      return { ok: false, reason: 'ORDER_ADMINISTRATIVELY_DELETED' };
+    }
+
     // 1. Inspect current state to avoid clobbering already-processed outbox records or hiding mismatches
     const [existingOrderSnap, existingOrderAccessSnap, existingInvAccessSnap, ...existingOutboxSnaps] =
       await Promise.all([
@@ -700,6 +733,13 @@ export async function materializeCommitPayload(params: {
     const existingOrder = existingOrderSnap.val();
     const existingOrderAccess = existingOrderAccessSnap.val();
     const existingInvAccess = existingInvAccessSnap.val();
+
+    if (
+      (isPlainObject(existingOrderAccess) && existingOrderAccess.status === 'revoked') ||
+      (isPlainObject(existingInvAccess) && existingInvAccess.status === 'revoked')
+    ) {
+      return { ok: false, reason: 'ORDER_ADMINISTRATIVELY_DELETED' };
+    }
 
     if (
       isPlainObject(existingOrder) &&
@@ -918,7 +958,10 @@ export async function reconcileIdempotencyAfterFailure(params: {
     const currentIdem = currentIdemSnap.val();
     if (
       isPlainObject(currentIdem) &&
-      (currentIdem.status === 'COMMITTING' || currentIdem.status === 'COMPLETED')
+      (currentIdem.status === 'COMMITTING' ||
+        currentIdem.status === 'COMPLETED' ||
+        currentIdem.status === 'DELETING' ||
+        currentIdem.status === 'DELETED')
     ) {
       return;
     }
@@ -994,6 +1037,23 @@ export async function resolveCompletedReplayPayload(params: {
 }> {
   const { record, adminDb, encryptionKey } = params;
   const orderId = record.reservedOrderId;
+
+  if (record.status === 'DELETED' || record.status === 'DELETING') {
+    const err = new Error(`Order ${orderId} was administratively deleted`);
+    (err as any).code = 'ORDER_DELETED';
+    throw err;
+  }
+
+  const deletedOrderSnap = await adminDb.ref(`privateDeletedOrders/${orderId}`).once('value');
+  const deletedOrderRec = deletedOrderSnap.val();
+  if (
+    isPlainObject(deletedOrderRec) &&
+    (deletedOrderRec.status === 'DELETED' || deletedOrderRec.status === 'DELETING')
+  ) {
+    const err = new Error(`Order ${orderId} was administratively deleted`);
+    (err as any).code = 'ORDER_DELETED';
+    throw err;
+  }
 
   const orderSnap = await adminDb.ref(`orders/${orderId}`).once('value');
   const orderData = orderSnap.val();
