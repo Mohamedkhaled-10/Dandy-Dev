@@ -1,6 +1,9 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
+import { getPublicStoreShippingPolicy } from '../config/store-policy';
 const turnstileSiteKey = process.env.PUBLIC_TURNSTILE_SITE_KEY || '';
+const publicStoreShippingPolicy = getPublicStoreShippingPolicy();
+const serializedStoreShippingPolicy = JSON.stringify(publicStoreShippingPolicy).replace(/</g, '\\u003c');
 ---
 
 <BaseLayout
@@ -744,7 +747,7 @@ const turnstileSiteKey = process.env.PUBLIC_TURNSTILE_SITE_KEY || '';
       </div>
 
       <div class="info-bubbles-container" dir="rtl">
-        <span class="info-bubble"><i class="fas fa-truck"></i> شحن مجاني للطلبات فوق 2000 ج.م</span>
+        <span class="info-bubble"><i class="fas fa-truck"></i> شحن مجاني للطلبات فوق {publicStoreShippingPolicy.freeShippingThresholdEgp} ج.م</span>
         <span class="info-bubble"><i class="fas fa-money-bill-wave"></i> الدفع عند الاستلام</span>
         <span class="info-bubble"><i class="fas fa-shield-alt"></i> منتجات طبيعية أصلية 100%</span>
         <span class="info-bubble"><i class="fas fa-bolt"></i> شحن سريع لجميع المحافظات</span>
@@ -917,7 +920,7 @@ const turnstileSiteKey = process.env.PUBLIC_TURNSTILE_SITE_KEY || '';
 
               <div style="display:flex; justify-content:space-between; margin-bottom:10px; align-items: center; font-size:0.88rem;">
                 <span style="color:var(--color-muted);">مصاريف الشحن:</span>
-                <span id="shippingCostSummary2" style="font-weight:700; color:var(--color-blush);">شحن مجاني عند الشراء بأكثر من 2000 ج.م</span>
+                <span id="shippingCostSummary2" style="font-weight:700; color:var(--color-blush);">شحن مجاني عند الشراء بأكثر من {publicStoreShippingPolicy.freeShippingThresholdEgp} ج.م</span>
               </div>
 
               <div style="border-top:1px solid var(--border-light); margin:14px 0; padding-top:14px; display:flex; justify-content:space-between; align-items:center;">
@@ -926,7 +929,7 @@ const turnstileSiteKey = process.env.PUBLIC_TURNSTILE_SITE_KEY || '';
               </div>
 
               <div style="background:var(--color-surface-soft); font-size:0.8rem; padding:12px; border-radius:8px; margin-top:14px; border:1px solid var(--border-light); color:var(--color-text); line-height:1.5;">
-                <i class="fas fa-shipping-fast" style="color:var(--color-blush); margin-left:4px;"></i> يصلكِ الطلب خلال 2 إلى 5 أيام عمل من تاريخ التأكيد.
+                <i class="fas fa-shipping-fast" style="color:var(--color-blush); margin-left:4px;"></i> يصلكِ الطلب خلال {publicStoreShippingPolicy.deliveryEstimate.minDays} إلى {publicStoreShippingPolicy.deliveryEstimate.maxDays} أيام عمل من تاريخ التأكيد.
               </div>
             </div>
 
@@ -1031,6 +1034,8 @@ const turnstileSiteKey = process.env.PUBLIC_TURNSTILE_SITE_KEY || '';
     </div>
   </section>
 
+  <script type="application/json" id="dandy-store-shipping-policy" set:html={serializedStoreShippingPolicy}></script>
+
   <script is:inline>
     const db = firebase.database();
 
@@ -1086,40 +1091,39 @@ const turnstileSiteKey = process.env.PUBLIC_TURNSTILE_SITE_KEY || '';
     }
     reconcileCartWithCampaign();
 
-    // English shipping fees mapped to Egyptian governorate zones
-    const shippingRates = {
-      "Gharbia": 70,
-      "Dakahlia": 85,
-      "Sharqia": 85,
-      "Kafr El Sheikh": 85,
-      "Qalyubia": 85,
-      "Port Said": 85,
-      "Damietta": 85,
-      "Suez": 85,
-      "Ismailia": 85,
-      "Cairo": 85,
-      "Giza": 85,
-      "Beheira": 85,
-      "Monufia": 85,
-      "Alexandria": 85,
-      "Fayoum": 100,
-      "Beni Suef": 100,
-      "Minya": 100,
-      "Luxor": 120,
-      "Aswan": 120,
-      "Assiut": 120,
-      "Sohag": 120,
-      "North Sinai": 120,
-      "South Sinai": 120,
-      "Qena": 120,
-      "New Valley": 120,
-      "Red Sea": 120,
-      "Matrouh": 120
-    };
+    // Centralized shipping policy injected from src/config/store-policy.ts (public policy fields only)
+    const STORE_SHIPPING_POLICY = (() => {
+      try {
+        const policyEl = document.getElementById('dandy-store-shipping-policy');
+        const parsed = policyEl && policyEl.textContent ? JSON.parse(policyEl.textContent) : null;
+        if (parsed && typeof parsed === 'object') {
+          return parsed;
+        }
+      } catch (_) {}
+      return {
+        ratesByGovernorate: {},
+        defaultFeeEgp: 120,
+        freeShippingThresholdEgp: 2000
+      };
+    })();
 
     function getShippingFeeForGov(govName) {
-      if (!govName) return null;
-      return shippingRates[govName] || 120;
+      const defaultFee = Number(STORE_SHIPPING_POLICY.defaultFeeEgp);
+      if (!govName || typeof govName !== 'string') return defaultFee;
+      const key = govName.trim();
+      if (!key) return defaultFee;
+      const rates = STORE_SHIPPING_POLICY.ratesByGovernorate || {};
+      return Object.prototype.hasOwnProperty.call(rates, key) ? rates[key] : defaultFee;
+    }
+
+    function isFreeShippingEligible(subtotal) {
+      const threshold = Number(STORE_SHIPPING_POLICY.freeShippingThresholdEgp);
+      return typeof subtotal === 'number' && Number.isFinite(subtotal) && subtotal > threshold;
+    }
+
+    function calculateShippingFeeForGov(govName, subtotal) {
+      if (isFreeShippingEligible(subtotal)) return 0;
+      return getShippingFeeForGov(govName);
     }
 
     // Render elements references
@@ -1164,9 +1168,8 @@ const turnstileSiteKey = process.env.PUBLIC_TURNSTILE_SITE_KEY || '';
       const subtotal = calculateCartSubtotal();
       
       if (selectedGov) {
-        let fee = getShippingFeeForGov(selectedGov);
-        if (subtotal > 2000) {
-          fee = 0;
+        const fee = calculateShippingFeeForGov(selectedGov, subtotal);
+        if (fee === 0) {
           shippingCostSummary2.textContent = "شحن مجاني";
           shippingCostSummary2.style.color = "var(--color-success)";
         } else {
@@ -1175,11 +1178,11 @@ const turnstileSiteKey = process.env.PUBLIC_TURNSTILE_SITE_KEY || '';
         }
         grandTotalSummaryValue2.textContent = (subtotal + fee).toFixed(0) + " ج.م";
       } else {
-        if (subtotal > 2000) {
+        if (isFreeShippingEligible(subtotal)) {
           shippingCostSummary2.textContent = "شحن مجاني";
           shippingCostSummary2.style.color = "var(--color-success)";
         } else {
-          shippingCostSummary2.textContent = "شحن مجاني عندما تتخطى القيمة 2000 جنيه";
+          shippingCostSummary2.textContent = `شحن مجاني عندما تتخطى القيمة ${STORE_SHIPPING_POLICY.freeShippingThresholdEgp} جنيه`;
           shippingCostSummary2.style.color = "var(--color-blush)";
         }
         grandTotalSummaryValue2.textContent = subtotal.toFixed(0) + " ج.م";
@@ -1304,7 +1307,7 @@ const turnstileSiteKey = process.env.PUBLIC_TURNSTILE_SITE_KEY || '';
 
       const shippingCostSummary1 = document.getElementById('shippingCostSummary1');
       if (shippingCostSummary1) {
-        if (sub > 2000) {
+        if (isFreeShippingEligible(sub)) {
           shippingCostSummary1.textContent = 'شحن مجاني';
           shippingCostSummary1.style.color = 'var(--color-success)';
           shippingCostSummary1.style.fontWeight = 'bold';
@@ -1339,7 +1342,13 @@ const turnstileSiteKey = process.env.PUBLIC_TURNSTILE_SITE_KEY || '';
     let customerSavedAddresses = {};
 
     function initCustomerCheckoutAddresses() {
-      const auth = window.auth || (typeof firebase !== 'undefined' ? firebase.auth() : null);
+      let auth = null;
+      try {
+        auth = window.auth || (typeof firebase !== 'undefined' && typeof firebase.auth === 'function' ? firebase.auth() : null);
+      } catch (authInitErr) {
+        console.warn('Firebase auth unavailable in cart checkout:', authInitErr?.code || authInitErr?.message || authInitErr);
+        return;
+      }
       if (!auth) return;
 
       auth.onAuthStateChanged(async (user) => {
@@ -1512,8 +1521,7 @@ const turnstileSiteKey = process.env.PUBLIC_TURNSTILE_SITE_KEY || '';
       }
 
       const subtotal = calculateCartSubtotal();
-      let fee = getShippingFeeForGov(governorate);
-      if (subtotal > 2000) fee = 0;
+      const fee = calculateShippingFeeForGov(governorate, subtotal);
       const orderTotal = subtotal + fee;
 
       revCustName.textContent = name;

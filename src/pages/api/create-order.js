@@ -39,6 +39,7 @@ import {
   dispatchMakeWebhookOutboxNotification
 } from '../../utils/notifications-outbox.ts';
 import { sendTelegramNotification } from '../../utils/telegram.js';
+import { calculateShippingFee } from '../../config/store-policy.ts';
 
 const SECURITY_HEADERS = {
   'Content-Type': 'application/json',
@@ -47,42 +48,6 @@ const SECURITY_HEADERS = {
   'Referrer-Policy': 'no-referrer',
   'X-Content-Type-Options': 'nosniff'
 };
-
-// Shipping rates by governorate in Egypt
-const shippingRates = {
-  "Gharbia": 70,
-  "Dakahlia": 85,
-  "Sharqia": 85,
-  "Kafr El Sheikh": 85,
-  "Qalyubia": 85,
-  "Port Said": 85,
-  "Damietta": 85,
-  "Suez": 85,
-  "Ismailia": 85,
-  "Cairo": 85,
-  "Giza": 85,
-  "Beheira": 85,
-  "Monufia": 85,
-  "Alexandria": 85,
-  "Fayoum": 100,
-  "Beni Suef": 100,
-  "Minya": 100,
-  "Luxor": 120,
-  "Aswan": 120,
-  "Assiut": 120,
-  "Sohag": 120,
-  "North Sinai": 120,
-  "South Sinai": 120,
-  "Qena": 120,
-  "New Valley": 120,
-  "Red Sea": 120,
-  "Matrouh": 120
-};
-
-function getShippingFeeForGov(govName) {
-  if (!govName) return 120;
-  return shippingRates[govName] !== undefined ? shippingRates[govName] : 120;
-}
 
 function jsonResponse(payload, status = 200, extraHeaders = {}) {
   return new Response(JSON.stringify(payload), {
@@ -971,11 +936,8 @@ export async function POST(context) {
       );
     }
 
-    // 12. Calculate shipping & total
-    let shippingFee = getShippingFeeForGov(governorate);
-    if (subtotal > 2000) {
-      shippingFee = 0;
-    }
+    // 12. Calculate shipping & total using centralized policy authority
+    const shippingFee = calculateShippingFee(governorate, subtotal);
     const totalAmount = subtotal + shippingFee;
 
     if (totalAmount <= 0) {
