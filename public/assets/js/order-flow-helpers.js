@@ -11,7 +11,9 @@
 
   var CHECKOUT_ATTEMPT_STORAGE_KEY = 'dandy_checkout_attempt_v1';
   var INVOICE_SESSION_STORAGE_KEY = 'dandy_invoice_access_session_v1';
+  var INVOICE_SESSION_INVALIDATED_KEY = 'dandy_invoice_access_invalidated_v1';
   var RECENT_LOOKUPS_STORAGE_KEY = 'dandy_recent_lookups';
+  var untrustedInvoiceStorages = typeof WeakSet === 'function' ? new WeakSet() : null;
   var UUID_V4_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
   var TOKEN_FORMAT_REGEX = /^[A-Za-z0-9_-]{32,64}$/;
   var INVOICE_CODE_REGEX = /^DNY-[A-Z0-9-]{3,24}$/;
@@ -186,37 +188,63 @@
     }
   }
 
+  function safeStorageRemove(storageObj, key) {
+    if (
+      !storageObj ||
+      typeof storageObj.removeItem !== 'function' ||
+      typeof storageObj.getItem !== 'function'
+    ) {
+      return false;
+    }
+    try {
+      storageObj.removeItem(key);
+    } catch (_) {
+      return false;
+    }
+    try {
+      var remaining = storageObj.getItem(key);
+      return remaining === null || remaining === undefined;
+    } catch (_) {
+      return false;
+    }
+  }
+
   function safeStorageSetAndVerify(storageObj, key, value) {
     if (
       !storageObj ||
       typeof storageObj.setItem !== 'function' ||
       typeof storageObj.getItem !== 'function'
     ) {
-      return { ok: false, reason: 'STORAGE_UNAVAILABLE' };
+      return { ok: false, reason: 'STORAGE_UNAVAILABLE', cleaned: false };
     }
     try {
       storageObj.setItem(key, value);
     } catch (_) {
-      return { ok: false, reason: 'STORAGE_WRITE_FAILED' };
+      var cleanedAfterWriteError = safeStorageRemove(storageObj, key);
+      return {
+        ok: false,
+        reason: 'STORAGE_WRITE_FAILED',
+        cleaned: cleanedAfterWriteError
+      };
     }
     try {
       var readBack = storageObj.getItem(key);
       if (readBack !== value) {
-        return { ok: false, reason: 'STORAGE_VERIFY_FAILED' };
+        var cleanedAfterMismatch = safeStorageRemove(storageObj, key);
+        return {
+          ok: false,
+          reason: 'STORAGE_VERIFY_FAILED',
+          cleaned: cleanedAfterMismatch
+        };
       }
-      return { ok: true };
+      return { ok: true, cleaned: true };
     } catch (_) {
-      return { ok: false, reason: 'STORAGE_READ_FAILED' };
-    }
-  }
-
-  function safeStorageRemove(storageObj, key) {
-    if (!storageObj || typeof storageObj.removeItem !== 'function') return false;
-    try {
-      storageObj.removeItem(key);
-      return true;
-    } catch (_) {
-      return false;
+      var cleanedAfterReadError = safeStorageRemove(storageObj, key);
+      return {
+        ok: false,
+        reason: 'STORAGE_READ_FAILED',
+        cleaned: cleanedAfterReadError
+      };
     }
   }
 
@@ -583,29 +611,84 @@
         fromHashToken
       );
       if (writeCheck.ok) {
+        if (untrustedInvoiceStorages && sessionStorageObj && typeof sessionStorageObj === 'object') {
+          untrustedInvoiceStorages.delete(sessionStorageObj);
+        }
+        safeStorageRemove(sessionStorageObj, INVOICE_SESSION_INVALIDATED_KEY);
         return {
           token: fromHashToken,
           source: 'hash',
           persisted: true,
+          staleCleaned: true,
+          storageTrusted: true,
           shouldStripHash: true,
           stripHashAfterRender: false
         };
       }
+
+      var staleCleaned = Boolean(writeCheck.cleaned);
+      if (!staleCleaned && sessionStorageObj && typeof sessionStorageObj === 'object') {
+        if (untrustedInvoiceStorages) {
+          untrustedInvoiceStorages.add(sessionStorageObj);
+        }
+        var staleRemaining = safeStorageGet(sessionStorageObj, INVOICE_SESSION_STORAGE_KEY);
+        if (staleRemaining && staleRemaining.trim() && staleRemaining.trim() !== fromHashToken) {
+          safeStorageSetAndVerify(
+            sessionStorageObj,
+            INVOICE_SESSION_INVALIDATED_KEY,
+            staleRemaining.trim()
+          );
+        }
+      }
+
       return {
         token: fromHashToken,
         source: 'hash',
         persisted: false,
+        staleCleaned: staleCleaned,
+        storageTrusted: staleCleaned,
         shouldStripHash: false,
         stripHashAfterRender: true
       };
     }
 
+    if (
+      untrustedInvoiceStorages &&
+      sessionStorageObj &&
+      typeof sessionStorageObj === 'object' &&
+      untrustedInvoiceStorages.has(sessionStorageObj)
+    ) {
+      return {
+        token: null,
+        source: 'none',
+        persisted: false,
+        storageTrusted: false,
+        shouldStripHash: false,
+        stripHashAfterRender: false
+      };
+    }
+
     var stored = safeStorageGet(sessionStorageObj, INVOICE_SESSION_STORAGE_KEY);
     if (stored && stored.trim()) {
+      var cleanStored = stored.trim();
+      var invalidatedVal = safeStorageGet(sessionStorageObj, INVOICE_SESSION_INVALIDATED_KEY);
+      if (invalidatedVal && invalidatedVal.trim() === cleanStored) {
+        safeStorageRemove(sessionStorageObj, INVOICE_SESSION_STORAGE_KEY);
+        return {
+          token: null,
+          source: 'none',
+          persisted: false,
+          storageTrusted: false,
+          shouldStripHash: false,
+          stripHashAfterRender: false
+        };
+      }
+
       return {
-        token: stored.trim(),
+        token: cleanStored,
         source: 'session',
         persisted: true,
+        storageTrusted: true,
         shouldStripHash: false,
         stripHashAfterRender: false
       };
@@ -621,6 +704,10 @@
   }
 
   function clearInvoiceSessionToken(sessionStorageObj) {
+    if (untrustedInvoiceStorages && sessionStorageObj && typeof sessionStorageObj === 'object') {
+      untrustedInvoiceStorages.delete(sessionStorageObj);
+    }
+    safeStorageRemove(sessionStorageObj, INVOICE_SESSION_INVALIDATED_KEY);
     return safeStorageRemove(sessionStorageObj, INVOICE_SESSION_STORAGE_KEY);
   }
 
@@ -828,6 +915,8 @@
     resolveInvoiceAccessToken: resolveInvoiceAccessToken,
     clearInvoiceSessionToken: clearInvoiceSessionToken,
     getSafeSessionStorage: getSafeSessionStorage,
+    safeStorageSetAndVerify: safeStorageSetAndVerify,
+    safeStorageRemove: safeStorageRemove,
     classifyPublicInvoiceResponse: classifyPublicInvoiceResponse,
     normalizeInvoiceCodeClient: normalizeInvoiceCodeClient,
     sanitizeRecentLookupsList: sanitizeRecentLookupsList,

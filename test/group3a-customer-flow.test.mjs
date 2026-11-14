@@ -1001,3 +1001,115 @@ test('7.3 invoice.astro script handles SecurityError sessionStorage, terminal 40
   assert.equal(blockedWin.location.hash, '');
   assert.equal(replaceStateCount, 1);
 });
+
+// ===========================================================================
+// 8. Group 3A.2.1 Stale Invoice Token Cleanup & Verified Storage Deletion
+// ===========================================================================
+test('8.1 safeStorageRemove never assumes success without read-back verification', () => {
+  // 1. Working storage removes key and verifies null
+  const working = createMemoryStorage({ k1: 'val1' });
+  assert.equal(helpers.safeStorageRemove(working, 'k1'), true);
+  assert.equal(working.getItem('k1'), null);
+
+  // 2. Silent no-op removeItem leaving key behind -> MUST return false
+  const stickyMap = new Map([['k1', 'stale_val']]);
+  const silentNoopRemoveStorage = {
+    getItem: (k) => (stickyMap.has(k) ? stickyMap.get(k) : null),
+    setItem: (k, v) => stickyMap.set(k, String(v)),
+    removeItem: () => {
+      // silently does nothing
+    }
+  };
+  assert.equal(helpers.safeStorageRemove(silentNoopRemoveStorage, 'k1'), false);
+  assert.equal(stickyMap.get('k1'), 'stale_val');
+
+  // 3. removeItem succeeds/noop then getItem throws during verification -> MUST return false
+  const verifyThrowRemoveStorage = {
+    removeItem: () => {},
+    getItem: () => {
+      throw new Error('Read-back failed');
+    }
+  };
+  assert.equal(helpers.safeStorageRemove(verifyThrowRemoveStorage, 'k1'), false);
+
+  // 4. Missing getItem or removeItem -> MUST return false
+  assert.equal(helpers.safeStorageRemove({ removeItem: () => {} }, 'k1'), false);
+  assert.equal(helpers.safeStorageRemove({ getItem: () => null }, 'k1'), false);
+});
+
+test('8.2 stale old invoice token in sessionStorage is cleaned when saving new token fails verification, preventing stale reload after new invoice render', () => {
+  const oldToken = crypto.randomBytes(32).toString('base64url');
+  const newToken = crypto.randomBytes(32).toString('base64url');
+  assert.notEqual(oldToken, newToken);
+
+  // Case A: sessionStorage holds oldToken; setItem silently fails to overwrite (readBack returns oldToken),
+  // but removeItem works and verifies deletion.
+  const storeA = new Map([[helpers.INVOICE_SESSION_STORAGE_KEY, oldToken]]);
+  const staleOverwriteFailStorage = {
+    getItem: (k) => (storeA.has(k) ? storeA.get(k) : null),
+    setItem: () => {
+      // Does not throw, but fails to overwrite existing oldToken
+    },
+    removeItem: (k) => {
+      storeA.delete(k);
+    }
+  };
+
+  // Bootstrap new invoice URL #access=newToken
+  const resA = helpers.resolveInvoiceAccessToken(`#access=${encodeURIComponent(newToken)}`, staleOverwriteFailStorage);
+  assert.equal(resA.token, newToken);
+  assert.equal(resA.source, 'hash');
+  assert.equal(resA.persisted, false);
+  assert.equal(resA.staleCleaned, true);
+  assert.equal(resA.shouldStripHash, false);
+  assert.equal(resA.stripHashAfterRender, true);
+
+  // Stale oldToken MUST have been removed from storage
+  assert.equal(storeA.has(helpers.INVOICE_SESSION_STORAGE_KEY), false);
+
+  // Simulate successful render of new invoice (200) -> hash is stripped via stripHashAfterRender,
+  // then user reloads /invoice without hash -> oldToken MUST NOT be loaded!
+  const renderOutcome = helpers.classifyPublicInvoiceResponse({
+    ok: true,
+    status: 200,
+    data: { success: true, order: { invoiceCode: 'DNY-NEW999' } }
+  });
+  assert.equal(renderOutcome.action, 'RENDER_INVOICE');
+  const reloadA = helpers.resolveInvoiceAccessToken('', staleOverwriteFailStorage);
+  assert.equal(reloadA.token, null);
+  assert.equal(reloadA.source, 'none');
+
+  // Case B: Both setItem and removeItem fail to clear oldToken (storage completely untrusted):
+  // Hash MUST still be retained until render (shouldStripHash: false, stripHashAfterRender: true),
+  // AND untrusted storage must NOT serve oldToken on reload!
+  const storeB = new Map([[helpers.INVOICE_SESSION_STORAGE_KEY, oldToken]]);
+  const untrustedStickyStorage = {
+    getItem: (k) => (storeB.has(k) ? storeB.get(k) : null),
+    setItem: () => {
+      // fails silently on all writes
+    },
+    removeItem: () => {
+      // fails silently on all removals
+    }
+  };
+
+  const resB = helpers.resolveInvoiceAccessToken(`#access=${encodeURIComponent(newToken)}`, untrustedStickyStorage);
+  assert.equal(resB.token, newToken);
+  assert.equal(resB.persisted, false);
+  assert.equal(resB.staleCleaned, false);
+  assert.equal(resB.storageTrusted, false);
+  assert.equal(resB.shouldStripHash, false);
+  assert.equal(resB.stripHashAfterRender, true);
+
+  // Even though oldToken remained inside untrustedStickyStorage, reload MUST NOT trust or return it
+  const reloadB = helpers.resolveInvoiceAccessToken('', untrustedStickyStorage);
+  assert.equal(reloadB.token, null);
+  assert.equal(reloadB.source, 'none');
+  assert.equal(reloadB.storageTrusted, false);
+
+  // Verify 404 / 429 / 503 classification behavior remains unchanged
+  assert.equal(helpers.classifyPublicInvoiceResponse({ ok: false, status: 404, data: {} }).stripHash, true);
+  assert.equal(helpers.classifyPublicInvoiceResponse({ ok: false, status: 429, data: {} }).stripHash, false);
+  assert.equal(helpers.classifyPublicInvoiceResponse({ ok: false, status: 503, data: {} }).stripHash, false);
+});
+
