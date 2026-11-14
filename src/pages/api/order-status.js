@@ -14,6 +14,67 @@ import {
 } from '../../utils/email-service.ts';
 import { getOrCreateInvoiceToken } from '../../utils/invoice-token.ts';
 
+const BLOCKED_OUTBOX_RETRY_STATUSES = new Set([
+  'cancelled_order_deleted',
+  'unknown_deleted_during_dispatch',
+  'unknown'
+]);
+
+function isPlainObject(val) {
+  return Boolean(val) && typeof val === 'object' && !Array.isArray(val);
+}
+
+function validateOrderKey(raw) {
+  if (typeof raw !== 'string') return null;
+  const trimmed = raw.trim();
+  if (!trimmed || trimmed.length > 128 || /[.#$\[\]/]/.test(trimmed)) {
+    return null;
+  }
+  return trimmed;
+}
+
+function validateOutboxKey(raw) {
+  if (typeof raw !== 'string') return null;
+  const trimmed = raw.trim();
+  if (!trimmed || trimmed.length > 180 || /[.#$\[\]/]/.test(trimmed)) {
+    return null;
+  }
+  return trimmed;
+}
+
+function hasValidCoreOrderShape(val) {
+  if (!isPlainObject(val)) return false;
+  return Boolean(
+    (typeof val.invoiceCode === 'string' && val.invoiceCode.trim() !== '') ||
+      Array.isArray(val.products) ||
+      isPlainObject(val.products) ||
+      Array.isArray(val.items) ||
+      isPlainObject(val.items) ||
+      (typeof val.name === 'string' && val.name.trim() !== '') ||
+      (typeof val.phone === 'string' && val.phone.trim() !== '') ||
+      typeof val.totalAmount === 'number'
+  );
+}
+
+function isTombstoneDeletedState(val) {
+  if (!isPlainObject(val)) return false;
+  const st = String(val.status || '').toUpperCase();
+  return st === 'DELETING' || st === 'COMMITTING_DELETE' || st === 'DELETED';
+}
+
+async function checkOrderDeletionState(db, orderId) {
+  try {
+    const snap = await db.ref(`privateDeletedOrders/${orderId}`).once('value');
+    const val = snap?.val?.() ?? null;
+    if (isTombstoneDeletedState(val)) {
+      return { ok: true, deleted: true, tombstoneStatus: String(val.status || 'DELETED') };
+    }
+    return { ok: true, deleted: false, tombstoneStatus: null };
+  } catch (err) {
+    return { ok: false, deleted: false, error: err?.message || 'DB_READ_ERROR' };
+  }
+}
+
 export async function POST({ request, _deps = undefined }) {
   const authResult = await verifyAdminRequest(request, _deps);
   if (!authResult.authorized) {
@@ -35,21 +96,40 @@ export async function POST({ request, _deps = undefined }) {
     });
   }
 
-  const { action = 'UPDATE_STATUS' } = body;
+  const { action = 'UPDATE_STATUS' } = body || {};
   const db = _deps?.adminDb || getAdminDb();
+  const sendNotifFn = _deps?.sendOrderNotification || sendOrderNotification;
 
   try {
     // -------------------------------------------------------------------------
     // ACTION 1: UPDATE_STATUS (Single Order)
     // -------------------------------------------------------------------------
     if (action === 'UPDATE_STATUS') {
-      const { orderId, newStatus } = body;
-      if (!orderId || typeof orderId !== 'string') {
+      const orderId = validateOrderKey(body?.orderId);
+      const { newStatus } = body || {};
+      if (!orderId) {
         return new Response(JSON.stringify({
           success: false,
           error: 'MISSING_ORDER_ID',
-          message: 'Order ID is required'
+          message: 'Valid Order ID is required'
         }), { status: 400, headers: { 'Content-Type': 'application/json' } });
+      }
+
+      const preDelCheck = await checkOrderDeletionState(db, orderId);
+      if (!preDelCheck.ok) {
+        return new Response(JSON.stringify({
+          success: false,
+          error: 'SERVICE_TEMPORARILY_UNAVAILABLE',
+          message: 'تعذر التحقق من حالة حذف الطلب في قاعدة البيانات.'
+        }), { status: 503, headers: { 'Content-Type': 'application/json' } });
+      }
+      if (preDelCheck.deleted) {
+        return new Response(JSON.stringify({
+          success: false,
+          error: 'ORDER_DELETED',
+          message: 'تم حذف هذا الطلب أو جاري حذفه ولا يمكن تحديث حالته.',
+          tombstoneStatus: preDelCheck.tombstoneStatus
+        }), { status: 409, headers: { 'Content-Type': 'application/json' } });
       }
 
       const normalizedNewStatus = normalizeOrderStatus(newStatus);
@@ -57,7 +137,7 @@ export async function POST({ request, _deps = undefined }) {
       const orderSnap = await orderRef.once('value');
       const orderData = orderSnap.val();
 
-      if (!orderData) {
+      if (!hasValidCoreOrderShape(orderData)) {
         return new Response(JSON.stringify({
           success: false,
           error: 'ORDER_NOT_FOUND',
@@ -78,33 +158,110 @@ export async function POST({ request, _deps = undefined }) {
         }), { status: 200, headers: { 'Content-Type': 'application/json' } });
       }
 
-      // Update order status in Firebase
+      if (typeof _deps?.beforeStatusTransaction === 'function') {
+        await _deps.beforeStatusTransaction({ action: 'UPDATE_STATUS', orderId, db });
+      }
+
+      // Fail-closed deletion re-check immediately prior to conditional transaction
+      const midDelCheck = await checkOrderDeletionState(db, orderId);
+      if (!midDelCheck.ok) {
+        return new Response(JSON.stringify({
+          success: false,
+          error: 'SERVICE_TEMPORARILY_UNAVAILABLE',
+          message: 'تعذر التحقق من حالة الطلب قبل التحديث.'
+        }), { status: 503, headers: { 'Content-Type': 'application/json' } });
+      }
+      if (midDelCheck.deleted) {
+        return new Response(JSON.stringify({
+          success: false,
+          error: 'ORDER_DELETED',
+          message: 'تم حذف هذا الطلب أو جاري حذفه ولا يمكن إعادة إنشائه أو تحديثه.',
+          tombstoneStatus: midDelCheck.tombstoneStatus
+        }), { status: 409, headers: { 'Content-Type': 'application/json' } });
+      }
+
+      // Conditional RTDB Transaction: NEVER creates a missing or partial order node
       const nowIso = new Date().toISOString();
-      await orderRef.update({
-        status: normalizedNewStatus,
-        lastStatusUpdate: nowIso,
-        lastUpdatedBy: admin.email
+      let txAbortReason = null;
+      let txPrevStatus = oldStatus;
+      let txUpdatedOrder = null;
+
+      const txResult = await orderRef.transaction((current) => {
+        txAbortReason = null;
+        if (!hasValidCoreOrderShape(current)) {
+          txAbortReason = 'ORDER_NOT_FOUND';
+          return undefined;
+        }
+        txPrevStatus = normalizeOrderStatus(current.status);
+        if (txPrevStatus === normalizedNewStatus) {
+          txAbortReason = 'UNCHANGED';
+          return undefined;
+        }
+        txUpdatedOrder = {
+          ...current,
+          status: normalizedNewStatus,
+          lastStatusUpdate: nowIso,
+          lastUpdatedBy: admin.email
+        };
+        return txUpdatedOrder;
       });
 
-      // Trigger notification outbox workflow
-      let notifResult = null;
-      try {
-        notifResult = await sendOrderNotification({
-          order: { ...orderData, status: normalizedNewStatus },
+      if (txAbortReason === 'UNCHANGED') {
+        return new Response(JSON.stringify({
+          success: true,
           orderId,
-          eventType: 'ORDER_STATUS_CHANGED',
-          newStatus: normalizedNewStatus,
-          oldStatus
-        });
-      } catch (notifErr) {
-        console.error(`[OrderStatus API] Notification dispatch error for ${orderId}:`, notifErr);
+          status: normalizedNewStatus,
+          message: 'Status unchanged; skipped notification generation',
+          changed: false
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+
+      if (!txResult?.committed || txAbortReason === 'ORDER_NOT_FOUND') {
+        const postAbortDel = await checkOrderDeletionState(db, orderId);
+        if (postAbortDel.ok && postAbortDel.deleted) {
+          return new Response(JSON.stringify({
+            success: false,
+            error: 'ORDER_DELETED',
+            message: 'تم حذف الطلب أثناء محاولة تحديث حالته ولم يتم إعادة إنشائه.'
+          }), { status: 409, headers: { 'Content-Type': 'application/json' } });
+        }
+        return new Response(JSON.stringify({
+          success: false,
+          error: 'ORDER_NOT_FOUND',
+          message: `Order ${orderId} no longer exists`
+        }), { status: 404, headers: { 'Content-Type': 'application/json' } });
+      }
+
+      // Re-check deletion tombstone before sending outbound notification
+      let notifResult = null;
+      const preNotifDelCheck = await checkOrderDeletionState(db, orderId);
+      if (preNotifDelCheck.ok && !preNotifDelCheck.deleted) {
+        try {
+          notifResult = await sendNotifFn({
+            order: txUpdatedOrder || { ...orderData, status: normalizedNewStatus },
+            orderId,
+            eventType: 'ORDER_STATUS_CHANGED',
+            newStatus: normalizedNewStatus,
+            oldStatus: txPrevStatus,
+            adminDb: db
+          });
+        } catch (notifErr) {
+          console.error(`[OrderStatus API] Notification dispatch error for ${orderId}:`, notifErr);
+        }
+      } else {
+        notifResult = {
+          success: false,
+          status: 'cancelled_order_deleted',
+          notificationId: '',
+          message: 'Skipped notification because order deletion or verification issue detected'
+        };
       }
 
       return new Response(JSON.stringify({
         success: true,
         orderId,
         status: normalizedNewStatus,
-        previousStatus: oldStatus,
+        previousStatus: txPrevStatus,
         changed: true,
         notification: notifResult
       }), { status: 200, headers: { 'Content-Type': 'application/json' } });
@@ -114,7 +271,7 @@ export async function POST({ request, _deps = undefined }) {
     // ACTION 2: BULK_UPDATE_STATUS
     // -------------------------------------------------------------------------
     if (action === 'BULK_UPDATE_STATUS') {
-      const { orderIds, newStatus } = body;
+      const { orderIds, newStatus } = body || {};
       if (!Array.isArray(orderIds) || orderIds.length === 0) {
         return new Response(JSON.stringify({
           success: false,
@@ -128,13 +285,29 @@ export async function POST({ request, _deps = undefined }) {
       let updatedCount = 0;
       let skippedCount = 0;
 
-      for (const id of orderIds) {
+      for (const rawId of orderIds) {
+        const id = validateOrderKey(rawId);
+        if (!id) {
+          results.push({ orderId: rawId, success: false, error: 'INVALID_ORDER_ID' });
+          continue;
+        }
+
         try {
+          const preDel = await checkOrderDeletionState(db, id);
+          if (!preDel.ok) {
+            results.push({ orderId: id, success: false, error: 'DATABASE_VERIFICATION_FAILED' });
+            continue;
+          }
+          if (preDel.deleted) {
+            results.push({ orderId: id, success: false, error: 'ORDER_DELETED' });
+            continue;
+          }
+
           const oRef = db.ref(`orders/${id}`);
           const oSnap = await oRef.once('value');
           const oData = oSnap.val();
 
-          if (!oData) {
+          if (!hasValidCoreOrderShape(oData)) {
             results.push({ orderId: id, success: false, error: 'NOT_FOUND' });
             continue;
           }
@@ -146,23 +319,82 @@ export async function POST({ request, _deps = undefined }) {
             continue;
           }
 
+          if (typeof _deps?.beforeStatusTransaction === 'function') {
+            await _deps.beforeStatusTransaction({ action: 'BULK_UPDATE_STATUS', orderId: id, db });
+          }
+
+          const midDel = await checkOrderDeletionState(db, id);
+          if (!midDel.ok) {
+            results.push({ orderId: id, success: false, error: 'DATABASE_VERIFICATION_FAILED' });
+            continue;
+          }
+          if (midDel.deleted) {
+            results.push({ orderId: id, success: false, error: 'ORDER_DELETED' });
+            continue;
+          }
+
           const nowIso = new Date().toISOString();
-          await oRef.update({
-            status: normalizedNewStatus,
-            lastStatusUpdate: nowIso,
-            lastUpdatedBy: admin.email
+          let itemAbortReason = null;
+          let itemPrevStatus = prevStatus;
+          let itemUpdatedOrder = null;
+
+          const itemTx = await oRef.transaction((current) => {
+            itemAbortReason = null;
+            if (!hasValidCoreOrderShape(current)) {
+              itemAbortReason = 'NOT_FOUND';
+              return undefined;
+            }
+            itemPrevStatus = normalizeOrderStatus(current.status);
+            if (itemPrevStatus === normalizedNewStatus) {
+              itemAbortReason = 'UNCHANGED';
+              return undefined;
+            }
+            itemUpdatedOrder = {
+              ...current,
+              status: normalizedNewStatus,
+              lastStatusUpdate: nowIso,
+              lastUpdatedBy: admin.email
+            };
+            return itemUpdatedOrder;
           });
+
+          if (itemAbortReason === 'UNCHANGED') {
+            skippedCount++;
+            results.push({ orderId: id, success: true, changed: false, status: normalizedNewStatus });
+            continue;
+          }
+
+          if (!itemTx?.committed || itemAbortReason === 'NOT_FOUND') {
+            const postAbortDel = await checkOrderDeletionState(db, id);
+            results.push({
+              orderId: id,
+              success: false,
+              error: postAbortDel.ok && postAbortDel.deleted ? 'ORDER_DELETED' : 'NOT_FOUND'
+            });
+            continue;
+          }
 
           updatedCount++;
 
-          // Trigger email notification for each updated order
-          const notif = await sendOrderNotification({
-            order: { ...oData, status: normalizedNewStatus },
-            orderId: id,
-            eventType: 'ORDER_STATUS_CHANGED',
-            newStatus: normalizedNewStatus,
-            oldStatus: prevStatus
-          });
+          let notif = null;
+          const postDel = await checkOrderDeletionState(db, id);
+          if (postDel.ok && !postDel.deleted) {
+            notif = await sendNotifFn({
+              order: itemUpdatedOrder || { ...oData, status: normalizedNewStatus },
+              orderId: id,
+              eventType: 'ORDER_STATUS_CHANGED',
+              newStatus: normalizedNewStatus,
+              oldStatus: itemPrevStatus,
+              adminDb: db
+            });
+          } else {
+            notif = {
+              success: false,
+              status: 'cancelled_order_deleted',
+              notificationId: '',
+              message: 'Skipped notification because order was deleted'
+            };
+          }
 
           results.push({
             orderId: id,
@@ -192,13 +424,31 @@ export async function POST({ request, _deps = undefined }) {
     // ACTION 3: RETRY_NOTIFICATION (Manual Retry from Admin Dashboard)
     // -------------------------------------------------------------------------
     if (action === 'RETRY_NOTIFICATION') {
-      const { notificationId, orderId } = body;
+      const notificationId = validateOutboxKey(body?.notificationId);
+      const orderId = validateOrderKey(body?.orderId);
       if (!notificationId || !orderId) {
         return new Response(JSON.stringify({
           success: false,
           error: 'MISSING_PARAMS',
-          message: 'Both notificationId and orderId are required'
+          message: 'Valid notificationId and orderId are required'
         }), { status: 400, headers: { 'Content-Type': 'application/json' } });
+      }
+
+      const delCheck = await checkOrderDeletionState(db, orderId);
+      if (!delCheck.ok) {
+        return new Response(JSON.stringify({
+          success: false,
+          error: 'SERVICE_TEMPORARILY_UNAVAILABLE',
+          message: 'تعذر التحقق من حالة حذف الطلب في قاعدة البيانات.'
+        }), { status: 503, headers: { 'Content-Type': 'application/json' } });
+      }
+      if (delCheck.deleted) {
+        return new Response(JSON.stringify({
+          success: false,
+          error: 'ORDER_DELETED',
+          message: 'تم حذف الطلب المرتبط بهذا الإشعار أو جاري حذفه ولا يمكن إعادة إرساله',
+          notificationId
+        }), { status: 409, headers: { 'Content-Type': 'application/json' } });
       }
 
       // Check existing notification in outbox
@@ -214,11 +464,25 @@ export async function POST({ request, _deps = undefined }) {
         }), { status: 404, headers: { 'Content-Type': 'application/json' } });
       }
 
-      if (notifData.status === 'cancelled_order_deleted') {
+      if (
+        notifData.status === 'cancelled_order_deleted' ||
+        notifData.status === 'unknown_deleted_during_dispatch'
+      ) {
         return new Response(JSON.stringify({
           success: false,
           error: 'ORDER_DELETED',
+          status: notifData.status,
           message: 'تم حذف الطلب المرتبط بهذا الإشعار ولا يمكن إعادة إرساله',
+          notificationId
+        }), { status: 409, headers: { 'Content-Type': 'application/json' } });
+      }
+
+      if (notifData.status === 'unknown') {
+        return new Response(JSON.stringify({
+          success: false,
+          error: 'AMBIGUOUS_NOTIFICATION_STATUS',
+          status: 'unknown',
+          message: 'حالة الإشعار غير مؤكدة (unknown)؛ يُمنع إعادة الإرسال لتجنب التكرار',
           notificationId
         }), { status: 409, headers: { 'Content-Type': 'application/json' } });
       }
@@ -236,7 +500,7 @@ export async function POST({ request, _deps = undefined }) {
       // Fetch fresh order details
       const orderSnap = await db.ref(`orders/${orderId}`).once('value');
       const orderData = orderSnap.val();
-      if (!orderData) {
+      if (!hasValidCoreOrderShape(orderData)) {
         return new Response(JSON.stringify({
           success: false,
           error: 'ORDER_NOT_FOUND',
@@ -247,15 +511,41 @@ export async function POST({ request, _deps = undefined }) {
       // Fetch or generate secure private invoice access token
       const invoiceAccessToken = await getOrCreateInvoiceToken(orderId, db);
 
+      // Re-verify deletion state after async token lookup
+      const preSendDel = await checkOrderDeletionState(db, orderId);
+      if (!preSendDel.ok) {
+        return new Response(JSON.stringify({
+          success: false,
+          error: 'SERVICE_TEMPORARILY_UNAVAILABLE',
+          message: 'تعذر التحقق من حالة الطلب قبل إعادة الإرسال'
+        }), { status: 503, headers: { 'Content-Type': 'application/json' } });
+      }
+      if (preSendDel.deleted) {
+        return new Response(JSON.stringify({
+          success: false,
+          error: 'ORDER_DELETED',
+          message: 'تم حذف الطلب ولا يمكن إعادة إرسال الإشعار',
+          notificationId
+        }), { status: 409, headers: { 'Content-Type': 'application/json' } });
+      }
+
       // Retry send using the SAME notification ID (enforces Apps Script idempotency)
-      const retryResult = await sendOrderNotification({
+      const retryResult = await sendNotifFn({
         order: orderData,
         orderId,
         eventType: notifData.eventType || 'ORDER_STATUS_CHANGED',
         newStatus: notifData.orderStatus || orderData.status,
         retryNotificationId: notificationId,
-        invoiceAccessToken
+        invoiceAccessToken,
+        adminDb: db
       });
+
+      const httpStatus =
+        retryResult?.status === 'cancelled_order_deleted' ||
+        retryResult?.status === 'unknown_deleted_during_dispatch' ||
+        retryResult?.status === 'unknown'
+          ? 409
+          : 200;
 
       return new Response(JSON.stringify({
         success: retryResult.success,
@@ -263,27 +553,43 @@ export async function POST({ request, _deps = undefined }) {
         status: retryResult.status,
         message: retryResult.message || 'Retry attempted',
         result: retryResult
-      }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }), { status: httpStatus, headers: { 'Content-Type': 'application/json' } });
     }
 
     // -------------------------------------------------------------------------
     // ACTION 3.5: SEND_CURRENT_STATUS_NOTIFICATION (For historical or manual updates)
     // -------------------------------------------------------------------------
     if (action === 'SEND_CURRENT_STATUS_NOTIFICATION') {
-      const { orderId } = body;
-      if (!orderId || typeof orderId !== 'string') {
+      const orderId = validateOrderKey(body?.orderId);
+      if (!orderId) {
         return new Response(JSON.stringify({
           success: false,
           error: 'MISSING_ORDER_ID',
-          message: 'Order ID is required'
+          message: 'Valid Order ID is required'
         }), { status: 400, headers: { 'Content-Type': 'application/json' } });
+      }
+
+      const delCheck = await checkOrderDeletionState(db, orderId);
+      if (!delCheck.ok) {
+        return new Response(JSON.stringify({
+          success: false,
+          error: 'SERVICE_TEMPORARILY_UNAVAILABLE',
+          message: 'تعذر التحقق من حالة حذف الطلب في قاعدة البيانات.'
+        }), { status: 503, headers: { 'Content-Type': 'application/json' } });
+      }
+      if (delCheck.deleted) {
+        return new Response(JSON.stringify({
+          success: false,
+          error: 'ORDER_DELETED',
+          message: 'تم حذف هذا الطلب أو جاري حذفه ولا يمكن إرسال إشعارات له.'
+        }), { status: 409, headers: { 'Content-Type': 'application/json' } });
       }
 
       const orderRef = db.ref(`orders/${orderId}`);
       const orderSnap = await orderRef.once('value');
       const orderData = orderSnap.val();
 
-      if (!orderData) {
+      if (!hasValidCoreOrderShape(orderData)) {
         return new Response(JSON.stringify({
           success: false,
           error: 'ORDER_NOT_FOUND',
@@ -314,10 +620,23 @@ export async function POST({ request, _deps = undefined }) {
         ? `notif_order_${orderId}_confirmation`
         : `notif_order_${orderId}_status_${statusSlug}`;
 
-      // Check if notification already accepted by MailApp to prevent duplicate sending
+      // Check existing outbox state to enforce deletion and unknown protections
       const notifRef = db.ref(`notifications_outbox/${notificationId}`);
       const notifSnap = await notifRef.once('value');
       const existingNotif = notifSnap.val();
+
+      if (existingNotif && BLOCKED_OUTBOX_RETRY_STATUSES.has(existingNotif.status)) {
+        const isUnknown = existingNotif.status === 'unknown';
+        return new Response(JSON.stringify({
+          success: false,
+          error: isUnknown ? 'AMBIGUOUS_NOTIFICATION_STATUS' : 'ORDER_DELETED',
+          status: existingNotif.status,
+          notificationId,
+          message: isUnknown
+            ? 'حالة الإشعار غير مؤكدة (unknown)؛ يُمنع إعادة الإرسال لتجنب التكرار'
+            : 'تم حذف الطلب المرتبط بهذا الإشعار ولا يمكن إرساله'
+        }), { status: 409, headers: { 'Content-Type': 'application/json' } });
+      }
 
       if (existingNotif && existingNotif.status === 'accepted_by_mailapp') {
         return new Response(JSON.stringify({
@@ -334,14 +653,22 @@ export async function POST({ request, _deps = undefined }) {
       const invoiceAccessToken = await getOrCreateInvoiceToken(orderId, db);
 
       // Dispatch notification
-      const sendResult = await sendOrderNotification({
+      const sendResult = await sendNotifFn({
         order: { ...orderData, status: currentCanonicalStatus },
         orderId,
         eventType,
         newStatus: currentCanonicalStatus,
         retryNotificationId: notificationId,
-        invoiceAccessToken
+        invoiceAccessToken,
+        adminDb: db
       });
+
+      const httpStatus =
+        sendResult?.status === 'cancelled_order_deleted' ||
+        sendResult?.status === 'unknown_deleted_during_dispatch' ||
+        sendResult?.status === 'unknown'
+          ? 409
+          : 200;
 
       return new Response(JSON.stringify({
         success: sendResult.success,
@@ -351,7 +678,7 @@ export async function POST({ request, _deps = undefined }) {
         status: sendResult.status,
         message: sendResult.message || 'تم إرسال إشعار الحالة الحالية للعميل بنجاح',
         notification: sendResult
-      }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }), { status: httpStatus, headers: { 'Content-Type': 'application/json' } });
     }
 
     // -------------------------------------------------------------------------

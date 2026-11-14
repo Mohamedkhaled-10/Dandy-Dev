@@ -11,7 +11,30 @@ export type NotificationStatus =
   | 'processing'
   | 'failed'
   | 'unknown'
-  | 'skipped_no_valid_email';
+  | 'skipped_no_valid_email'
+  | 'cancelled_order_deleted'
+  | 'unknown_deleted_during_dispatch';
+
+function isOrderDeletionTombstone(val: unknown): boolean {
+  if (!val || typeof val !== 'object' || Array.isArray(val)) return false;
+  const st = String((val as Record<string, any>).status || '').toUpperCase();
+  return st === 'DELETING' || st === 'COMMITTING_DELETE' || st === 'DELETED';
+}
+
+function hasCoreOrderFieldsForNotif(val: unknown): boolean {
+  if (!val || typeof val !== 'object' || Array.isArray(val)) return false;
+  const o = val as Record<string, any>;
+  return Boolean(
+    (typeof o.invoiceCode === 'string' && o.invoiceCode.trim() !== '') ||
+      Array.isArray(o.products) ||
+      (o.products && typeof o.products === 'object') ||
+      Array.isArray(o.items) ||
+      (o.items && typeof o.items === 'object') ||
+      (typeof o.name === 'string' && o.name.trim() !== '') ||
+      (typeof o.phone === 'string' && o.phone.trim() !== '') ||
+      typeof o.totalAmount === 'number'
+  );
+}
 
 export type NotificationEventType = 'ORDER_CONFIRMATION' | 'ORDER_STATUS_CHANGED';
 
@@ -1323,6 +1346,33 @@ export async function sendOrderNotification(params: {
 
   const adminDb = params.adminDb !== undefined ? params.adminDb : getAdminDb();
 
+  // Check privateDeletedOrders BEFORE touching token or outbox (fail-closed on DB read errors)
+  if (adminDb && typeof adminDb.ref === 'function' && orderId && !orderId.startsWith('diag_')) {
+    try {
+      const preDelSnap = await adminDb.ref(`privateDeletedOrders/${orderId}`).once('value');
+      const preDelVal = preDelSnap?.val?.() ?? null;
+      if (isOrderDeletionTombstone(preDelVal)) {
+        return {
+          success: false,
+          status: 'cancelled_order_deleted',
+          notificationId,
+          message: 'Skipped: Order is being deleted or has been deleted'
+        };
+      }
+    } catch (delCheckErr: any) {
+      console.warn(
+        `[EmailService] Fail-closed abort checking deletion status for order ${orderId}:`,
+        delCheckErr?.code || delCheckErr?.message || 'deleted_check_error'
+      );
+      return {
+        success: false,
+        status: 'failed',
+        notificationId,
+        message: 'Could not verify order deletion status'
+      };
+    }
+  }
+
   // Retrieve or generate secure invoice access token if not explicitly provided and not diagnostic
   let invoiceAccessToken = params.invoiceAccessToken;
   if (!invoiceAccessToken && adminDb && orderId && !orderId.startsWith('diag_')) {
@@ -1363,6 +1413,7 @@ export async function sendOrderNotification(params: {
     const claim = await claimOutboxNotification({
       adminDb,
       notificationId,
+      orderId,
       initialRecord: outboxData,
       allowRetryFailed: Boolean(retryNotificationId),
       allowSkipIfNoValidEmail: true,
@@ -1377,6 +1428,14 @@ export async function sendOrderNotification(params: {
           notificationId,
           deduplicated: true,
           message: 'Notification already accepted by MailApp previously'
+        };
+      }
+      if (claim.reason === 'ORDER_DELETED') {
+        return {
+          success: false,
+          status: (claim.status as NotificationStatus) || 'cancelled_order_deleted',
+          notificationId,
+          message: 'Notification skipped because order is being deleted or has been deleted'
         };
       }
       if (claim.status === 'skipped_no_valid_email') {
@@ -1444,10 +1503,13 @@ export async function sendOrderNotification(params: {
     invoiceCode
   });
 
-  // 6. Update Firebase Outbox & Order metadata with results
+  // 6. Update Firebase Outbox & conditionally update Order metadata (never resurrect deleted orders)
+  let finalEffectiveSuccess = dispatchResult.success;
+  let finalEffectiveStatus: NotificationStatus = dispatchResult.status;
+
   if (adminDb) {
     try {
-      await finalizeOutboxNotification({
+      const finRes = await finalizeOutboxNotification({
         adminDb,
         notificationId,
         claimId,
@@ -1456,21 +1518,47 @@ export async function sendOrderNotification(params: {
         message: dispatchResult.message || null
       });
 
-      // Update order latest notification status for dashboard visibility
-      await adminDb.ref(`orders/${orderId}/latestNotification`).set({
-        notificationId,
-        status: dispatchResult.status,
-        eventType,
-        updatedAt: new Date().toISOString()
-      });
+      if (!finRes.finalized) {
+        finalEffectiveSuccess = false;
+        if (finRes.status) {
+          finalEffectiveStatus = finRes.status as NotificationStatus;
+        }
+      } else if (orderId && !orderId.startsWith('diag_')) {
+        let isDeletedNow = false;
+        try {
+          const postDelSnap = await adminDb.ref(`privateDeletedOrders/${orderId}`).once('value');
+          isDeletedNow = isOrderDeletionTombstone(postDelSnap?.val?.() ?? null);
+        } catch {
+          // Fail-closed: do not write orders/{orderId} if deletion verification fails
+          isDeletedNow = true;
+        }
+
+        const orderRef = adminDb.ref(`orders/${orderId}`);
+        if (!isDeletedNow && typeof orderRef.transaction === 'function') {
+          await orderRef.transaction((currentOrder: any) => {
+            if (!hasCoreOrderFieldsForNotif(currentOrder)) {
+              return undefined;
+            }
+            return {
+              ...currentOrder,
+              latestNotification: {
+                notificationId,
+                status: dispatchResult.status,
+                eventType,
+                updatedAt: new Date().toISOString()
+              }
+            };
+          });
+        }
+      }
     } catch (err) {
       console.warn('[EmailService] Failed to update outbox record after dispatch:', err);
     }
   }
 
   return {
-    success: dispatchResult.success,
-    status: dispatchResult.status,
+    success: finalEffectiveSuccess,
+    status: finalEffectiveStatus,
     notificationId,
     message: dispatchResult.message,
     deduplicated: dispatchResult.deduplicated

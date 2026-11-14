@@ -18,7 +18,8 @@ export type OutboxNotificationStatus =
   | 'unknown'
   | 'skipped_no_valid_email'
   | 'skipped_not_configured'
-  | 'cancelled_order_deleted';
+  | 'cancelled_order_deleted'
+  | 'unknown_deleted_during_dispatch';
 
 export interface OutboxClaimResult {
   claimed: boolean;
@@ -112,14 +113,43 @@ export function buildOrderOutboxInitialRecords(params: {
   };
 }
 
+function isDeletedTombstone(val: unknown): boolean {
+  if (!isPlainObject(val)) return false;
+  const st = String(val.status || '').toUpperCase();
+  return st === 'DELETING' || st === 'COMMITTING_DELETE' || st === 'DELETED';
+}
+
+function buildCancelledDeletedAudit(params: {
+  notificationId: string;
+  orderId: string;
+  current: Record<string, any> | null;
+  nowIso: string;
+}): Record<string, any> {
+  const { notificationId, orderId, current, nowIso } = params;
+  return {
+    notificationId,
+    orderId: orderId || (typeof current?.orderId === 'string' ? current.orderId : ''),
+    channel: typeof current?.channel === 'string' ? current.channel : 'unknown',
+    eventType: typeof current?.eventType === 'string' ? current.eventType : 'UNKNOWN',
+    status: 'cancelled_order_deleted',
+    attempts: Number(current?.attempts) || 0,
+    createdAt: current?.createdAt || nowIso,
+    lastAttemptAt: nowIso,
+    cancelledAt: nowIso,
+    orderDeletedAt: nowIso
+  };
+}
+
 /**
  * Atomically claims a notifications_outbox record via Firebase RTDB `.transaction()`
  * transitioning eligible states (`pending`, or `failed` when permitted) -> `processing`.
- * Prevents concurrent duplicate dispatches and never auto-retries `unknown` or sent items.
+ * Prevents concurrent duplicate dispatches, blocks deleted/deleting orders (fail-closed),
+ * and never auto-retries `unknown` or sent items.
  */
 export async function claimOutboxNotification(params: {
   adminDb: any;
   notificationId: string;
+  orderId?: string;
   initialRecord?: Record<string, any>;
   allowRetryFailed?: boolean;
   allowSkipIfNoValidEmail?: boolean;
@@ -128,11 +158,19 @@ export async function claimOutboxNotification(params: {
   const {
     adminDb,
     notificationId,
+    orderId,
     initialRecord,
     allowRetryFailed = false,
     allowSkipIfNoValidEmail = false,
     hasValidEmail = true
   } = params;
+
+  const targetOrderId =
+    typeof orderId === 'string' && orderId.trim()
+      ? orderId.trim()
+      : typeof initialRecord?.orderId === 'string' && initialRecord.orderId.trim()
+        ? initialRecord.orderId.trim()
+        : '';
 
   if (!adminDb || typeof adminDb.ref !== 'function') {
     return {
@@ -141,6 +179,33 @@ export async function claimOutboxNotification(params: {
       status: 'processing',
       record: initialRecord || null
     };
+  }
+
+  // Pre-claim fail-closed check against privateDeletedOrders/{orderId}
+  if (targetOrderId) {
+    try {
+      const preDelSnap = await adminDb.ref(`privateDeletedOrders/${targetOrderId}`).once('value');
+      const preDelVal = preDelSnap?.val?.() ?? null;
+      if (isDeletedTombstone(preDelVal)) {
+        return {
+          claimed: false,
+          reason: 'ORDER_DELETED',
+          status: 'cancelled_order_deleted',
+          record: null
+        };
+      }
+    } catch (err: any) {
+      console.warn(
+        `[NotificationsOutbox] Pre-claim deleted-order check error for ${notificationId}:`,
+        err?.code || err?.message || 'deleted_check_error'
+      );
+      return {
+        claimed: false,
+        reason: 'CLAIM_ERROR',
+        status: 'unknown',
+        record: null
+      };
+    }
   }
 
   const outboxRef = adminDb.ref(`notifications_outbox/${notificationId}`);
@@ -159,12 +224,14 @@ export async function claimOutboxNotification(params: {
   try {
     let blockedReason: OutboxClaimResult['reason'] | undefined;
     let skippedNoEmail = false;
+    let previousStatusBeforeClaim = 'pending';
 
     const tx = await outboxRef.transaction((current: any) => {
       blockedReason = undefined;
       skippedNoEmail = false;
 
       if (!isPlainObject(current)) {
+        previousStatusBeforeClaim = 'pending';
         if (allowSkipIfNoValidEmail && !hasValidEmail) {
           skippedNoEmail = true;
           return {
@@ -190,6 +257,7 @@ export async function claimOutboxNotification(params: {
       }
 
       const st = String(current.status || 'pending');
+      previousStatusBeforeClaim = st;
 
       if (st === 'accepted_by_mailapp' || st === 'sent') {
         blockedReason = 'ALREADY_SENT';
@@ -211,7 +279,7 @@ export async function claimOutboxNotification(params: {
         blockedReason = 'SKIPPED';
         return undefined;
       }
-      if (st === 'cancelled_order_deleted') {
+      if (st === 'cancelled_order_deleted' || st === 'unknown_deleted_during_dispatch') {
         blockedReason = 'ORDER_DELETED';
         return undefined;
       }
@@ -259,6 +327,62 @@ export async function claimOutboxNotification(params: {
     }
 
     if (tx?.committed && isPlainObject(val) && val.status === 'processing' && val.claimId === claimId) {
+      // Post-claim fencing check before handing control to external dispatch:
+      // If the order entered DELETING / DELETED concurrently just before dispatch,
+      // cancel cleanly (no external dispatch ever occurred) and abort.
+      const resolvedOrderId =
+        targetOrderId || (typeof val?.orderId === 'string' && val.orderId.trim() ? val.orderId.trim() : '');
+      if (resolvedOrderId) {
+        try {
+          const postDelSnap = await adminDb.ref(`privateDeletedOrders/${resolvedOrderId}`).once('value');
+          const postDelVal = postDelSnap?.val?.() ?? null;
+          if (isDeletedTombstone(postDelVal)) {
+            const closeIso = new Date().toISOString();
+            const closeTx = await outboxRef.transaction((cur: any) => {
+              if (!isPlainObject(cur)) return undefined;
+              if (cur.status !== 'processing' || cur.claimId !== claimId) return undefined;
+              return buildCancelledDeletedAudit({
+                notificationId,
+                orderId: resolvedOrderId,
+                current: cur,
+                nowIso: closeIso
+              });
+            });
+            return {
+              claimed: false,
+              reason: 'ORDER_DELETED',
+              status: 'cancelled_order_deleted',
+              record: closeTx?.snapshot?.val?.() ?? null
+            };
+          }
+        } catch (postErr: any) {
+          console.warn(
+            `[NotificationsOutbox] Post-claim deleted-order check error for ${notificationId}:`,
+            postErr?.code || postErr?.message || 'post_claim_check_error'
+          );
+          try {
+            await outboxRef.transaction((cur: any) => {
+              if (!isPlainObject(cur)) return undefined;
+              if (cur.status !== 'processing' || cur.claimId !== claimId) return undefined;
+              const { claimId: _c, processingStartedAt: _p, ...rest } = cur;
+              return {
+                ...rest,
+                status: previousStatusBeforeClaim,
+                lastAttemptAt: new Date().toISOString()
+              };
+            });
+          } catch {
+            // best-effort release
+          }
+          return {
+            claimed: false,
+            reason: 'CLAIM_ERROR',
+            status: 'unknown',
+            record: null
+          };
+        }
+      }
+
       return {
         claimed: true,
         claimId,
@@ -276,7 +400,8 @@ export async function claimOutboxNotification(params: {
           ? 'IN_FLIGHT'
           : currentStatus === 'unknown'
             ? 'AMBIGUOUS_UNKNOWN'
-            : currentStatus === 'cancelled_order_deleted'
+            : currentStatus === 'cancelled_order_deleted' ||
+                currentStatus === 'unknown_deleted_during_dispatch'
               ? 'ORDER_DELETED'
               : currentStatus === 'failed'
                 ? 'FAILED_BLOCKED'
@@ -304,6 +429,7 @@ export async function claimOutboxNotification(params: {
 
 /**
  * Updates an owned `processing` outbox record after external call completion.
+ * Aborts cleanly if the order was deleted during dispatch or claim ownership was superseded.
  */
 export async function finalizeOutboxNotification(params: {
   adminDb: any;
@@ -313,19 +439,29 @@ export async function finalizeOutboxNotification(params: {
   error?: string | null;
   message?: string | null;
   extra?: Record<string, any>;
-}): Promise<void> {
+}): Promise<{ finalized: boolean; status?: string }> {
   const { adminDb, notificationId, claimId, status, error = null, message = null, extra = {} } = params;
-  if (!adminDb || typeof adminDb.ref !== 'function') return;
+  if (!adminDb || typeof adminDb.ref !== 'function') {
+    return { finalized: false };
+  }
 
   try {
     const outboxRef = adminDb.ref(`notifications_outbox/${notificationId}`);
-    if (typeof outboxRef.transaction !== 'function') return;
+    if (typeof outboxRef.transaction !== 'function') {
+      return { finalized: false };
+    }
 
     const nowIso = new Date().toISOString();
-    await outboxRef.transaction((current: any) => {
+    const tx = await outboxRef.transaction((current: any) => {
       if (!isPlainObject(current)) return undefined;
-      if (current.status === 'cancelled_order_deleted') return undefined;
-      if (current.claimId && current.claimId !== claimId) return undefined;
+      if (
+        current.status === 'cancelled_order_deleted' ||
+        current.status === 'unknown_deleted_during_dispatch'
+      ) {
+        return undefined;
+      }
+      if (current.status !== 'processing') return undefined;
+      if (!current.claimId || current.claimId !== claimId) return undefined;
 
       const nextAttempts = (Number(current.attempts) || 0) + (status === 'skipped_not_configured' ? 0 : 1);
       const { claimId: _clearedClaim, processingStartedAt: _clearedStart, ...rest } = current;
@@ -339,11 +475,18 @@ export async function finalizeOutboxNotification(params: {
         message
       };
     });
+
+    const finalSnapVal = tx?.snapshot?.val?.() ?? null;
+    return {
+      finalized: Boolean(tx?.committed),
+      status: isPlainObject(finalSnapVal) ? String(finalSnapVal.status || '') : undefined
+    };
   } catch (err: any) {
     console.warn(
       `[NotificationsOutbox] Finalize transaction error for ${notificationId}:`,
       err?.code || err?.message || 'finalize_error'
     );
+    return { finalized: false };
   }
 }
 
@@ -373,6 +516,7 @@ export async function dispatchTelegramOutboxNotification(params: {
     const claim = await claimOutboxNotification({
       adminDb,
       notificationId,
+      orderId,
       allowRetryFailed: false,
       initialRecord: {
         notificationId,
@@ -391,7 +535,10 @@ export async function dispatchTelegramOutboxNotification(params: {
       return {
         claimed: false,
         status: claim.status,
-        message: 'Telegram notification already handled or in progress'
+        message:
+          claim.reason === 'ORDER_DELETED'
+            ? 'Telegram notification skipped because order is being deleted or deleted'
+            : 'Telegram notification already handled or in progress'
       };
     }
 
@@ -452,7 +599,7 @@ export async function dispatchTelegramOutboxNotification(params: {
       console.error('[CreateOrder] Telegram order notification failed (resilient):', errMsg);
     }
 
-    await finalizeOutboxNotification({
+    const finRes = await finalizeOutboxNotification({
       adminDb,
       notificationId,
       claimId: claim.claimId,
@@ -462,7 +609,11 @@ export async function dispatchTelegramOutboxNotification(params: {
       extra
     });
 
-    return { claimed: true, status: finalStatus, message: finalMessage || undefined };
+    return {
+      claimed: true,
+      status: finRes.finalized ? finalStatus : finRes.status || finalStatus,
+      message: finalMessage || undefined
+    };
   } catch (outerErr: any) {
     console.error('[NotificationsOutbox] Unexpected Telegram outbox error (isolated):', outerErr?.message || outerErr);
     return { claimed: false, status: 'failed', message: outerErr?.message || 'telegram_outbox_error' };
@@ -498,6 +649,7 @@ export async function dispatchMakeWebhookOutboxNotification(params: {
     const claim = await claimOutboxNotification({
       adminDb,
       notificationId,
+      orderId,
       allowRetryFailed: false,
       initialRecord: {
         notificationId,
@@ -516,12 +668,15 @@ export async function dispatchMakeWebhookOutboxNotification(params: {
       return {
         claimed: false,
         status: claim.status,
-        message: 'Make webhook already handled or in progress'
+        message:
+          claim.reason === 'ORDER_DELETED'
+            ? 'Make webhook skipped because order is being deleted or deleted'
+            : 'Make webhook already handled or in progress'
       };
     }
 
     if (!makeWebhookUrl || typeof makeWebhookUrl !== 'string' || !makeWebhookUrl.trim()) {
-      await finalizeOutboxNotification({
+      const finSkipped = await finalizeOutboxNotification({
         adminDb,
         notificationId,
         claimId: claim.claimId,
@@ -529,7 +684,10 @@ export async function dispatchMakeWebhookOutboxNotification(params: {
         error: null,
         message: 'MAKE_WEBHOOK_URL is not configured'
       });
-      return { claimed: true, status: 'skipped_not_configured' };
+      return {
+        claimed: true,
+        status: finSkipped.finalized ? 'skipped_not_configured' : finSkipped.status || 'skipped_not_configured'
+      };
     }
 
     const isGmailEnabled = process.env.GMAIL_NOTIFICATIONS_ENABLED === 'true';
@@ -587,7 +745,7 @@ export async function dispatchMakeWebhookOutboxNotification(params: {
       console.error('Make webhook sending failed (resilient):', errMsg);
     }
 
-    await finalizeOutboxNotification({
+    const finRes = await finalizeOutboxNotification({
       adminDb,
       notificationId,
       claimId: claim.claimId,
@@ -596,7 +754,11 @@ export async function dispatchMakeWebhookOutboxNotification(params: {
       message: finalMessage
     });
 
-    return { claimed: true, status: finalStatus, message: finalMessage || undefined };
+    return {
+      claimed: true,
+      status: finRes.finalized ? finalStatus : finRes.status || finalStatus,
+      message: finalMessage || undefined
+    };
   } catch (outerErr: any) {
     console.error('[NotificationsOutbox] Unexpected Make outbox error (isolated):', outerErr?.message || outerErr);
     return { claimed: false, status: 'failed', message: outerErr?.message || 'make_outbox_error' };

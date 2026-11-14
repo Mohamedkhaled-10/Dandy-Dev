@@ -896,6 +896,112 @@
     return data.message || 'حدث خطأ أثناء تتبع الطلب. يرجى المحاولة مرة أخرى.';
   }
 
+  /**
+   * Refreshes Firebase user verification state when needed and forces a fresh ID token
+   * (`getIdToken(true)`) before calling `/api/link-customer-orders`.
+   * Never throws or blocks customer account usage or checkout if linking fails.
+   */
+  async function syncVerifiedCustomerOrdersLink(params) {
+    var safe = isPlainObject(params) ? params : {};
+    var user = safe.user;
+    if (!user || !user.uid) {
+      return { attempted: false, reason: 'NO_USER' };
+    }
+
+    var sessionStorageObj =
+      safe.sessionStorage !== undefined
+        ? safe.sessionStorage
+        : getSafeSessionStorage(typeof window !== 'undefined' ? window : globalThis);
+    var fetchFn =
+      typeof safe.fetchFn === 'function'
+        ? safe.fetchFn
+        : typeof fetch === 'function'
+          ? fetch
+          : null;
+    var onLinkedOrders = typeof safe.onLinkedOrders === 'function' ? safe.onLinkedOrders : null;
+    var endpoint =
+      typeof safe.endpoint === 'string' && safe.endpoint.trim()
+        ? safe.endpoint.trim()
+        : '/api/link-customer-orders';
+
+    var linkSessionKey = 'dandy_orders_linked_' + String(user.uid);
+    var alreadyLinked = safeStorageGet(sessionStorageObj, linkSessionKey);
+    if (alreadyLinked === '1') {
+      return { attempted: false, deduplicated: true, reason: 'ALREADY_LINKED_IN_SESSION' };
+    }
+
+    if (user.emailVerified !== true && typeof user.reload === 'function') {
+      try {
+        var reloaded = await user.reload();
+        if (reloaded && typeof reloaded === 'object' && reloaded.uid) {
+          user = reloaded;
+        }
+      } catch (_) {
+        return { attempted: false, reason: 'RELOAD_FAILED' };
+      }
+    }
+
+    if (user.emailVerified !== true) {
+      return { attempted: false, reason: 'EMAIL_NOT_VERIFIED' };
+    }
+
+    if (!fetchFn || typeof user.getIdToken !== 'function') {
+      return { attempted: false, reason: 'DEPENDENCIES_UNAVAILABLE' };
+    }
+
+    try {
+      var freshIdToken = await user.getIdToken(true);
+      if (!freshIdToken || typeof freshIdToken !== 'string') {
+        return { attempted: false, reason: 'MISSING_FRESH_TOKEN' };
+      }
+
+      var linkRes = await fetchFn(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idToken: freshIdToken })
+      });
+
+      var linkData = {};
+      try {
+        if (linkRes && typeof linkRes.json === 'function') {
+          linkData = (await linkRes.json()) || {};
+        }
+      } catch (_) {
+        linkData = {};
+      }
+
+      if (linkRes && linkRes.ok && linkData.success) {
+        safeStorageSet(sessionStorageObj, linkSessionKey, '1');
+        var linkedCount = Number(linkData.linkedCount) || 0;
+        if (linkedCount > 0 && onLinkedOrders) {
+          try {
+            await onLinkedOrders(linkData);
+          } catch (_) {}
+        }
+        return {
+          attempted: true,
+          ok: true,
+          linkedCount: linkedCount,
+          data: linkData
+        };
+      }
+
+      return {
+        attempted: true,
+        ok: false,
+        status: linkRes ? linkRes.status : 0,
+        error: linkData && linkData.error ? linkData.error : 'LINK_REQUEST_FAILED'
+      };
+    } catch (_) {
+      return {
+        attempted: true,
+        ok: false,
+        status: 0,
+        error: 'NETWORK_OR_TOKEN_ERROR'
+      };
+    }
+  }
+
   return {
     CHECKOUT_ATTEMPT_STORAGE_KEY: CHECKOUT_ATTEMPT_STORAGE_KEY,
     INVOICE_SESSION_STORAGE_KEY: INVOICE_SESSION_STORAGE_KEY,
@@ -923,6 +1029,7 @@
     loadAndMigrateRecentLookups: loadAndMigrateRecentLookups,
     saveRecentLookupCode: saveRecentLookupCode,
     extractTrackOrderUrlParams: extractTrackOrderUrlParams,
-    classifyTrackOrderError: classifyTrackOrderError
+    classifyTrackOrderError: classifyTrackOrderError,
+    syncVerifiedCustomerOrdersLink: syncVerifiedCustomerOrdersLink
   };
 });

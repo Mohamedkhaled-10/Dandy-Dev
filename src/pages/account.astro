@@ -1252,9 +1252,16 @@ import BaseLayout from '../layouts/BaseLayout.astro';
         loadAddresses();
         loadWishlist();
 
-        // ربط الطلبات القديمة بالبريد المفعّل فقط عند تحقق emailVerified
-        if (user.emailVerified === true) {
-          (async function linkVerifiedCustomerOrders() {
+        // ربط الطلبات القديمة بالبريد المفعّل بعد تحديث حالة التحقق وتجديد ID Token
+        if (window.DandyOrderFlow && typeof window.DandyOrderFlow.syncVerifiedCustomerOrdersLink === 'function') {
+          window.DandyOrderFlow.syncVerifiedCustomerOrdersLink({
+            user,
+            onLinkedOrders: () => loadOrders()
+          }).catch((linkErr) => {
+            console.warn('Verified orders link notice:', linkErr);
+          });
+        } else {
+          (async function linkVerifiedCustomerOrdersFallback() {
             const linkSessionKey = 'dandy_orders_linked_' + user.uid;
             try {
               if (window.sessionStorage && window.sessionStorage.getItem(linkSessionKey) === '1') {
@@ -1263,7 +1270,13 @@ import BaseLayout from '../layouts/BaseLayout.astro';
             } catch (e) {}
 
             try {
-              const idToken = await user.getIdToken();
+              if (user.emailVerified !== true && typeof user.reload === 'function') {
+                await user.reload();
+              }
+              if (user.emailVerified !== true) {
+                return;
+              }
+              const idToken = await user.getIdToken(true);
               const linkRes = await fetch('/api/link-customer-orders', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
