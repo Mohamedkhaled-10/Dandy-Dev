@@ -9,6 +9,9 @@ function isValidEmailAddress(email: unknown): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed);
 }
 
+export const DEFAULT_OUTBOX_PROCESSING_LEASE_MS = 60_000;
+export const DEFAULT_LEGACY_OUTBOX_STALE_MS = 180_000;
+
 export type OutboxNotificationStatus =
   | 'pending'
   | 'processing'
@@ -36,8 +39,104 @@ export interface OutboxClaimResult {
   record?: Record<string, any> | null;
 }
 
+export interface OutboxLeaseInspectionResult {
+  state:
+    | 'NOT_PROCESSING'
+    | 'ACTIVE'
+    | 'EXPIRED'
+    | 'LEGACY_ACTIVE'
+    | 'LEGACY_STALE'
+    | 'INVALID_TIMESTAMP';
+  expiresAtMs?: number;
+  startedAtMs?: number;
+}
+
+export interface OutboxReconcileResult {
+  ok: boolean;
+  outcome:
+    | 'NOT_FOUND'
+    | 'NOT_PROCESSING'
+    | 'IN_FLIGHT'
+    | 'RECONCILED_UNKNOWN'
+    | 'MANUAL_REVIEW_REQUIRED'
+    | 'ORDER_DELETED'
+    | 'RECONCILE_ERROR';
+  status: OutboxNotificationStatus | string;
+  transitioned: boolean;
+  manualReviewRequired?: boolean;
+  diagnosticCode?: string;
+  record?: Record<string, any> | null;
+}
+
 function isPlainObject(val: unknown): val is Record<string, any> {
   return Boolean(val) && typeof val === 'object' && !Array.isArray(val);
+}
+
+function resolveNowMs(nowMs?: number, getNowMs?: () => number): number {
+  if (typeof nowMs === 'number' && Number.isFinite(nowMs)) {
+    return nowMs;
+  }
+  if (typeof getNowMs === 'function') {
+    const dynamicMs = getNowMs();
+    if (typeof dynamicMs === 'number' && Number.isFinite(dynamicMs)) {
+      return dynamicMs;
+    }
+  }
+  return Date.now();
+}
+
+function resolvePositiveMs(val: unknown, fallback: number): number {
+  return typeof val === 'number' && Number.isFinite(val) && val > 0 ? val : fallback;
+}
+
+/**
+ * Inspects an outbox record's processing lease state without mutating it.
+ */
+export function inspectOutboxProcessingLease(
+  record: unknown,
+  options: { nowMs?: number; getNowMs?: () => number; legacyStaleMs?: number } = {}
+): OutboxLeaseInspectionResult {
+  if (!isPlainObject(record) || String(record.status || '') !== 'processing') {
+    return { state: 'NOT_PROCESSING' };
+  }
+
+  const nowMs = resolveNowMs(options.nowMs, options.getNowMs);
+  const legacyStaleMs = resolvePositiveMs(options.legacyStaleMs, DEFAULT_LEGACY_OUTBOX_STALE_MS);
+
+  if (typeof record.processingLeaseExpiresAt === 'string' && record.processingLeaseExpiresAt.trim()) {
+    const expMs = Date.parse(record.processingLeaseExpiresAt);
+    if (Number.isFinite(expMs)) {
+      return {
+        state: nowMs < expMs ? 'ACTIVE' : 'EXPIRED',
+        expiresAtMs: expMs
+      };
+    }
+    return { state: 'INVALID_TIMESTAMP' };
+  }
+
+  // Legacy processing record missing processingLeaseExpiresAt: derive conservative threshold from processingStartedAt
+  if (typeof record.processingStartedAt === 'string' && record.processingStartedAt.trim()) {
+    const startMs = Date.parse(record.processingStartedAt);
+    if (Number.isFinite(startMs)) {
+      return {
+        state: nowMs - startMs < legacyStaleMs ? 'LEGACY_ACTIVE' : 'LEGACY_STALE',
+        startedAtMs: startMs
+      };
+    }
+  }
+
+  return { state: 'INVALID_TIMESTAMP' };
+}
+
+/**
+ * Returns true strictly when the record is `processing` with a valid active lease.
+ */
+export function isOutboxProcessingLeaseActive(
+  record: unknown,
+  options: { nowMs?: number; getNowMs?: () => number; legacyStaleMs?: number } = {}
+): boolean {
+  const inspection = inspectOutboxProcessingLease(record, options);
+  return inspection.state === 'ACTIVE' || inspection.state === 'LEGACY_ACTIVE';
 }
 
 export function getConfirmationOutboxId(orderId: string): string {
@@ -142,9 +241,10 @@ function buildCancelledDeletedAudit(params: {
 
 /**
  * Atomically claims a notifications_outbox record via Firebase RTDB `.transaction()`
- * transitioning eligible states (`pending`, or `failed` when permitted) -> `processing`.
+ * transitioning eligible states (`pending`, or `failed` when permitted) -> `processing`,
+ * persisting a processing lease (`processingLeaseExpiresAt`) alongside `processingStartedAt` and `claimId`.
  * Prevents concurrent duplicate dispatches, blocks deleted/deleting orders (fail-closed),
- * and never auto-retries `unknown` or sent items.
+ * and never auto-retries `unknown`, `processing`, or sent items.
  */
 export async function claimOutboxNotification(params: {
   adminDb: any;
@@ -154,6 +254,9 @@ export async function claimOutboxNotification(params: {
   allowRetryFailed?: boolean;
   allowSkipIfNoValidEmail?: boolean;
   hasValidEmail?: boolean;
+  nowMs?: number;
+  getNowMs?: () => number;
+  leaseMs?: number;
 }): Promise<OutboxClaimResult> {
   const {
     adminDb,
@@ -210,7 +313,10 @@ export async function claimOutboxNotification(params: {
 
   const outboxRef = adminDb.ref(`notifications_outbox/${notificationId}`);
   const claimId = crypto.randomUUID();
-  const nowIso = new Date().toISOString();
+  const claimNowMs = resolveNowMs(params.nowMs, params.getNowMs);
+  const effectiveLeaseMs = resolvePositiveMs(params.leaseMs, DEFAULT_OUTBOX_PROCESSING_LEASE_MS);
+  const nowIso = new Date(claimNowMs).toISOString();
+  const processingLeaseExpiresAt = new Date(claimNowMs + effectiveLeaseMs).toISOString();
 
   if (typeof outboxRef.transaction !== 'function') {
     return {
@@ -250,6 +356,7 @@ export async function claimOutboxNotification(params: {
           status: 'processing',
           claimId,
           processingStartedAt: nowIso,
+          processingLeaseExpiresAt,
           lastAttemptAt: nowIso,
           attempts: Number(initialRecord?.attempts) || 0,
           createdAt: initialRecord?.createdAt || nowIso
@@ -311,6 +418,7 @@ export async function claimOutboxNotification(params: {
         status: 'processing',
         claimId,
         processingStartedAt: nowIso,
+        processingLeaseExpiresAt,
         lastAttemptAt: nowIso
       };
     });
@@ -337,7 +445,7 @@ export async function claimOutboxNotification(params: {
           const postDelSnap = await adminDb.ref(`privateDeletedOrders/${resolvedOrderId}`).once('value');
           const postDelVal = postDelSnap?.val?.() ?? null;
           if (isDeletedTombstone(postDelVal)) {
-            const closeIso = new Date().toISOString();
+            const closeIso = new Date(resolveNowMs(params.nowMs, params.getNowMs)).toISOString();
             const closeTx = await outboxRef.transaction((cur: any) => {
               if (!isPlainObject(cur)) return undefined;
               if (cur.status !== 'processing' || cur.claimId !== claimId) return undefined;
@@ -364,11 +472,16 @@ export async function claimOutboxNotification(params: {
             await outboxRef.transaction((cur: any) => {
               if (!isPlainObject(cur)) return undefined;
               if (cur.status !== 'processing' || cur.claimId !== claimId) return undefined;
-              const { claimId: _c, processingStartedAt: _p, ...rest } = cur;
+              const {
+                claimId: _c,
+                processingStartedAt: _p,
+                processingLeaseExpiresAt: _exp,
+                ...rest
+              } = cur;
               return {
                 ...rest,
                 status: previousStatusBeforeClaim,
-                lastAttemptAt: new Date().toISOString()
+                lastAttemptAt: new Date(resolveNowMs(params.nowMs, params.getNowMs)).toISOString()
               };
             });
           } catch {
@@ -429,7 +542,8 @@ export async function claimOutboxNotification(params: {
 
 /**
  * Updates an owned `processing` outbox record after external call completion.
- * Aborts cleanly if the order was deleted during dispatch or claim ownership was superseded.
+ * Aborts cleanly if the order was deleted during dispatch or claim ownership was superseded,
+ * and strips active processing lease metadata upon finalization.
  */
 export async function finalizeOutboxNotification(params: {
   adminDb: any;
@@ -439,6 +553,8 @@ export async function finalizeOutboxNotification(params: {
   error?: string | null;
   message?: string | null;
   extra?: Record<string, any>;
+  nowMs?: number;
+  getNowMs?: () => number;
 }): Promise<{ finalized: boolean; status?: string }> {
   const { adminDb, notificationId, claimId, status, error = null, message = null, extra = {} } = params;
   if (!adminDb || typeof adminDb.ref !== 'function') {
@@ -451,7 +567,7 @@ export async function finalizeOutboxNotification(params: {
       return { finalized: false };
     }
 
-    const nowIso = new Date().toISOString();
+    const nowIso = new Date(resolveNowMs(params.nowMs, params.getNowMs)).toISOString();
     const tx = await outboxRef.transaction((current: any) => {
       if (!isPlainObject(current)) return undefined;
       if (
@@ -464,7 +580,12 @@ export async function finalizeOutboxNotification(params: {
       if (!current.claimId || current.claimId !== claimId) return undefined;
 
       const nextAttempts = (Number(current.attempts) || 0) + (status === 'skipped_not_configured' ? 0 : 1);
-      const { claimId: _clearedClaim, processingStartedAt: _clearedStart, ...rest } = current;
+      const {
+        claimId: _clearedClaim,
+        processingStartedAt: _clearedStart,
+        processingLeaseExpiresAt: _clearedLease,
+        ...rest
+      } = current;
       return {
         ...rest,
         ...extra,
@@ -491,6 +612,210 @@ export async function finalizeOutboxNotification(params: {
 }
 
 /**
+ * Safely reconciles a single potentially stale `processing` outbox record via an individual RTDB `.transaction()`.
+ * - Active lease -> leaves `processing` untouched and returns `IN_FLIGHT`.
+ * - Expired lease (or stale legacy record) -> transitions to `unknown` (never `pending` or `failed`) and strips active processing metadata.
+ * - Legacy `processing` record with missing/malformed timestamp -> leaves blocked and flags `manualReviewRequired`.
+ * - Non-`processing` and deletion audit states -> untouched and preserved.
+ */
+export async function reconcileStaleOutboxNotification(params: {
+  adminDb: any;
+  notificationId: string;
+  nowMs?: number;
+  getNowMs?: () => number;
+  leaseMs?: number;
+  legacyStaleMs?: number;
+}): Promise<OutboxReconcileResult> {
+  const { adminDb, notificationId } = params;
+  if (!adminDb || typeof adminDb.ref !== 'function' || typeof notificationId !== 'string' || !notificationId.trim()) {
+    return {
+      ok: false,
+      outcome: 'RECONCILE_ERROR',
+      status: 'unknown',
+      transitioned: false,
+      manualReviewRequired: true,
+      diagnosticCode: 'RECONCILE_UNAVAILABLE'
+    };
+  }
+
+  const outboxRef = adminDb.ref(`notifications_outbox/${notificationId.trim()}`);
+  if (typeof outboxRef.transaction !== 'function') {
+    return {
+      ok: false,
+      outcome: 'RECONCILE_ERROR',
+      status: 'unknown',
+      transitioned: false,
+      manualReviewRequired: true,
+      diagnosticCode: 'RECONCILE_UNAVAILABLE'
+    };
+  }
+
+  const nowMs = resolveNowMs(params.nowMs, params.getNowMs);
+  const nowIso = new Date(nowMs).toISOString();
+  const legacyStaleMs = resolvePositiveMs(params.legacyStaleMs, DEFAULT_LEGACY_OUTBOX_STALE_MS);
+
+  try {
+    let outcome: OutboxReconcileResult['outcome'] = 'NOT_PROCESSING';
+    let diagnosticCode: string | undefined;
+    let manualReviewRequired = false;
+
+    const tx = await outboxRef.transaction((current: any) => {
+      diagnosticCode = undefined;
+      manualReviewRequired = false;
+
+      if (!isPlainObject(current)) {
+        outcome = 'NOT_FOUND';
+        return undefined;
+      }
+
+      const st = String(current.status || 'pending');
+      if (st === 'cancelled_order_deleted' || st === 'unknown_deleted_during_dispatch') {
+        outcome = 'ORDER_DELETED';
+        return undefined;
+      }
+      if (st !== 'processing') {
+        outcome = 'NOT_PROCESSING';
+        return undefined;
+      }
+
+      const inspection = inspectOutboxProcessingLease(current, {
+        nowMs,
+        legacyStaleMs
+      });
+
+      if (inspection.state === 'ACTIVE' || inspection.state === 'LEGACY_ACTIVE') {
+        outcome = 'IN_FLIGHT';
+        return undefined;
+      }
+
+      if (inspection.state === 'INVALID_TIMESTAMP') {
+        outcome = 'MANUAL_REVIEW_REQUIRED';
+        manualReviewRequired = true;
+        diagnosticCode = 'MISSING_OR_INVALID_PROCESSING_TIMESTAMP';
+        if (
+          current.manualReviewRequired === true &&
+          current.staleDiagnosticCode === diagnosticCode
+        ) {
+          return undefined;
+        }
+        return {
+          ...current,
+          manualReviewRequired: true,
+          staleProcessingDetectedAt: current.staleProcessingDetectedAt || nowIso,
+          staleDiagnosticCode: diagnosticCode,
+          error: current.error || diagnosticCode,
+          message: 'Processing timestamp is missing or malformed; manual review required before any dispatch'
+        };
+      }
+
+      // Expired lease or stale legacy processing record -> transition safely to `unknown`
+      outcome = 'RECONCILED_UNKNOWN';
+      diagnosticCode =
+        inspection.state === 'LEGACY_STALE' ? 'LEGACY_PROCESSING_STALE' : 'PROCESSING_LEASE_EXPIRED';
+
+      const {
+        claimId: _clearedClaim,
+        processingStartedAt: _clearedStart,
+        processingLeaseExpiresAt: _clearedLease,
+        ...rest
+      } = current;
+
+      return {
+        ...rest,
+        status: 'unknown',
+        attempts: (Number(current.attempts) || 0) + 1,
+        lastAttemptAt: nowIso,
+        staleProcessingDetectedAt: nowIso,
+        staleDiagnosticCode: diagnosticCode,
+        error: diagnosticCode,
+        message: 'Processing lease expired before completion; marked unknown to prevent duplicate dispatch'
+      };
+    });
+
+    const val = tx?.snapshot?.val?.() ?? null;
+    const finalStatus = isPlainObject(val) ? String(val.status || '') : '';
+
+    if (outcome === 'NOT_FOUND') {
+      return {
+        ok: true,
+        outcome: 'NOT_FOUND',
+        status: 'unknown',
+        transitioned: false,
+        record: null
+      };
+    }
+
+    if (outcome === 'RECONCILED_UNKNOWN' && tx?.committed && finalStatus === 'unknown') {
+      return {
+        ok: true,
+        outcome: 'RECONCILED_UNKNOWN',
+        status: 'unknown',
+        transitioned: true,
+        diagnosticCode,
+        record: val
+      };
+    }
+
+    if (outcome === 'MANUAL_REVIEW_REQUIRED') {
+      return {
+        ok: true,
+        outcome: 'MANUAL_REVIEW_REQUIRED',
+        status: finalStatus || 'processing',
+        transitioned: false,
+        manualReviewRequired: true,
+        diagnosticCode: diagnosticCode || 'MISSING_OR_INVALID_PROCESSING_TIMESTAMP',
+        record: val
+      };
+    }
+
+    if (outcome === 'IN_FLIGHT' || finalStatus === 'processing') {
+      return {
+        ok: true,
+        outcome: 'IN_FLIGHT',
+        status: 'processing',
+        transitioned: false,
+        record: val
+      };
+    }
+
+    if (
+      outcome === 'ORDER_DELETED' ||
+      finalStatus === 'cancelled_order_deleted' ||
+      finalStatus === 'unknown_deleted_during_dispatch'
+    ) {
+      return {
+        ok: true,
+        outcome: 'ORDER_DELETED',
+        status: finalStatus || 'cancelled_order_deleted',
+        transitioned: false,
+        record: val
+      };
+    }
+
+    return {
+      ok: true,
+      outcome: 'NOT_PROCESSING',
+      status: finalStatus || 'unknown',
+      transitioned: false,
+      record: val
+    };
+  } catch (err: any) {
+    console.warn(
+      `[NotificationsOutbox] Reconcile stale transaction error for ${notificationId}:`,
+      err?.code || err?.message || 'reconcile_error'
+    );
+    return {
+      ok: false,
+      outcome: 'RECONCILE_ERROR',
+      status: 'unknown',
+      transitioned: false,
+      manualReviewRequired: true,
+      diagnosticCode: 'RECONCILE_TRANSACTION_FAILED'
+    };
+  }
+}
+
+/**
  * Safely dispatches Telegram order notification backed by fixed-ID Outbox fencing.
  * Never throws synchronously or rejects.
  */
@@ -500,17 +825,23 @@ export async function dispatchTelegramOutboxNotification(params: {
   adminDb: any;
   sendTelegramFn?: (args: any) => Promise<any>;
   timeoutMs?: number;
+  nowMs?: number;
+  getNowMs?: () => number;
+  leaseMs?: number;
 }): Promise<{ status: string; claimed: boolean; message?: string }> {
   const {
     orderId,
     orderData,
     adminDb,
     sendTelegramFn = sendTelegramNotification,
-    timeoutMs = 4000
+    timeoutMs = 4000,
+    nowMs,
+    getNowMs,
+    leaseMs
   } = params;
 
   const notificationId = getTelegramOutboxId(orderId);
-  const nowIso = new Date().toISOString();
+  const nowIso = new Date(resolveNowMs(nowMs, getNowMs)).toISOString();
 
   try {
     const claim = await claimOutboxNotification({
@@ -518,6 +849,9 @@ export async function dispatchTelegramOutboxNotification(params: {
       notificationId,
       orderId,
       allowRetryFailed: false,
+      nowMs,
+      getNowMs,
+      leaseMs,
       initialRecord: {
         notificationId,
         orderId,
@@ -606,7 +940,9 @@ export async function dispatchTelegramOutboxNotification(params: {
       status: finalStatus,
       error: finalError,
       message: finalMessage,
-      extra
+      extra,
+      nowMs,
+      getNowMs
     });
 
     return {
@@ -632,6 +968,9 @@ export async function dispatchMakeWebhookOutboxNotification(params: {
   fetchFn?: typeof globalThis.fetch;
   makeWebhookUrl?: string;
   timeoutMs?: number;
+  nowMs?: number;
+  getNowMs?: () => number;
+  leaseMs?: number;
 }): Promise<{ status: string; claimed: boolean; message?: string }> {
   const {
     orderId,
@@ -639,11 +978,14 @@ export async function dispatchMakeWebhookOutboxNotification(params: {
     adminDb,
     fetchFn = globalThis.fetch,
     makeWebhookUrl = process.env.MAKE_WEBHOOK_URL,
-    timeoutMs = 4000
+    timeoutMs = 4000,
+    nowMs,
+    getNowMs,
+    leaseMs
   } = params;
 
   const notificationId = getMakeOutboxId(orderId);
-  const nowIso = new Date().toISOString();
+  const nowIso = new Date(resolveNowMs(nowMs, getNowMs)).toISOString();
 
   try {
     const claim = await claimOutboxNotification({
@@ -651,6 +993,9 @@ export async function dispatchMakeWebhookOutboxNotification(params: {
       notificationId,
       orderId,
       allowRetryFailed: false,
+      nowMs,
+      getNowMs,
+      leaseMs,
       initialRecord: {
         notificationId,
         orderId,
@@ -682,7 +1027,9 @@ export async function dispatchMakeWebhookOutboxNotification(params: {
         claimId: claim.claimId,
         status: 'skipped_not_configured',
         error: null,
-        message: 'MAKE_WEBHOOK_URL is not configured'
+        message: 'MAKE_WEBHOOK_URL is not configured',
+        nowMs,
+        getNowMs
       });
       return {
         claimed: true,
@@ -751,7 +1098,9 @@ export async function dispatchMakeWebhookOutboxNotification(params: {
       claimId: claim.claimId,
       status: finalStatus,
       error: finalError,
-      message: finalMessage
+      message: finalMessage,
+      nowMs,
+      getNowMs
     });
 
     return {
@@ -763,4 +1112,30 @@ export async function dispatchMakeWebhookOutboxNotification(params: {
     console.error('[NotificationsOutbox] Unexpected Make outbox error (isolated):', outerErr?.message || outerErr);
     return { claimed: false, status: 'failed', message: outerErr?.message || 'make_outbox_error' };
   }
+}
+
+/**
+ * Strips customer PII, claim internals, payloads, and token artifacts from an outbox record
+ * before exposing metadata to admin API consumers.
+ */
+export function sanitizeOutboxRecordForAdmin(rec: unknown): Record<string, any> | null {
+  if (!isPlainObject(rec)) return null;
+  return {
+    notificationId: typeof rec.notificationId === 'string' ? rec.notificationId : '',
+    orderId: typeof rec.orderId === 'string' ? rec.orderId : '',
+    channel: typeof rec.channel === 'string' ? rec.channel : 'unknown',
+    eventType: typeof rec.eventType === 'string' ? rec.eventType : '',
+    orderStatus: typeof rec.orderStatus === 'string' ? rec.orderStatus : undefined,
+    status: typeof rec.status === 'string' ? rec.status : 'unknown',
+    attempts: Number(rec.attempts) || 0,
+    createdAt: typeof rec.createdAt === 'string' ? rec.createdAt : null,
+    lastAttemptAt: typeof rec.lastAttemptAt === 'string' ? rec.lastAttemptAt : null,
+    processingStartedAt: typeof rec.processingStartedAt === 'string' ? rec.processingStartedAt : null,
+    processingLeaseExpiresAt: typeof rec.processingLeaseExpiresAt === 'string' ? rec.processingLeaseExpiresAt : null,
+    staleProcessingDetectedAt: typeof rec.staleProcessingDetectedAt === 'string' ? rec.staleProcessingDetectedAt : null,
+    staleDiagnosticCode: typeof rec.staleDiagnosticCode === 'string' ? rec.staleDiagnosticCode : null,
+    manualReviewRequired: Boolean(rec.manualReviewRequired),
+    error: typeof rec.error === 'string' ? rec.error : null,
+    message: typeof rec.message === 'string' ? rec.message : null
+  };
 }

@@ -1515,9 +1515,13 @@ export async function sendOrderNotification(params: {
   newStatus?: unknown;
   oldStatus?: unknown;
   retryNotificationId?: string;
+  allowRetryFailed?: boolean;
   invoiceAccessToken?: string;
   adminDb?: any;
   encryptionKey?: string;
+  nowMs?: number;
+  getNowMs?: () => number;
+  leaseMs?: number;
 }): Promise<{
   success: boolean;
   status: NotificationStatus;
@@ -1526,6 +1530,16 @@ export async function sendOrderNotification(params: {
   deduplicated?: boolean;
 }> {
   const { order, orderId, eventType, newStatus, oldStatus, retryNotificationId } = params;
+  const effectiveNowMs =
+    typeof params.nowMs === 'number' && Number.isFinite(params.nowMs)
+      ? params.nowMs
+      : typeof params.getNowMs === 'function' && Number.isFinite(params.getNowMs())
+        ? params.getNowMs()
+        : Date.now();
+  const effectiveAllowRetryFailed =
+    params.allowRetryFailed !== undefined
+      ? Boolean(params.allowRetryFailed)
+      : Boolean(retryNotificationId);
 
   // 1. Determine canonical status & check if status actually changed
   let targetStatus: CanonicalStatus = 'جديد';
@@ -1631,7 +1645,7 @@ export async function sendOrderNotification(params: {
   }
 
   // 3. Build deterministic outbox payload & atomically claim via RTDB .transaction() BEFORE calling relay
-  const nowIso = new Date().toISOString();
+  const nowIso = new Date(effectiveNowMs).toISOString();
   const hasValidCanonicalEmail = isValidEmail(canonicalEmail);
   const outboxData: any = {
     notificationId,
@@ -1655,9 +1669,12 @@ export async function sendOrderNotification(params: {
       notificationId,
       orderId,
       initialRecord: outboxData,
-      allowRetryFailed: Boolean(retryNotificationId),
+      allowRetryFailed: effectiveAllowRetryFailed,
       allowSkipIfNoValidEmail: true,
-      hasValidEmail: hasValidCanonicalEmail
+      hasValidEmail: hasValidCanonicalEmail,
+      nowMs: params.nowMs,
+      getNowMs: params.getNowMs,
+      leaseMs: params.leaseMs
     });
 
     if (!claim.claimed) {
@@ -1755,7 +1772,9 @@ export async function sendOrderNotification(params: {
         claimId,
         status: dispatchResult.status,
         error: dispatchResult.error || null,
-        message: dispatchResult.message || null
+        message: dispatchResult.message || null,
+        nowMs: params.nowMs,
+        getNowMs: params.getNowMs
       });
 
       if (!finRes.finalized) {
@@ -1785,7 +1804,11 @@ export async function sendOrderNotification(params: {
                 notificationId,
                 status: dispatchResult.status,
                 eventType,
-                updatedAt: new Date().toISOString()
+                updatedAt: new Date(
+                  typeof params.getNowMs === 'function' && Number.isFinite(params.getNowMs())
+                    ? params.getNowMs()
+                    : effectiveNowMs
+                ).toISOString()
               }
             };
           });

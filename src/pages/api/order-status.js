@@ -15,6 +15,18 @@ import {
   FIXED_DIAGNOSTIC_RECIPIENT
 } from '../../utils/email-service.ts';
 import { getOrCreateInvoiceToken } from '../../utils/invoice-token.ts';
+import {
+  reconcileStaleOutboxNotification,
+  sanitizeOutboxRecordForAdmin
+} from '../../utils/notifications-outbox.ts';
+
+const NO_STORE_HEADERS = {
+  'Content-Type': 'application/json',
+  'Cache-Control': 'no-store, no-cache, must-revalidate, private',
+  'Pragma': 'no-cache',
+  'Referrer-Policy': 'no-referrer',
+  'X-Content-Type-Options': 'nosniff'
+};
 
 const BLOCKED_OUTBOX_RETRY_STATUSES = new Set([
   'cancelled_order_deleted',
@@ -520,17 +532,76 @@ export async function POST({ request, _deps = undefined }) {
           status: 'unknown',
           message: 'حالة الإشعار غير مؤكدة (unknown)؛ يُمنع إعادة الإرسال لتجنب التكرار',
           notificationId
-        }), { status: 409, headers: { 'Content-Type': 'application/json' } });
+        }), { status: 409, headers: NO_STORE_HEADERS });
       }
 
-      // If already accepted by mailapp, reject duplicate send
-      if (notifData.status === 'accepted_by_mailapp') {
+      if (notifData.status === 'processing') {
+        const recRes = await reconcileStaleOutboxNotification({
+          adminDb: db,
+          notificationId,
+          nowMs: _deps?.nowMs,
+          getNowMs: _deps?.getNowMs,
+          leaseMs: _deps?.leaseMs,
+          legacyStaleMs: _deps?.legacyStaleMs
+        });
+        if (!recRes.ok) {
+          return new Response(JSON.stringify({
+            success: false,
+            error: 'SERVICE_TEMPORARILY_UNAVAILABLE',
+            message: 'تعذر التحقق من قفل الإشعار الجاري في قاعدة البيانات.'
+          }), { status: 503, headers: NO_STORE_HEADERS });
+        }
+        if (recRes.outcome === 'ORDER_DELETED') {
+          return new Response(JSON.stringify({
+            success: false,
+            error: 'ORDER_DELETED',
+            status: recRes.status,
+            message: 'تم حذف الطلب المرتبط بهذا الإشعار ولا يمكن إعادة إرساله',
+            notificationId
+          }), { status: 409, headers: NO_STORE_HEADERS });
+        }
+        if (recRes.outcome === 'RECONCILED_UNKNOWN' || recRes.status === 'unknown') {
+          return new Response(JSON.stringify({
+            success: false,
+            error: 'AMBIGUOUS_NOTIFICATION_STATUS',
+            status: 'unknown',
+            message: 'انتهت مهلة إرسال الإشعار دون نتيجة مؤكدة وتم تصنيفه كـ unknown؛ يُمنع إعادة الإرسال لتجنب التكرار',
+            notificationId
+          }), { status: 409, headers: NO_STORE_HEADERS });
+        }
+        if (recRes.outcome === 'IN_FLIGHT' || recRes.outcome === 'MANUAL_REVIEW_REQUIRED' || recRes.status === 'processing') {
+          return new Response(JSON.stringify({
+            success: false,
+            error: recRes.outcome === 'MANUAL_REVIEW_REQUIRED' ? 'MANUAL_REVIEW_REQUIRED' : 'NOTIFICATION_IN_FLIGHT',
+            status: 'processing',
+            message:
+              recRes.outcome === 'MANUAL_REVIEW_REQUIRED'
+                ? 'سجل الإشعار قيد المعالجة ويفتقد توقيتاً صالحاً؛ يتطلب مراجعة يدوية'
+                : 'الإشعار قيد الإرسال حالياً عبر عملية أخرى؛ يرجى الانتظار',
+            notificationId
+          }), { status: 409, headers: NO_STORE_HEADERS });
+        }
+      }
+
+      if (notifData.status === 'skipped_no_valid_email' || notifData.status === 'skipped_not_configured') {
+        return new Response(JSON.stringify({
+          success: false,
+          error: 'NOTIFICATION_SKIPPED',
+          status: notifData.status,
+          message: 'هذا الإشعار متجاوز (بدون بريد صالح أو غير مهيأ) ولا يمكن إعادة إرساله',
+          notificationId
+        }), { status: 409, headers: NO_STORE_HEADERS });
+      }
+
+      // If already accepted by mailapp or sent, reject duplicate send
+      if (notifData.status === 'accepted_by_mailapp' || notifData.status === 'sent') {
         return new Response(JSON.stringify({
           success: true,
-          status: 'accepted_by_mailapp',
-          message: 'Notification was already accepted by MailApp; duplicate send blocked',
+          status: notifData.status,
+          deduplicated: true,
+          message: 'Notification was already accepted/sent; duplicate send blocked',
           notificationId
-        }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }), { status: 200, headers: NO_STORE_HEADERS });
       }
 
       // Fetch fresh order details
@@ -541,14 +612,14 @@ export async function POST({ request, _deps = undefined }) {
           success: false,
           error: 'ORDER_NOT_FOUND',
           message: `Order ${orderId} not found for retry`
-        }), { status: 404, headers: { 'Content-Type': 'application/json' } });
+        }), { status: 404, headers: NO_STORE_HEADERS });
       }
       if (!hasValidCoreOrderShape(orderData)) {
         return new Response(JSON.stringify({
           success: false,
           error: 'INVALID_ORDER_SHAPE',
           message: `Order ${orderId} has incomplete or invalid core shape`
-        }), { status: 422, headers: { 'Content-Type': 'application/json' } });
+        }), { status: 422, headers: NO_STORE_HEADERS });
       }
 
       // Fetch or generate secure private invoice access token
@@ -561,7 +632,7 @@ export async function POST({ request, _deps = undefined }) {
           success: false,
           error: 'SERVICE_TEMPORARILY_UNAVAILABLE',
           message: 'تعذر التحقق من حالة الطلب قبل إعادة الإرسال'
-        }), { status: 503, headers: { 'Content-Type': 'application/json' } });
+        }), { status: 503, headers: NO_STORE_HEADERS });
       }
       if (preSendDel.deleted) {
         return new Response(JSON.stringify({
@@ -569,11 +640,11 @@ export async function POST({ request, _deps = undefined }) {
           error: 'ORDER_DELETED',
           message: 'تم حذف الطلب ولا يمكن إعادة إرسال الإشعار',
           notificationId
-        }), { status: 409, headers: { 'Content-Type': 'application/json' } });
+        }), { status: 409, headers: NO_STORE_HEADERS });
       }
 
       // Retry send using the SAME notification ID (enforces Apps Script idempotency)
-      const retryResult = await sendNotifFn({
+      const retryArgs = {
         order: orderData,
         orderId,
         eventType: notifData.eventType || 'ORDER_STATUS_CHANGED',
@@ -581,12 +652,18 @@ export async function POST({ request, _deps = undefined }) {
         retryNotificationId: notificationId,
         invoiceAccessToken,
         adminDb: db
-      });
+      };
+      if (typeof _deps?.nowMs === 'number') retryArgs.nowMs = _deps.nowMs;
+      if (typeof _deps?.getNowMs === 'function') retryArgs.getNowMs = _deps.getNowMs;
+      if (typeof _deps?.leaseMs === 'number') retryArgs.leaseMs = _deps.leaseMs;
+
+      const retryResult = await sendNotifFn(retryArgs);
 
       const httpStatus =
         retryResult?.status === 'cancelled_order_deleted' ||
         retryResult?.status === 'unknown_deleted_during_dispatch' ||
-        retryResult?.status === 'unknown'
+        retryResult?.status === 'unknown' ||
+        retryResult?.status === 'processing'
           ? 409
           : 200;
 
@@ -596,7 +673,7 @@ export async function POST({ request, _deps = undefined }) {
         status: retryResult.status,
         message: retryResult.message || 'Retry attempted',
         result: retryResult
-      }), { status: httpStatus, headers: { 'Content-Type': 'application/json' } });
+      }), { status: httpStatus, headers: NO_STORE_HEADERS });
     }
 
     // -------------------------------------------------------------------------
@@ -685,25 +762,88 @@ export async function POST({ request, _deps = undefined }) {
           message: isUnknown
             ? 'حالة الإشعار غير مؤكدة (unknown)؛ يُمنع إعادة الإرسال لتجنب التكرار'
             : 'تم حذف الطلب المرتبط بهذا الإشعار ولا يمكن إرساله'
-        }), { status: 409, headers: { 'Content-Type': 'application/json' } });
+        }), { status: 409, headers: NO_STORE_HEADERS });
       }
 
-      if (existingNotif && existingNotif.status === 'accepted_by_mailapp') {
+      if (existingNotif && existingNotif.status === 'processing') {
+        const recRes = await reconcileStaleOutboxNotification({
+          adminDb: db,
+          notificationId,
+          nowMs: _deps?.nowMs,
+          getNowMs: _deps?.getNowMs,
+          leaseMs: _deps?.leaseMs,
+          legacyStaleMs: _deps?.legacyStaleMs
+        });
+        if (!recRes.ok) {
+          return new Response(JSON.stringify({
+            success: false,
+            error: 'SERVICE_TEMPORARILY_UNAVAILABLE',
+            message: 'تعذر التحقق من قفل الإشعار الجاري في قاعدة البيانات.'
+          }), { status: 503, headers: NO_STORE_HEADERS });
+        }
+        if (recRes.outcome === 'ORDER_DELETED') {
+          return new Response(JSON.stringify({
+            success: false,
+            error: 'ORDER_DELETED',
+            status: recRes.status,
+            notificationId,
+            message: 'تم حذف الطلب المرتبط بهذا الإشعار ولا يمكن إرساله'
+          }), { status: 409, headers: NO_STORE_HEADERS });
+        }
+        if (recRes.outcome === 'RECONCILED_UNKNOWN' || recRes.status === 'unknown') {
+          return new Response(JSON.stringify({
+            success: false,
+            error: 'AMBIGUOUS_NOTIFICATION_STATUS',
+            status: 'unknown',
+            notificationId,
+            message: 'انتهت مهلة إرسال الإشعار دون نتيجة مؤكدة وتم تصنيفه كـ unknown؛ يُمنع إعادة الإرسال لتجنب التكرار'
+          }), { status: 409, headers: NO_STORE_HEADERS });
+        }
+        if (recRes.outcome === 'IN_FLIGHT' || recRes.outcome === 'MANUAL_REVIEW_REQUIRED' || recRes.status === 'processing') {
+          return new Response(JSON.stringify({
+            success: false,
+            error: recRes.outcome === 'MANUAL_REVIEW_REQUIRED' ? 'MANUAL_REVIEW_REQUIRED' : 'NOTIFICATION_IN_FLIGHT',
+            status: 'processing',
+            notificationId,
+            message: 'الإشعار قيد الإرسال حالياً أو يتطلب مراجعة يدوية؛ يُمنع التكرار'
+          }), { status: 409, headers: NO_STORE_HEADERS });
+        }
+      }
+
+      if (existingNotif && (existingNotif.status === 'accepted_by_mailapp' || existingNotif.status === 'sent')) {
         return new Response(JSON.stringify({
           success: true,
-          status: 'accepted_by_mailapp',
+          status: existingNotif.status,
           notificationId,
           deduplicated: true,
           message: 'تم إرسال وقبول إشعار هذه الحالة مسبقاً بنجاح عبر MailApp (تم منع التكرار)',
-          notification: existingNotif
-        }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+          notification: sanitizeOutboxRecordForAdmin(existingNotif) || existingNotif
+        }), { status: 200, headers: NO_STORE_HEADERS });
       }
 
       // Generate or retrieve secure private invoice access token
       const invoiceAccessToken = await getOrCreateInvoiceToken(orderId, db);
 
+      // Re-verify deletion state after async token lookup
+      const preSendDel = await checkOrderDeletionState(db, orderId);
+      if (!preSendDel.ok) {
+        return new Response(JSON.stringify({
+          success: false,
+          error: 'SERVICE_TEMPORARILY_UNAVAILABLE',
+          message: 'تعذر التحقق من حالة الطلب قبل الإرسال'
+        }), { status: 503, headers: NO_STORE_HEADERS });
+      }
+      if (preSendDel.deleted) {
+        return new Response(JSON.stringify({
+          success: false,
+          error: 'ORDER_DELETED',
+          message: 'تم حذف الطلب ولا يمكن إرسال الإشعار',
+          notificationId
+        }), { status: 409, headers: NO_STORE_HEADERS });
+      }
+
       // Dispatch notification
-      const sendResult = await sendNotifFn({
+      const sendArgs = {
         order: { ...orderData, status: currentCanonicalStatus },
         orderId,
         eventType,
@@ -711,12 +851,18 @@ export async function POST({ request, _deps = undefined }) {
         retryNotificationId: notificationId,
         invoiceAccessToken,
         adminDb: db
-      });
+      };
+      if (typeof _deps?.nowMs === 'number') sendArgs.nowMs = _deps.nowMs;
+      if (typeof _deps?.getNowMs === 'function') sendArgs.getNowMs = _deps.getNowMs;
+      if (typeof _deps?.leaseMs === 'number') sendArgs.leaseMs = _deps.leaseMs;
+
+      const sendResult = await sendNotifFn(sendArgs);
 
       const httpStatus =
         sendResult?.status === 'cancelled_order_deleted' ||
         sendResult?.status === 'unknown_deleted_during_dispatch' ||
-        sendResult?.status === 'unknown'
+        sendResult?.status === 'unknown' ||
+        sendResult?.status === 'processing'
           ? 409
           : 200;
 
@@ -728,7 +874,7 @@ export async function POST({ request, _deps = undefined }) {
         status: sendResult.status,
         message: sendResult.message || 'تم إرسال إشعار الحالة الحالية للعميل بنجاح',
         notification: sendResult
-      }), { status: httpStatus, headers: { 'Content-Type': 'application/json' } });
+      }), { status: httpStatus, headers: NO_STORE_HEADERS });
     }
 
     // -------------------------------------------------------------------------
@@ -814,39 +960,64 @@ export async function GET({ request, _deps = undefined }) {
   }
 
   const url = new URL(request.url);
-  const orderId = url.searchParams.get('orderId');
+  const rawOrderId = url.searchParams.get('orderId');
 
   try {
     const db = _deps?.adminDb || getAdminDb();
 
-    if (orderId) {
-      // Query notifications related to this order
-      const snap = await db.ref('notifications_outbox')
+    if (rawOrderId !== null) {
+      const orderId = validateOrderKey(rawOrderId);
+      if (!orderId) {
+        return new Response(JSON.stringify({
+          success: false,
+          error: 'INVALID_ORDER_ID',
+          message: 'معرف الطلب غير صالح.'
+        }), { status: 400, headers: NO_STORE_HEADERS });
+      }
+
+      // Bounded indexed query for notifications related to this order
+      let query = db.ref('notifications_outbox')
         .orderByChild('orderId')
-        .equalTo(orderId)
-        .once('value');
+        .equalTo(orderId);
+      if (typeof query.limitToFirst === 'function') {
+        query = query.limitToFirst(20);
+      }
+      const snap = await query.once('value');
       const val = snap.val() || {};
+      const notifications = Object.values(val)
+        .slice(0, 20)
+        .map((rec) => sanitizeOutboxRecordForAdmin(rec))
+        .filter(Boolean);
+
       return new Response(JSON.stringify({
         success: true,
         orderId,
-        notifications: Object.values(val)
-      }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        notifications
+      }), { status: 200, headers: NO_STORE_HEADERS });
     }
 
-    // Return latest 50 notifications
-    const snap = await db.ref('notifications_outbox')
-      .limitToLast(50)
-      .once('value');
+    // Return latest 50 notifications (sanitized)
+    let latestQuery = db.ref('notifications_outbox');
+    if (typeof latestQuery.limitToLast === 'function') {
+      latestQuery = latestQuery.limitToLast(50);
+    }
+    const snap = await latestQuery.once('value');
     const val = snap.val() || {};
+    const notifications = Object.values(val)
+      .slice(-50)
+      .map((rec) => sanitizeOutboxRecordForAdmin(rec))
+      .filter(Boolean);
+
     return new Response(JSON.stringify({
       success: true,
-      notifications: Object.values(val)
-    }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      notifications
+    }), { status: 200, headers: NO_STORE_HEADERS });
 
   } catch (err) {
     return new Response(JSON.stringify({
       success: false,
-      error: err?.message || 'Database query error'
-    }), { status: 500, headers: { 'Content-Type': 'application/json' } });
+      error: 'DATABASE_QUERY_ERROR',
+      message: 'تعذر جلب سجلات الإشعارات حالياً.'
+    }), { status: 500, headers: NO_STORE_HEADERS });
   }
 }
