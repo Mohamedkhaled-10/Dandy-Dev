@@ -8,7 +8,9 @@ import {
   getArticleBySlug,
   getArticleById,
   parseFirestoreArticle,
-  clearArticlesCache
+  clearArticlesCache,
+  CACHE_TTL_MS,
+  MAX_STALE_CACHE_MS
 } from '../src/utils/articles.ts';
 import {
   GET as publicArticlesGET,
@@ -18,6 +20,10 @@ import {
 } from '../src/pages/api/public-articles.js';
 
 const ROOT = process.cwd();
+
+test.beforeEach(() => {
+  clearArticlesCache();
+});
 
 function makeDocSnap(id, data, meta = {}) {
   return {
@@ -260,7 +266,8 @@ test('D. Public Articles API: supports limit, clamps oversized limit, handles DB
   const dataBad = await resBadLimit.json();
   assert.equal(dataBad.articles.length, DEFAULT_PUBLIC_ARTICLES_LIMIT);
 
-  // 4. Simulated Firebase failure returns safe 503 with zero credentials or stack traces
+  // 4. Simulated Firebase failure after TTL returns safe 503 with zero credentials or stack traces
+  clearArticlesCache();
   const errRes = await publicArticlesGET({
     request: new Request('https://dandy-ebon.vercel.app/api/public-articles?limit=3'),
     url: new URL('https://dandy-ebon.vercel.app/api/public-articles?limit=3'),
@@ -317,4 +324,259 @@ test('F. Admin Blog Compatibility: dashboard-blog.astro keeps verified admin CRU
   assert.ok(adminBlog.includes("db.collection('articles').doc(id).delete()"));
   assert.ok(adminBlog.includes("collection('change_logs').add("));
   assert.ok(!adminBlog.includes('firebase-admin'));
+});
+
+test('G1-G3. Cache Lifecycle: populates cache, serves within CACHE_TTL_MS without querying Firestore, and refreshes after TTL expires', async () => {
+  let nowMs = 1_700_000_000_000;
+  let fetchCalls = 0;
+  let currentDocs = [
+    makeDocSnap('art-1', {
+      title: 'مقال أول',
+      slug: 'first-article',
+      status: 'published',
+      createdAt: '2026-05-01T10:00:00Z'
+    })
+  ];
+
+  const deps = {
+    now: () => nowMs,
+    firestore: {
+      collection() {
+        return {
+          async get() {
+            fetchCalls += 1;
+            return { docs: currentDocs };
+          },
+          doc() {
+            return { async get() { return null; } };
+          }
+        };
+      }
+    }
+  };
+
+  // 1. Initial fetch populates cache
+  const first = await getAllArticles(false, deps);
+  assert.equal(fetchCalls, 1);
+  assert.deepEqual(first.map((a) => a.id), ['art-1']);
+
+  // 2. Within TTL (59s): uses valid cache, zero extra Firestore reads
+  nowMs += CACHE_TTL_MS - 1000;
+  currentDocs = [
+    makeDocSnap('art-2', {
+      title: 'مقال جديد',
+      slug: 'second-article',
+      status: 'published',
+      createdAt: '2026-05-02T10:00:00Z'
+    })
+  ];
+  const withinTtl = await getAllArticles(false, deps);
+  assert.equal(fetchCalls, 1);
+  assert.deepEqual(withinTtl.map((a) => a.id), ['art-1']);
+
+  // 3. After TTL expires (60s): refreshes data and drops newly-drafted articles
+  nowMs += 1000;
+  currentDocs = [
+    makeDocSnap('art-1', {
+      title: 'مقال أصبح مسودة',
+      slug: 'first-article',
+      status: 'draft',
+      createdAt: '2026-05-01T10:00:00Z'
+    }),
+    makeDocSnap('art-2', {
+      title: 'مقال جديد',
+      slug: 'second-article',
+      status: 'published',
+      createdAt: '2026-05-02T10:00:00Z'
+    })
+  ];
+  const refreshed = await getAllArticles(false, deps);
+  assert.equal(fetchCalls, 2);
+  assert.deepEqual(refreshed.map((a) => a.id), ['art-2']);
+});
+
+test('G4 & G7. Expired Max Stale Cache Age: never returns stale/drafted articles after MAX_STALE_CACHE_MS when Firestore fails', async () => {
+  let nowMs = 1_700_000_000_000;
+  let shouldFail = false;
+
+  const deps = {
+    now: () => nowMs,
+    firestore: {
+      collection() {
+        return {
+          async get() {
+            if (shouldFail) {
+              throw new Error('FIRESTORE_UNAVAILABLE');
+            }
+            return {
+              docs: [
+                makeDocSnap('old-art', {
+                  title: 'مقال قديم قد يتحول لمسودة لاحقاً',
+                  slug: 'old-article-slug',
+                  status: 'published',
+                  createdAt: '2026-05-01T10:00:00Z'
+                })
+              ]
+            };
+          },
+          doc() {
+            return {
+              async get() {
+                if (shouldFail) throw new Error('FIRESTORE_UNAVAILABLE');
+                return null;
+              }
+            };
+          }
+        };
+      }
+    }
+  };
+
+  // Seed cache at t=0
+  const seeded = await getAllArticles(false, deps);
+  assert.equal(seeded.length, 1);
+
+  // Within bounded stale window (after TTL, before MAX_STALE_CACHE_MS) SSR fallback without throwOnError still works
+  shouldFail = true;
+  nowMs += CACHE_TTL_MS + 5000;
+  const boundedFallback = await getAllArticles(false, deps);
+  assert.deepEqual(boundedFallback.map((a) => a.id), ['old-art']);
+
+  // Beyond MAX_STALE_CACHE_MS: expired cache MUST be invalidated and NEVER returned
+  nowMs = 1_700_000_000_000 + MAX_STALE_CACHE_MS + 1;
+  const expiredResult = await getAllArticles(false, deps);
+  assert.deepEqual(expiredResult, []);
+  assert.equal(await getArticleBySlug('old-article-slug', deps), null);
+
+  // Subsequent call does not resurrect cleared cache
+  nowMs += 1000;
+  assert.deepEqual(await getAllArticles(false, deps), []);
+});
+
+test('G5. forceFresh=true: requires live Firestore read and never falls back to cached articles on failure', async () => {
+  let nowMs = 1_700_000_000_000;
+  let shouldFail = false;
+  let fetchCalls = 0;
+
+  const deps = {
+    now: () => nowMs,
+    firestore: {
+      collection() {
+        return {
+          async get() {
+            fetchCalls += 1;
+            if (shouldFail) throw new Error('NETWORK_DOWN');
+            return {
+              docs: [
+                makeDocSnap('cached-art', {
+                  title: 'مقال مخزن مؤقتاً',
+                  slug: 'cached-art',
+                  status: 'published',
+                  createdAt: '2026-05-01T10:00:00Z'
+                })
+              ]
+            };
+          },
+          doc() {
+            return { async get() { return null; } };
+          }
+        };
+      }
+    }
+  };
+
+  assert.equal((await getAllArticles(false, deps)).length, 1);
+  assert.equal(fetchCalls, 1);
+
+  // Even 5 seconds later (well inside CACHE_TTL_MS), forceFresh=true must hit Firestore and fail cleanly without stale fallback
+  nowMs += 5000;
+  shouldFail = true;
+  const freshFail = await getAllArticles(true, deps);
+  assert.equal(fetchCalls, 2);
+  assert.deepEqual(freshFail, []);
+
+  // And with throwOnError=true it must throw safe error
+  await assert.rejects(
+    () => getAllArticles(true, deps, { throwOnError: true }),
+    /ARTICLES_UNAVAILABLE/
+  );
+});
+
+test('G6, G8 & G9. throwOnError=true & Public Articles API: returns 503 with no-store on live failure even if old cache exists, and never leaks drafts', async () => {
+  let nowMs = 1_700_000_000_000;
+  let shouldFail = false;
+
+  const deps = {
+    now: () => nowMs,
+    firestore: {
+      collection() {
+        return {
+          async get() {
+            if (shouldFail) throw new Error('INTERNAL_CREDENTIAL_ERROR');
+            return {
+              docs: [
+                makeDocSnap('pub-live', {
+                  title: 'مقال عام',
+                  slug: 'pub-live',
+                  status: 'published',
+                  excerpt: 'ملخص عام',
+                  createdAt: '2026-06-01T10:00:00Z'
+                }),
+                makeDocSnap('draft-hidden', {
+                  title: 'مسودة مخفية',
+                  slug: 'draft-hidden',
+                  status: 'draft',
+                  excerpt: 'سر مسودة',
+                  createdAt: '2026-06-02T10:00:00Z'
+                })
+              ]
+            };
+          },
+          doc() {
+            return { async get() { return null; } };
+          }
+        };
+      }
+    }
+  };
+
+  // Seed cache via API
+  const okRes = await publicArticlesGET({
+    request: new Request('https://dandy-ebon.vercel.app/api/public-articles?limit=3'),
+    url: new URL('https://dandy-ebon.vercel.app/api/public-articles?limit=3'),
+    _deps: deps
+  });
+  assert.equal(okRes.status, 200);
+  assert.ok(okRes.headers.get('cache-control')?.includes('public'));
+  const okBody = await okRes.json();
+  assert.deepEqual(okBody.articles.map((a) => a.id), ['pub-live']);
+  assert.ok(!JSON.stringify(okBody).includes('draft-hidden'));
+
+  // Advance just past CACHE_TTL_MS (65s) while old cache still sits in memory, then simulate Firestore outage
+  nowMs += CACHE_TTL_MS + 5000;
+  shouldFail = true;
+
+  // Service with throwOnError=true MUST reject instead of serving stale cache as success
+  await assert.rejects(
+    () => getAllArticles(false, deps, { throwOnError: true }),
+    /ARTICLES_UNAVAILABLE/
+  );
+
+  // Public API MUST return 503 with Cache-Control: no-store (never public cache on failure!) and empty articles
+  const failRes = await publicArticlesGET({
+    request: new Request('https://dandy-ebon.vercel.app/api/public-articles?limit=3'),
+    url: new URL('https://dandy-ebon.vercel.app/api/public-articles?limit=3'),
+    _deps: deps
+  });
+  assert.equal(failRes.status, 503);
+  const cc = failRes.headers.get('cache-control') || '';
+  assert.ok(cc.includes('no-store'));
+  assert.ok(!cc.includes('public'));
+  const failBody = await failRes.json();
+  assert.equal(failBody.success, false);
+  assert.equal(failBody.error, 'ARTICLES_UNAVAILABLE');
+  assert.deepEqual(failBody.articles, []);
+  assert.ok(!JSON.stringify(failBody).includes('INTERNAL_CREDENTIAL_ERROR'));
+  assert.ok(!JSON.stringify(failBody).includes('pub-live'));
+  assert.ok(!JSON.stringify(failBody).includes('draft-hidden'));
 });

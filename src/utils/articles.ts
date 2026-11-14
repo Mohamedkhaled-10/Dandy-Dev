@@ -39,12 +39,15 @@ export interface ArticlesDeps {
     };
   };
   simulateError?: boolean;
+  now?: () => number;
+  useCache?: boolean;
 }
 
-// In-memory module cache for server-side Astro rendering (60 seconds TTL)
+// In-memory module cache for server-side Astro rendering (60 seconds fresh TTL, 5 minutes max stale bound)
 let cachedArticles: Article[] | null = null;
 let lastFetchTime = 0;
-const CACHE_TTL_MS = 60 * 1000;
+export const CACHE_TTL_MS = 60 * 1000;
+export const MAX_STALE_CACHE_MS = 5 * 60 * 1000;
 
 export function clearArticlesCache(): void {
   cachedArticles = null;
@@ -350,7 +353,13 @@ export function toPublicArticleCard(article: Article): PublicArticleCard | null 
 
 /**
  * Fetch all published articles via Firebase Admin SDK.
- * Uses a 60-second in-memory cache when running without injected test dependencies.
+ * Uses a 60-second fresh TTL cache and a bounded maximum stale cache window (MAX_STALE_CACHE_MS).
+ *
+ * Cache Freshness & Fail-Safe Policy:
+ * - Within CACHE_TTL_MS (and !forceFresh): returns fresh cached articles without querying Firestore.
+ * - forceFresh=true: always attempts a live Firestore read and NEVER falls back to stale cache on failure.
+ * - throwOnError=true: throws safe 'ARTICLES_UNAVAILABLE' on live read failure rather than passing off stale cache as success.
+ * - Beyond MAX_STALE_CACHE_MS: expired cache is cleared and never returned on failure.
  *
  * Publication Policy (enforced server-side before returning any data):
  * - status === 'published' -> allowed
@@ -363,9 +372,11 @@ export async function getAllArticles(
   _deps?: ArticlesDeps,
   options?: { throwOnError?: boolean }
 ): Promise<Article[]> {
-  const useCache = !_deps;
-  const now = Date.now();
-  if (useCache && !forceFresh && cachedArticles !== null && now - lastFetchTime < CACHE_TTL_MS) {
+  const useCache = _deps?.useCache !== false;
+  const now = typeof _deps?.now === 'function' ? _deps.now() : Date.now();
+  const cacheAge = cachedArticles !== null ? now - lastFetchTime : Infinity;
+
+  if (useCache && !forceFresh && cachedArticles !== null && cacheAge >= 0 && cacheAge < CACHE_TTL_MS) {
     return cachedArticles;
   }
 
@@ -401,11 +412,33 @@ export async function getAllArticles(
   } catch (err) {
     const safeCode = (err as { code?: string })?.code || 'articles_fetch_failed';
     console.error('[ArticlesService] Failed to fetch articles via Admin SDK:', safeCode);
-    if (useCache && cachedArticles !== null) {
+
+    if (forceFresh) {
+      if (useCache) {
+        cachedArticles = null;
+        lastFetchTime = 0;
+      }
+      if (options?.throwOnError) {
+        throw new Error('ARTICLES_UNAVAILABLE');
+      }
+      return [];
+    }
+
+    if (options?.throwOnError) {
+      if (useCache && cacheAge > MAX_STALE_CACHE_MS) {
+        cachedArticles = null;
+        lastFetchTime = 0;
+      }
+      throw new Error('ARTICLES_UNAVAILABLE');
+    }
+
+    if (useCache && cachedArticles !== null && cacheAge >= 0 && cacheAge <= MAX_STALE_CACHE_MS) {
       return cachedArticles;
     }
-    if (options?.throwOnError) {
-      throw new Error('ARTICLES_UNAVAILABLE');
+
+    if (useCache) {
+      cachedArticles = null;
+      lastFetchTime = 0;
     }
     return [];
   }
