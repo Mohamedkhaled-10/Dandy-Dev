@@ -675,6 +675,35 @@ function buildCancelledDeletedAudit(params: {
  * Prevents concurrent duplicate dispatches, blocks deleted/deleting orders (fail-closed),
  * and never auto-retries `unknown`, `processing`, or sent items.
  */
+const ALLOWED_INITIAL_RECORD_KEYS = new Set([
+  'notificationId',
+  'orderId',
+  'invoiceCode',
+  'channel',
+  'eventType',
+  'recipientEmail',
+  'recipientName',
+  'orderStatus',
+  'status',
+  'attempts',
+  'createdAt',
+  'lastAttemptAt'
+]);
+
+function isEventTypeCompatibleWithChannel(channel: string, eventType: string): boolean {
+  if (!channel || !eventType) return true;
+  if (channel === 'email') {
+    return eventType === 'ORDER_CONFIRMATION' || eventType === 'ORDER_STATUS_CHANGED';
+  }
+  if (channel === 'telegram') {
+    return eventType === 'TELEGRAM_ORDER_NOTIFICATION';
+  }
+  if (channel === 'make') {
+    return eventType === 'MAKE_ORDER_WEBHOOK';
+  }
+  return false;
+}
+
 export async function claimOutboxNotification(params: {
   adminDb: any;
   notificationId: string;
@@ -692,12 +721,15 @@ export async function claimOutboxNotification(params: {
   const {
     adminDb,
     notificationId,
-    orderId,
-    initialRecord,
     allowRetryFailed = false,
     allowSkipIfNoValidEmail = false,
     hasValidEmail = true
   } = params;
+
+  const hasOrderIdParam = 'orderId' in params && params.orderId !== undefined;
+  const hasChannelParam = 'channel' in params && params.channel !== undefined;
+  const hasEventTypeParam = 'eventType' in params && params.eventType !== undefined;
+  const hasInitialRecordParam = 'initialRecord' in params && params.initialRecord !== undefined;
 
   if (!isValidFirebaseOutboxKey(notificationId)) {
     return {
@@ -708,28 +740,7 @@ export async function claimOutboxNotification(params: {
     };
   }
 
-  const targetOrderId =
-    typeof orderId === 'string' && orderId.trim()
-      ? orderId.trim()
-      : typeof initialRecord?.orderId === 'string' && initialRecord.orderId.trim()
-        ? initialRecord.orderId.trim()
-        : '';
-
-  const expectedChannel =
-    typeof params.channel === 'string' && params.channel.trim()
-      ? params.channel.trim()
-      : typeof initialRecord?.channel === 'string' && initialRecord.channel.trim()
-        ? initialRecord.channel.trim()
-        : '';
-
-  const expectedEventType =
-    typeof params.eventType === 'string' && params.eventType.trim()
-      ? params.eventType.trim()
-      : typeof initialRecord?.eventType === 'string' && initialRecord.eventType.trim()
-        ? initialRecord.eventType.trim()
-        : '';
-
-  if (expectedChannel && !RECOGNIZED_OUTBOX_CHANNELS.has(expectedChannel)) {
+  if (hasOrderIdParam && !isValidFirebaseOutboxKey(params.orderId, 128)) {
     return {
       claimed: false,
       reason: 'IDENTITY_MISMATCH',
@@ -737,6 +748,203 @@ export async function claimOutboxNotification(params: {
       record: null
     };
   }
+
+  if (hasChannelParam && (typeof params.channel !== 'string' || !RECOGNIZED_OUTBOX_CHANNELS.has(params.channel))) {
+    return {
+      claimed: false,
+      reason: 'IDENTITY_MISMATCH',
+      status: 'unavailable',
+      record: null
+    };
+  }
+
+  if (
+    hasEventTypeParam &&
+    (typeof params.eventType !== 'string' ||
+      !RECOGNIZED_OUTBOX_EVENT_TYPES.has(params.eventType) ||
+      params.eventType === 'UNKNOWN')
+  ) {
+    return {
+      claimed: false,
+      reason: 'IDENTITY_MISMATCH',
+      status: 'unavailable',
+      record: null
+    };
+  }
+
+  const trustedOrderId = hasOrderIdParam ? String(params.orderId) : '';
+  const trustedChannel = hasChannelParam ? String(params.channel) : '';
+  const trustedEventType = hasEventTypeParam ? String(params.eventType) : '';
+
+  let validatedInitialRecord: Record<string, any> | null = null;
+  if (hasInitialRecordParam) {
+    const rawInit = params.initialRecord;
+    if (!isPlainObject(rawInit)) {
+      return {
+        claimed: false,
+        reason: 'IDENTITY_MISMATCH',
+        status: 'unavailable',
+        record: null
+      };
+    }
+
+    for (const key of Object.keys(rawInit)) {
+      if (!ALLOWED_INITIAL_RECORD_KEYS.has(key)) {
+        return {
+          claimed: false,
+          reason: 'IDENTITY_MISMATCH',
+          status: 'unavailable',
+          record: null
+        };
+      }
+    }
+
+    if ('orderId' in rawInit && rawInit.orderId !== undefined) {
+      if (!isValidFirebaseOutboxKey(rawInit.orderId, 128)) {
+        return {
+          claimed: false,
+          reason: 'IDENTITY_MISMATCH',
+          status: 'unavailable',
+          record: null
+        };
+      }
+      if (trustedOrderId && rawInit.orderId !== trustedOrderId) {
+        return {
+          claimed: false,
+          reason: 'IDENTITY_MISMATCH',
+          status: 'unavailable',
+          record: null
+        };
+      }
+    }
+
+    if ('notificationId' in rawInit && rawInit.notificationId !== undefined) {
+      if (typeof rawInit.notificationId !== 'string' || rawInit.notificationId !== notificationId) {
+        return {
+          claimed: false,
+          reason: 'IDENTITY_MISMATCH',
+          status: 'unavailable',
+          record: null
+        };
+      }
+    }
+
+    if ('channel' in rawInit && rawInit.channel !== undefined) {
+      if (typeof rawInit.channel !== 'string' || !RECOGNIZED_OUTBOX_CHANNELS.has(rawInit.channel)) {
+        return {
+          claimed: false,
+          reason: 'IDENTITY_MISMATCH',
+          status: 'unavailable',
+          record: null
+        };
+      }
+      if (trustedChannel && rawInit.channel !== trustedChannel) {
+        return {
+          claimed: false,
+          reason: 'IDENTITY_MISMATCH',
+          status: 'unavailable',
+          record: null
+        };
+      }
+    }
+
+    if ('eventType' in rawInit && rawInit.eventType !== undefined) {
+      if (
+        typeof rawInit.eventType !== 'string' ||
+        !RECOGNIZED_OUTBOX_EVENT_TYPES.has(rawInit.eventType) ||
+        rawInit.eventType === 'UNKNOWN'
+      ) {
+        return {
+          claimed: false,
+          reason: 'IDENTITY_MISMATCH',
+          status: 'unavailable',
+          record: null
+        };
+      }
+      if (trustedEventType && rawInit.eventType !== trustedEventType) {
+        return {
+          claimed: false,
+          reason: 'IDENTITY_MISMATCH',
+          status: 'unavailable',
+          record: null
+        };
+      }
+    }
+
+    if ('status' in rawInit && rawInit.status !== undefined) {
+      if (rawInit.status !== 'pending' && rawInit.status !== 'skipped_no_valid_email') {
+        return {
+          claimed: false,
+          reason: 'IDENTITY_MISMATCH',
+          status: 'unavailable',
+          record: null
+        };
+      }
+    }
+
+    if ('attempts' in rawInit && rawInit.attempts !== undefined) {
+      if (typeof rawInit.attempts !== 'number' || !Number.isInteger(rawInit.attempts) || rawInit.attempts < 0) {
+        return {
+          claimed: false,
+          reason: 'IDENTITY_MISMATCH',
+          status: 'unavailable',
+          record: null
+        };
+      }
+    }
+
+    for (const strKey of ['invoiceCode', 'recipientEmail', 'recipientName', 'orderStatus']) {
+      if (strKey in rawInit && rawInit[strKey] !== undefined && typeof rawInit[strKey] !== 'string') {
+        return {
+          claimed: false,
+          reason: 'IDENTITY_MISMATCH',
+          status: 'unavailable',
+          record: null
+        };
+      }
+    }
+
+    for (const tsKey of ['createdAt', 'lastAttemptAt']) {
+      if (tsKey in rawInit && rawInit[tsKey] !== undefined) {
+        if (typeof rawInit[tsKey] !== 'string' || !sanitizeOutboxIsoTimestamp(rawInit[tsKey])) {
+          return {
+            claimed: false,
+            reason: 'IDENTITY_MISMATCH',
+            status: 'unavailable',
+            record: null
+          };
+        }
+      }
+    }
+
+    validatedInitialRecord = rawInit;
+  }
+
+  const targetOrderId =
+    trustedOrderId || (validatedInitialRecord && typeof validatedInitialRecord.orderId === 'string' ? validatedInitialRecord.orderId : '');
+  const expectedChannel =
+    trustedChannel || (validatedInitialRecord && typeof validatedInitialRecord.channel === 'string' ? validatedInitialRecord.channel : '');
+  const expectedEventType =
+    trustedEventType || (validatedInitialRecord && typeof validatedInitialRecord.eventType === 'string' ? validatedInitialRecord.eventType : '');
+
+  if (expectedChannel && expectedEventType && !isEventTypeCompatibleWithChannel(expectedChannel, expectedEventType)) {
+    return {
+      claimed: false,
+      reason: 'IDENTITY_MISMATCH',
+      status: 'unavailable',
+      record: null
+    };
+  }
+
+  const derivedNewEventType =
+    expectedEventType ||
+    (expectedChannel === 'telegram'
+      ? 'TELEGRAM_ORDER_NOTIFICATION'
+      : expectedChannel === 'make'
+        ? 'MAKE_ORDER_WEBHOOK'
+        : expectedChannel === 'email' && targetOrderId
+          ? getExpectedEmailEventTypeFromOutboxId(notificationId, targetOrderId) || ''
+          : '');
 
   if (!adminDb || typeof adminDb.ref !== 'function') {
     return {
@@ -814,28 +1022,61 @@ export async function claimOutboxNotification(params: {
 
       if (current === null || current === undefined) {
         previousStatusBeforeClaim = 'pending';
+
+        const safeMetadata: Record<string, any> = {};
+        if (validatedInitialRecord) {
+          if (typeof validatedInitialRecord.invoiceCode === 'string') {
+            safeMetadata.invoiceCode = validatedInitialRecord.invoiceCode;
+          }
+          if (typeof validatedInitialRecord.recipientEmail === 'string') {
+            safeMetadata.recipientEmail = validatedInitialRecord.recipientEmail;
+          }
+          if (typeof validatedInitialRecord.recipientName === 'string') {
+            safeMetadata.recipientName = validatedInitialRecord.recipientName;
+          }
+          if (typeof validatedInitialRecord.orderStatus === 'string') {
+            safeMetadata.orderStatus = validatedInitialRecord.orderStatus;
+          }
+        }
+
+        const sanitizedCreatedAt =
+          validatedInitialRecord && typeof validatedInitialRecord.createdAt === 'string'
+            ? sanitizeOutboxIsoTimestamp(validatedInitialRecord.createdAt) || nowIso
+            : nowIso;
+        const safeAttempts =
+          validatedInitialRecord && typeof validatedInitialRecord.attempts === 'number'
+            ? validatedInitialRecord.attempts
+            : 0;
+
+        const canonicalIdentity: Record<string, any> = {
+          notificationId
+        };
+        if (targetOrderId) canonicalIdentity.orderId = targetOrderId;
+        if (expectedChannel) canonicalIdentity.channel = expectedChannel;
+        if (derivedNewEventType) canonicalIdentity.eventType = derivedNewEventType;
+
         if (allowSkipIfNoValidEmail && !hasValidEmail) {
           skippedNoEmail = true;
           return {
-            ...(initialRecord || {}),
-            notificationId,
+            ...safeMetadata,
+            ...canonicalIdentity,
             status: 'skipped_no_valid_email',
             attempts: 0,
-            createdAt: initialRecord?.createdAt || nowIso,
+            createdAt: sanitizedCreatedAt,
             lastAttemptAt: nowIso
           };
         }
 
         return {
-          ...(initialRecord || {}),
-          notificationId,
+          ...safeMetadata,
+          ...canonicalIdentity,
           status: 'processing',
           claimId,
           processingStartedAt: nowIso,
           processingLeaseExpiresAt,
           lastAttemptAt: nowIso,
-          attempts: Number(initialRecord?.attempts) || 0,
-          createdAt: initialRecord?.createdAt || nowIso
+          attempts: safeAttempts,
+          createdAt: sanitizedCreatedAt
         };
       }
 
@@ -961,7 +1202,9 @@ export async function claimOutboxNotification(params: {
         skippedNoEmail = true;
         return {
           ...current,
-          ...(initialRecord ? { recipientEmail: initialRecord.recipientEmail } : {}),
+          ...(validatedInitialRecord && typeof validatedInitialRecord.recipientEmail === 'string'
+            ? { recipientEmail: validatedInitialRecord.recipientEmail }
+            : {}),
           status: 'skipped_no_valid_email',
           lastAttemptAt: nowIso
         };
@@ -969,14 +1212,12 @@ export async function claimOutboxNotification(params: {
 
       return {
         ...current,
-        ...(initialRecord
-          ? {
-              orderId: current.orderId || initialRecord.orderId,
-              invoiceCode: current.invoiceCode || initialRecord.invoiceCode,
-              channel: current.channel || initialRecord.channel,
-              eventType: current.eventType || initialRecord.eventType
-            }
+        ...(targetOrderId && !current.orderId ? { orderId: targetOrderId } : {}),
+        ...(validatedInitialRecord && typeof validatedInitialRecord.invoiceCode === 'string' && !current.invoiceCode
+          ? { invoiceCode: validatedInitialRecord.invoiceCode }
           : {}),
+        ...(expectedChannel && !current.channel ? { channel: expectedChannel } : {}),
+        ...(derivedNewEventType && !current.eventType ? { eventType: derivedNewEventType } : {}),
         notificationId,
         status: 'processing',
         claimId,
@@ -1591,6 +1832,15 @@ export async function dispatchTelegramOutboxNotification(params: {
         finalError = 'TELEGRAM_DISPATCH_FAILED';
         finalMessage = 'Telegram provider returned no confirmation outcome';
       } else if (
+        tgResult.status === 'SIMULATED' ||
+        tgResult.simulated === true
+      ) {
+        finalStatus = 'skipped_not_configured';
+        providerOutcome = 'skipped';
+        finalError = null;
+        extra.simulated = true;
+        finalMessage = 'Telegram notification skipped (not configured / simulated)';
+      } else if (
         tgResult.skipped === true ||
         tgResult.status === 'SKIPPED' ||
         tgResult.status === 'SKIPPED_NOT_CONFIGURED'
@@ -1602,11 +1852,6 @@ export async function dispatchTelegramOutboxNotification(params: {
           typeof tgResult.message === 'string' && tgResult.message.trim()
             ? tgResult.message.trim()
             : 'Telegram notification skipped (not configured)';
-      } else if (tgResult.status === 'SIMULATED') {
-        finalStatus = 'sent';
-        providerOutcome = 'accepted';
-        extra.simulated = true;
-        finalMessage = 'Telegram notification simulated (not configured)';
       } else if (
         tgResult.status === 'SUCCESS' ||
         tgResult.allSuccessful === true ||
