@@ -280,6 +280,7 @@ import BaseLayout from '../layouts/BaseLayout.astro';
   </slot>
 
   <section class="invoice-section">
+    <div class="container" id="invoiceStateContainer" style="display:none;"></div>
     <div class="container" id="invoiceCard">
       
       <div class="invoice-panel" dir="rtl">
@@ -533,6 +534,11 @@ import BaseLayout from '../layouts/BaseLayout.astro';
     };
 
     function drawOrder(order, key) {
+      const stateContainer = document.getElementById('invoiceStateContainer');
+      const cardEl = document.getElementById('invoiceCard');
+      if (stateContainer) stateContainer.style.display = 'none';
+      if (cardEl) cardEl.style.display = 'block';
+
       currentInvoiceCode = order.invoiceCode || key || '';
       invoiceCodeEl.textContent = currentInvoiceCode || '-';
       invoiceDateEl.textContent = order.timestamp ? new Date(order.timestamp).toLocaleString('en-US') : new Date().toLocaleString('en-US');
@@ -723,8 +729,13 @@ import BaseLayout from '../layouts/BaseLayout.astro';
     }
 
     function renderInvoiceStateCard(options) {
+      const stateContainer = document.getElementById('invoiceStateContainer');
       const cardEl = document.getElementById('invoiceCard');
-      if (!cardEl) return;
+      if (!stateContainer) return;
+
+      if (cardEl) {
+        cardEl.style.display = 'none';
+      }
 
       const wrapper = document.createElement('div');
       wrapper.style.textAlign = 'center';
@@ -795,8 +806,9 @@ import BaseLayout from '../layouts/BaseLayout.astro';
       actionsRow.appendChild(homeLink);
 
       wrapper.appendChild(actionsRow);
-      cardEl.innerHTML = '';
-      cardEl.appendChild(wrapper);
+      stateContainer.innerHTML = '';
+      stateContainer.appendChild(wrapper);
+      stateContainer.style.display = 'block';
     }
 
     function orderError(customTitle, customMessage, onRetry) {
@@ -810,8 +822,19 @@ import BaseLayout from '../layouts/BaseLayout.astro';
       });
     }
 
-    async function loadInvoiceWithToken(accessToken) {
+    let activeInvoiceTokenInMemory = null;
+
+    function stripInvoiceHashFromUrl() {
+      if (!window.location.hash) return;
+      try {
+        history.replaceState(null, '', window.location.pathname + window.location.search);
+      } catch (_) {}
+    }
+
+    async function loadInvoiceWithToken(accessToken, tokenResolution) {
       const flow = window.DandyOrderFlow;
+      activeInvoiceTokenInMemory = accessToken || activeInvoiceTokenInMemory;
+      const effectiveToken = activeInvoiceTokenInMemory;
       let res = null;
       let data = {};
       let networkError = false;
@@ -823,7 +846,7 @@ import BaseLayout from '../layouts/BaseLayout.astro';
           headers: {
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify({ access: accessToken })
+          body: JSON.stringify({ access: effectiveToken })
         });
         data = await res.json().catch(() => ({}));
       } catch (_) {
@@ -848,17 +871,23 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 
       if (outcome.action === 'RENDER_INVOICE' && outcome.order) {
         drawOrder(outcome.order, outcome.order.orderId || outcome.order.invoiceCode);
+        if (tokenResolution && tokenResolution.stripHashAfterRender) {
+          stripInvoiceHashFromUrl();
+        }
         return;
       }
 
-      if (outcome.clearSessionToken && flow) {
-        flow.clearInvoiceSessionToken(window.sessionStorage);
+      if (outcome.clearSessionToken) {
+        activeInvoiceTokenInMemory = null;
+        if (flow) {
+          flow.clearInvoiceSessionToken(window.sessionStorage);
+        }
       }
 
       orderError(
         outcome.title,
         outcome.message,
-        outcome.showRetry ? () => loadInvoiceWithToken(accessToken) : null
+        outcome.showRetry ? () => loadInvoiceWithToken(effectiveToken, tokenResolution) : null
       );
     }
 
@@ -866,16 +895,20 @@ import BaseLayout from '../layouts/BaseLayout.astro';
       const flow = window.DandyOrderFlow;
       const tokenResolution = flow
         ? flow.resolveInvoiceAccessToken(window.location.hash, window.sessionStorage)
-        : { token: null, source: 'none', shouldStripHash: false };
+        : {
+            token: null,
+            source: 'none',
+            persisted: false,
+            shouldStripHash: false,
+            stripHashAfterRender: false
+          };
 
       if (tokenResolution.shouldStripHash) {
-        try {
-          history.replaceState(null, '', window.location.pathname + window.location.search);
-        } catch (_) {}
+        stripInvoiceHashFromUrl();
       }
 
       if (tokenResolution.token) {
-        loadInvoiceWithToken(tokenResolution.token);
+        loadInvoiceWithToken(tokenResolution.token, tokenResolution);
         return;
       }
 

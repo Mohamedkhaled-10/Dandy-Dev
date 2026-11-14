@@ -662,3 +662,208 @@ test('5.1 cart.astro, invoice.astro, track-order.astro, and account.astro strict
   assert.ok(accountHtml.includes('/track-order?code=${encodeURIComponent(invoiceCode)}'));
   assert.equal(accountHtml.includes('/invoice?invoice='), false, 'account.astro must not link to legacy ?invoice=');
 });
+
+// ===========================================================================
+// 6. Group 3A.1 Persistence Hardening: Fail-Closed Checkout Idempotency & Invoice Token Storage
+// ===========================================================================
+test('6.1 resolveCheckoutAttemptState & prepareCheckoutIdempotency fail closed when sessionStorage.setItem or getItem throws or read-back mismatches', async () => {
+  const sampleOrder = {
+    name: 'هدى محمود',
+    phone: '01055556666',
+    email: 'hoda@example.com',
+    governorate: 'Cairo',
+    city: 'مصر الجديدة',
+    address: '10 شارع الميرغني',
+    customerId: null,
+    items: [{ productId: 'p1', quantity: 2 }]
+  };
+
+  // A. sessionStorage.setItem throws QuotaExceededError
+  const setThrowStorage = {
+    getItem() {
+      return null;
+    },
+    setItem() {
+      throw new Error('QuotaExceededError: Storage blocked');
+    }
+  };
+  const setFailRes = await helpers.prepareCheckoutIdempotency({
+    orderInput: sampleOrder,
+    sessionStorage: setThrowStorage
+  });
+  assert.equal(setFailRes.ok, false);
+  assert.equal(setFailRes.persisted, false);
+  assert.equal(setFailRes.clientRequestId, null);
+  assert.equal(setFailRes.reason, 'STORAGE_WRITE_FAILED');
+  assert.match(setFailRes.message, /سلتكِ/);
+
+  // B. sessionStorage.getItem throws SecurityError on initial read
+  const getThrowStorage = {
+    getItem() {
+      throw new Error('SecurityError: Access denied');
+    },
+    setItem() {}
+  };
+  const getFailRes = await helpers.prepareCheckoutIdempotency({
+    orderInput: sampleOrder,
+    sessionStorage: getThrowStorage
+  });
+  assert.equal(getFailRes.ok, false);
+  assert.equal(getFailRes.persisted, false);
+  assert.equal(getFailRes.clientRequestId, null);
+  assert.equal(getFailRes.reason, 'STORAGE_READ_FAILED');
+
+  // C. Read-back verification fails (setItem silently drops write / returns mismatched value)
+  let readCalls = 0;
+  const silentDropStorage = {
+    getItem() {
+      readCalls++;
+      return null; // initial read null, read-back also null
+    },
+    setItem() {
+      // no-op silent drop
+    }
+  };
+  const verifyFailRes = await helpers.prepareCheckoutIdempotency({
+    orderInput: sampleOrder,
+    sessionStorage: silentDropStorage
+  });
+  assert.equal(readCalls, 2);
+  assert.equal(verifyFailRes.ok, false);
+  assert.equal(verifyFailRes.persisted, false);
+  assert.equal(verifyFailRes.clientRequestId, null);
+  assert.equal(verifyFailRes.reason, 'STORAGE_VERIFY_FAILED');
+
+  // D. Read-back getItem throws right after setItem succeeds
+  let callCount = 0;
+  const readBackThrowStorage = {
+    getItem() {
+      callCount++;
+      if (callCount === 1) return null;
+      throw new Error('Read-back verification error');
+    },
+    setItem() {}
+  };
+  const readBackFailRes = helpers.resolveCheckoutAttemptState(readBackThrowStorage, 'a'.repeat(64));
+  assert.equal(readBackFailRes.ok, false);
+  assert.equal(readBackFailRes.persisted, false);
+  assert.equal(readBackFailRes.clientRequestId, null);
+  assert.equal(readBackFailRes.reason, 'STORAGE_READ_FAILED');
+
+  // E. Storage recovery: once storage works again, subsequent attempt succeeds and persists UUID cleanly
+  const recoveredStorage = createMemoryStorage();
+  const recovered1 = await helpers.prepareCheckoutIdempotency({
+    orderInput: sampleOrder,
+    sessionStorage: recoveredStorage
+  });
+  assert.equal(recovered1.ok, true);
+  assert.equal(recovered1.persisted, true);
+  assert.equal(helpers.isValidUuidV4(recovered1.clientRequestId), true);
+  assert.equal(recovered1.reused, false);
+
+  const recoveredRetry = await helpers.prepareCheckoutIdempotency({
+    orderInput: sampleOrder,
+    sessionStorage: recoveredStorage
+  });
+  assert.equal(recoveredRetry.ok, true);
+  assert.equal(recoveredRetry.reused, true);
+  assert.equal(recoveredRetry.clientRequestId, recovered1.clientRequestId);
+});
+
+test('6.2 prepareCheckoutIdempotency fails closed without generating rotating UUID when Web Crypto is unavailable', async () => {
+  const sessionStorage = createMemoryStorage();
+  const sampleOrder = {
+    name: 'منى طارق',
+    phone: '01122334455',
+    email: 'mona@example.com',
+    governorate: 'Giza',
+    city: 'الشيخ زايد',
+    address: 'كمبوند الياسمين فيلا 5',
+    customerId: null,
+    items: [{ productId: 'p2', quantity: 1 }]
+  };
+
+  // Pass crypto stub lacking subtle.digest
+  const noWebCrypto = {
+    randomUUID: () => crypto.randomUUID()
+  };
+
+  const attempt1 = await helpers.prepareCheckoutIdempotency({
+    orderInput: sampleOrder,
+    sessionStorage,
+    cryptoObj: noWebCrypto
+  });
+  const attempt2 = await helpers.prepareCheckoutIdempotency({
+    orderInput: sampleOrder,
+    sessionStorage,
+    cryptoObj: noWebCrypto
+  });
+
+  assert.equal(attempt1.ok, false);
+  assert.equal(attempt1.clientRequestId, null);
+  assert.equal(attempt1.reason, 'FINGERPRINT_UNAVAILABLE');
+  assert.match(attempt1.message, /Web Crypto|سلتكِ/);
+  assert.equal(attempt2.ok, false);
+  assert.equal(attempt2.clientRequestId, null);
+  assert.equal(sessionStorage.getItem(helpers.CHECKOUT_ATTEMPT_STORAGE_KEY), null);
+});
+
+test('6.3 resolveInvoiceAccessToken defers hash stripping when sessionStorage fails, and preserves reload resilience when storage works', () => {
+  const token = crypto.randomBytes(32).toString('base64url');
+  const hash = `#access=${encodeURIComponent(token)}`;
+
+  // 1. Storage setItem throws -> keep token in memory, do NOT strip #access immediately!
+  const setFailStorage = {
+    getItem() { return null; },
+    setItem() { throw new Error('QuotaExceededError'); }
+  };
+  const failWriteRes = helpers.resolveInvoiceAccessToken(hash, setFailStorage);
+  assert.equal(failWriteRes.token, token);
+  assert.equal(failWriteRes.source, 'hash');
+  assert.equal(failWriteRes.persisted, false);
+  assert.equal(failWriteRes.shouldStripHash, false);
+  assert.equal(failWriteRes.stripHashAfterRender, true);
+
+  // 2. Storage read-back fails (silent drop / getItem throws after setItem) -> do NOT strip #access immediately!
+  const silentDropStorage = {
+    getItem() { return null; },
+    setItem() {}
+  };
+  const verifyFailRes = helpers.resolveInvoiceAccessToken(hash, silentDropStorage);
+  assert.equal(verifyFailRes.token, token);
+  assert.equal(verifyFailRes.persisted, false);
+  assert.equal(verifyFailRes.shouldStripHash, false);
+  assert.equal(verifyFailRes.stripHashAfterRender, true);
+
+  // 3. Working storage -> persisted & verified -> shouldStripHash: true, reloads from session
+  const workingStorage = createMemoryStorage();
+  const okWriteRes = helpers.resolveInvoiceAccessToken(hash, workingStorage);
+  assert.equal(okWriteRes.token, token);
+  assert.equal(okWriteRes.persisted, true);
+  assert.equal(okWriteRes.shouldStripHash, true);
+  assert.equal(okWriteRes.stripHashAfterRender, false);
+
+  const reloadRes = helpers.resolveInvoiceAccessToken('', workingStorage);
+  assert.equal(reloadRes.token, token);
+  assert.equal(reloadRes.source, 'session');
+  assert.equal(reloadRes.persisted, true);
+  assert.equal(reloadRes.shouldStripHash, false);
+});
+
+test('6.4 cart.astro & invoice.astro static hardening checks for Group 3A.1', async () => {
+  const [cartHtml, invoiceHtml] = await Promise.all([
+    fs.readFile(path.resolve('src/pages/cart.astro'), 'utf8'),
+    fs.readFile(path.resolve('src/pages/invoice.astro'), 'utf8')
+  ]);
+
+  // cart.astro must use fail-closed prepareCheckoutIdempotency and never omit clientRequestId or generate fallback UUIDs
+  assert.ok(cartHtml.includes('prepareCheckoutIdempotency'));
+  assert.equal(cartHtml.includes('...(clientRequestId ? { clientRequestId } : {})'), false);
+  assert.equal(cartHtml.includes('crypto.randomUUID()'), false);
+
+  // invoice.astro must support deferred hash strip only on successful render, never move token to localStorage/query or log it
+  assert.ok(invoiceHtml.includes('stripHashAfterRender'));
+  assert.ok(invoiceHtml.includes('activeInvoiceTokenInMemory'));
+  assert.equal(invoiceHtml.includes('localStorage'), false);
+  assert.equal(invoiceHtml.includes('console.log'), false);
+});

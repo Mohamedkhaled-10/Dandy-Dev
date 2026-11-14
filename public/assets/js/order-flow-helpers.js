@@ -171,6 +171,30 @@
     }
   }
 
+  function safeStorageSetAndVerify(storageObj, key, value) {
+    if (
+      !storageObj ||
+      typeof storageObj.setItem !== 'function' ||
+      typeof storageObj.getItem !== 'function'
+    ) {
+      return { ok: false, reason: 'STORAGE_UNAVAILABLE' };
+    }
+    try {
+      storageObj.setItem(key, value);
+    } catch (_) {
+      return { ok: false, reason: 'STORAGE_WRITE_FAILED' };
+    }
+    try {
+      var readBack = storageObj.getItem(key);
+      if (readBack !== value) {
+        return { ok: false, reason: 'STORAGE_VERIFY_FAILED' };
+      }
+      return { ok: true };
+    } catch (_) {
+      return { ok: false, reason: 'STORAGE_READ_FAILED' };
+    }
+  }
+
   function safeStorageRemove(storageObj, key) {
     if (!storageObj || typeof storageObj.removeItem !== 'function') return false;
     try {
@@ -183,7 +207,46 @@
 
   function resolveCheckoutAttemptState(sessionStorageObj, fingerprintHash, cryptoObj) {
     var cleanHash = typeof fingerprintHash === 'string' ? fingerprintHash.trim() : '';
-    var rawStored = safeStorageGet(sessionStorageObj, CHECKOUT_ATTEMPT_STORAGE_KEY);
+    if (!cleanHash) {
+      return {
+        ok: false,
+        clientRequestId: null,
+        fingerprintHash: '',
+        reused: false,
+        persisted: false,
+        reason: 'INVALID_FINGERPRINT'
+      };
+    }
+
+    if (
+      !sessionStorageObj ||
+      typeof sessionStorageObj.getItem !== 'function' ||
+      typeof sessionStorageObj.setItem !== 'function'
+    ) {
+      return {
+        ok: false,
+        clientRequestId: null,
+        fingerprintHash: cleanHash,
+        reused: false,
+        persisted: false,
+        reason: 'STORAGE_UNAVAILABLE'
+      };
+    }
+
+    var rawStored = null;
+    try {
+      rawStored = sessionStorageObj.getItem(CHECKOUT_ATTEMPT_STORAGE_KEY);
+    } catch (_) {
+      return {
+        ok: false,
+        clientRequestId: null,
+        fingerprintHash: cleanHash,
+        reused: false,
+        persisted: false,
+        reason: 'STORAGE_READ_FAILED'
+      };
+    }
+
     if (rawStored) {
       try {
         var parsed = JSON.parse(rawStored);
@@ -191,13 +254,33 @@
           isPlainObject(parsed) &&
           isValidUuidV4(parsed.clientRequestId) &&
           typeof parsed.fingerprintHash === 'string' &&
-          parsed.fingerprintHash === cleanHash &&
-          cleanHash.length > 0
+          parsed.fingerprintHash === cleanHash
         ) {
+          var existingId = parsed.clientRequestId.trim();
+          var verifiedExisting = safeStorageSetAndVerify(
+            sessionStorageObj,
+            CHECKOUT_ATTEMPT_STORAGE_KEY,
+            JSON.stringify({
+              clientRequestId: existingId,
+              fingerprintHash: cleanHash
+            })
+          );
+          if (!verifiedExisting.ok) {
+            return {
+              ok: false,
+              clientRequestId: null,
+              fingerprintHash: cleanHash,
+              reused: false,
+              persisted: false,
+              reason: verifiedExisting.reason
+            };
+          }
           return {
-            clientRequestId: parsed.clientRequestId.trim(),
+            ok: true,
+            clientRequestId: existingId,
             fingerprintHash: cleanHash,
-            reused: true
+            reused: true,
+            persisted: true
           };
         }
       } catch (_) {
@@ -205,21 +288,108 @@
       }
     }
 
-    var newId = generateUuidV4(cryptoObj);
+    var newId = null;
+    try {
+      newId = generateUuidV4(cryptoObj);
+    } catch (_) {
+      return {
+        ok: false,
+        clientRequestId: null,
+        fingerprintHash: cleanHash,
+        reused: false,
+        persisted: false,
+        reason: 'UUID_UNAVAILABLE'
+      };
+    }
+
+    if (!isValidUuidV4(newId)) {
+      return {
+        ok: false,
+        clientRequestId: null,
+        fingerprintHash: cleanHash,
+        reused: false,
+        persisted: false,
+        reason: 'UUID_UNAVAILABLE'
+      };
+    }
+
     // Persist ONLY { clientRequestId, fingerprintHash } — zero PII or raw items
-    safeStorageSet(
+    var serializedAttempt = JSON.stringify({
+      clientRequestId: newId,
+      fingerprintHash: cleanHash
+    });
+    var writeCheck = safeStorageSetAndVerify(
       sessionStorageObj,
       CHECKOUT_ATTEMPT_STORAGE_KEY,
-      JSON.stringify({
-        clientRequestId: newId,
-        fingerprintHash: cleanHash
-      })
+      serializedAttempt
     );
+    if (!writeCheck.ok) {
+      return {
+        ok: false,
+        clientRequestId: null,
+        fingerprintHash: cleanHash,
+        reused: false,
+        persisted: false,
+        reason: writeCheck.reason
+      };
+    }
 
     return {
+      ok: true,
       clientRequestId: newId,
       fingerprintHash: cleanHash,
-      reused: false
+      reused: false,
+      persisted: true
+    };
+  }
+
+  async function prepareCheckoutIdempotency(params) {
+    var safe = isPlainObject(params) ? params : {};
+    var orderInput = safe.orderInput;
+    var sessionStorageObj = safe.sessionStorage;
+    var cryptoObj = safe.cryptoObj;
+
+    var fingerprintHash = '';
+    try {
+      fingerprintHash = await computeLocalOrderFingerprintHex(orderInput, cryptoObj);
+    } catch (_) {
+      return {
+        ok: false,
+        clientRequestId: null,
+        fingerprintHash: '',
+        reused: false,
+        persisted: false,
+        reason: 'FINGERPRINT_UNAVAILABLE',
+        message:
+          'متصفحك الحالي لا يدعم التحقق الأمني المطلوب لتأكيد الطلب دون تكرار (Web Crypto). تم الحفاظ على سلتكِ كما هي؛ يرجى استخدام متصفح حديث أو تفعيل الاتصال الآمن (HTTPS) ثم المحاولة مرة أخرى.'
+      };
+    }
+
+    var attemptState = resolveCheckoutAttemptState(sessionStorageObj, fingerprintHash, cryptoObj);
+    if (
+      !attemptState ||
+      !attemptState.ok ||
+      !attemptState.persisted ||
+      !isValidUuidV4(attemptState.clientRequestId)
+    ) {
+      return {
+        ok: false,
+        clientRequestId: null,
+        fingerprintHash: fingerprintHash,
+        reused: false,
+        persisted: false,
+        reason: (attemptState && attemptState.reason) || 'STORAGE_PERSIST_FAILED',
+        message:
+          'تعذر حفظ معرّف تأكيد الطلب في تخزين الجلسة بالمتصفح (قد يكون التصفح الخاص مفعّلاً أو تم حظر التخزين المؤقت). تم الحفاظ على سلتكِ بأمان ولم يتم إرسال الطلب؛ يرجى السماح بتخزين الجلسة ثم الضغط على «تأكيد وإتمام الطلب» مرة أخرى.'
+      };
+    }
+
+    return {
+      ok: true,
+      clientRequestId: attemptState.clientRequestId,
+      fingerprintHash: attemptState.fingerprintHash,
+      reused: Boolean(attemptState.reused),
+      persisted: true
     };
   }
 
@@ -392,11 +562,26 @@
   function resolveInvoiceAccessToken(hashStr, sessionStorageObj) {
     var fromHashToken = extractHashAccessToken(hashStr);
     if (fromHashToken) {
-      safeStorageSet(sessionStorageObj, INVOICE_SESSION_STORAGE_KEY, fromHashToken);
+      var writeCheck = safeStorageSetAndVerify(
+        sessionStorageObj,
+        INVOICE_SESSION_STORAGE_KEY,
+        fromHashToken
+      );
+      if (writeCheck.ok) {
+        return {
+          token: fromHashToken,
+          source: 'hash',
+          persisted: true,
+          shouldStripHash: true,
+          stripHashAfterRender: false
+        };
+      }
       return {
         token: fromHashToken,
         source: 'hash',
-        shouldStripHash: true
+        persisted: false,
+        shouldStripHash: false,
+        stripHashAfterRender: true
       };
     }
 
@@ -405,14 +590,18 @@
       return {
         token: stored.trim(),
         source: 'session',
-        shouldStripHash: false
+        persisted: true,
+        shouldStripHash: false,
+        stripHashAfterRender: false
       };
     }
 
     return {
       token: null,
       source: 'none',
-      shouldStripHash: false
+      persisted: false,
+      shouldStripHash: false,
+      stripHashAfterRender: false
     };
   }
 
@@ -612,6 +801,7 @@
     buildCanonicalOrderFingerprintInput: buildCanonicalOrderFingerprintInput,
     computeLocalOrderFingerprintHex: computeLocalOrderFingerprintHex,
     resolveCheckoutAttemptState: resolveCheckoutAttemptState,
+    prepareCheckoutIdempotency: prepareCheckoutIdempotency,
     clearCheckoutAttemptState: clearCheckoutAttemptState,
     classifyCreateOrderOutcome: classifyCreateOrderOutcome,
     extractHashAccessToken: extractHashAccessToken,

@@ -1721,12 +1721,24 @@ const turnstileSiteKey = process.env.PUBLIC_TURNSTILE_SITE_KEY || '';
         return;
       }
 
-      let clientRequestId = null;
+      const flow = window.DandyOrderFlow;
+      if (!flow || typeof flow.prepareCheckoutIdempotency !== 'function' || typeof flow.isValidUuidV4 !== 'function') {
+        showCheckoutBanner(
+          'تعذر تحميل وحدة حماية الطلب من التكرار. تم الحفاظ على سلتكِ بأمان؛ يرجى إعادة تحميل الصفحة والمحاولة مرة أخرى.',
+          'error',
+          { showNewAttemptAction: false }
+        );
+        restoreSubmitBtn();
+        savingTextLoader.innerHTML =
+          '<i class="fas fa-exclamation-circle" style="color:var(--color-danger);"></i> تعذر التحقق من حماية الطلب؛ سلتكِ محفوظة كما هي.';
+        return;
+      }
+
+      const customerUid = currentAuthUser && currentAuthUser.uid ? currentAuthUser.uid : null;
+      let idempotencyPrep = null;
       try {
-        const flow = window.DandyOrderFlow;
-        const customerUid = currentAuthUser && currentAuthUser.uid ? currentAuthUser.uid : null;
-        if (flow && typeof flow.computeLocalOrderFingerprintHex === 'function') {
-          const fingerprintHash = await flow.computeLocalOrderFingerprintHex({
+        idempotencyPrep = await flow.prepareCheckoutIdempotency({
+          orderInput: {
             name,
             phone,
             email: email || 'N/A',
@@ -1735,20 +1747,27 @@ const turnstileSiteKey = process.env.PUBLIC_TURNSTILE_SITE_KEY || '';
             address,
             customerId: customerUid,
             items
-          });
-          const attemptState = flow.resolveCheckoutAttemptState(window.sessionStorage, fingerprintHash);
-          clientRequestId = attemptState.clientRequestId;
-        }
-      } catch (fpErr) {
-        // Safe fallback: generate UUID v4 without storing PII
-        try {
-          clientRequestId = window.DandyOrderFlow
-            ? window.DandyOrderFlow.generateUuidV4()
-            : crypto.randomUUID();
-        } catch (_) {
-          clientRequestId = null;
-        }
+          },
+          sessionStorage: window.sessionStorage
+        });
+      } catch (_) {
+        idempotencyPrep = { ok: false, clientRequestId: null };
       }
+
+      if (!idempotencyPrep || !idempotencyPrep.ok || !flow.isValidUuidV4(idempotencyPrep.clientRequestId)) {
+        showCheckoutBanner(
+          (idempotencyPrep && idempotencyPrep.message) ||
+            'تعذر حفظ معرّف تأكيد الطلب في تخزين الجلسة بالمتصفح. تم الحفاظ على سلتكِ بأمان ولم يتم إرسال الطلب؛ يرجى السماح بتخزين الجلسة ثم المحاولة مرة أخرى.',
+          'error',
+          { showNewAttemptAction: false }
+        );
+        restoreSubmitBtn();
+        savingTextLoader.innerHTML =
+          '<i class="fas fa-exclamation-circle" style="color:var(--color-danger);"></i> لم يتم إرسال الطلب حفاظاً على عدم التكرار؛ سلتكِ محفوظة كما هي.';
+        return;
+      }
+
+      const clientRequestId = idempotencyPrep.clientRequestId;
 
       let response = null;
       let result = {};
@@ -1773,7 +1792,7 @@ const turnstileSiteKey = process.env.PUBLIC_TURNSTILE_SITE_KEY || '';
             items,
             idToken,
             turnstileToken,
-            ...(clientRequestId ? { clientRequestId } : {})
+            clientRequestId
           })
         });
 
@@ -1782,7 +1801,6 @@ const turnstileSiteKey = process.env.PUBLIC_TURNSTILE_SITE_KEY || '';
         networkError = true;
       }
 
-      const flow = window.DandyOrderFlow;
       const outcome = flow
         ? flow.classifyCreateOrderOutcome({
             ok: Boolean(response && response.ok),
