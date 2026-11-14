@@ -685,9 +685,10 @@ import BaseLayout from '../layouts/BaseLayout.astro';
           window.DandyMeta.trackPurchase(order);
         } else if (typeof fbq !== 'undefined') {
           const storageKey = 'meta_pixel_purchase_fired_' + transactionId;
+          const safeStorage = getSafeSessionStorage();
           let alreadyFired = false;
           try {
-            alreadyFired = Boolean(sessionStorage.getItem(storageKey));
+            alreadyFired = Boolean(safeStorage && safeStorage.getItem(storageKey));
           } catch(e) {}
 
           if (!alreadyFired) {
@@ -713,7 +714,9 @@ import BaseLayout from '../layouts/BaseLayout.astro';
             });
 
             try {
-              sessionStorage.setItem(storageKey, 'true');
+              if (safeStorage) {
+                safeStorage.setItem(storageKey, 'true');
+              }
             } catch(e) {}
           }
         }
@@ -823,6 +826,19 @@ import BaseLayout from '../layouts/BaseLayout.astro';
     }
 
     let activeInvoiceTokenInMemory = null;
+    const rejectedInvoiceTokens = new Set();
+
+    function getSafeSessionStorage() {
+      const flow = window.DandyOrderFlow;
+      if (flow && typeof flow.getSafeSessionStorage === 'function') {
+        return flow.getSafeSessionStorage(window);
+      }
+      try {
+        return window.sessionStorage || null;
+      } catch (_) {
+        return null;
+      }
+    }
 
     function stripInvoiceHashFromUrl() {
       if (!window.location.hash) return;
@@ -833,7 +849,18 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 
     async function loadInvoiceWithToken(accessToken, tokenResolution) {
       const flow = window.DandyOrderFlow;
-      activeInvoiceTokenInMemory = accessToken || activeInvoiceTokenInMemory;
+      const candidateToken = accessToken || activeInvoiceTokenInMemory;
+      if (!candidateToken || rejectedInvoiceTokens.has(candidateToken)) {
+        activeInvoiceTokenInMemory = null;
+        orderError(
+          'رابط الفاتورة غير صالح أو انتهت صلاحيته',
+          'لم نتمكن من التحقق من رابط الفاتورة. يمكنكِ مراجعة الرابط المرسل إلى بريدكِ الإلكتروني أو متابعة حالة الطلب عبر صفحة تتبع الطلب.',
+          null
+        );
+        return;
+      }
+
+      activeInvoiceTokenInMemory = candidateToken;
       const effectiveToken = activeInvoiceTokenInMemory;
       let res = null;
       let data = {};
@@ -864,6 +891,7 @@ import BaseLayout from '../layouts/BaseLayout.astro';
             action: (res && res.ok && data && data.success && data.order) ? 'RENDER_INVOICE' : 'INVALID_OR_NOT_FOUND',
             order: data && data.order,
             clearSessionToken: Boolean(res && res.status === 404),
+            stripHash: Boolean(res && res.status === 404),
             showRetry: !res || res.status !== 404,
             title: 'تعذر تحميل الفاتورة',
             message: 'يرجى المحاولة مرة أخرى.'
@@ -879,9 +907,14 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 
       if (outcome.clearSessionToken) {
         activeInvoiceTokenInMemory = null;
+        rejectedInvoiceTokens.add(effectiveToken);
         if (flow) {
-          flow.clearInvoiceSessionToken(window.sessionStorage);
+          flow.clearInvoiceSessionToken(getSafeSessionStorage());
         }
+      }
+
+      if (outcome.stripHash || outcome.clearSessionToken) {
+        stripInvoiceHashFromUrl();
       }
 
       orderError(
@@ -893,8 +926,9 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 
     (function bootstrapInvoicePage() {
       const flow = window.DandyOrderFlow;
+      const safeStorage = getSafeSessionStorage();
       const tokenResolution = flow
-        ? flow.resolveInvoiceAccessToken(window.location.hash, window.sessionStorage)
+        ? flow.resolveInvoiceAccessToken(window.location.hash, safeStorage)
         : {
             token: null,
             source: 'none',

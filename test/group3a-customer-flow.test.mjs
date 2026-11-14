@@ -867,3 +867,137 @@ test('6.4 cart.astro & invoice.astro static hardening checks for Group 3A.1', as
   assert.equal(invoiceHtml.includes('localStorage'), false);
   assert.equal(invoiceHtml.includes('console.log'), false);
 });
+
+// ===========================================================================
+// 7. Group 3A.2 Hardening: Safe sessionStorage Getter & Terminal 404 Hash Cleanup
+// ===========================================================================
+test('7.1 getSafeSessionStorage returns null on SecurityError getter and resolveInvoiceAccessToken/clearInvoiceSessionToken operate cleanly with null storage', () => {
+  const token = crypto.randomBytes(32).toString('base64url');
+  const blockedWin = {};
+  Object.defineProperty(blockedWin, 'sessionStorage', {
+    get() {
+      const err = new Error('The operation is insecure.');
+      err.name = 'SecurityError';
+      throw err;
+    }
+  });
+
+  // 1. Getter throws SecurityError -> returns null without crashing
+  const resolvedStorage = helpers.getSafeSessionStorage(blockedWin);
+  assert.equal(resolvedStorage, null);
+
+  // 2. Loading invoice from #access when storage is null keeps token in memory and defers hash strip
+  const tokenResolution = helpers.resolveInvoiceAccessToken(
+    `#access=${encodeURIComponent(token)}`,
+    resolvedStorage
+  );
+  assert.equal(tokenResolution.token, token);
+  assert.equal(tokenResolution.source, 'hash');
+  assert.equal(tokenResolution.persisted, false);
+  assert.equal(tokenResolution.shouldStripHash, false);
+  assert.equal(tokenResolution.stripHashAfterRender, true);
+
+  // 3. Clearing token when storage is null never throws
+  assert.equal(helpers.clearInvoiceSessionToken(resolvedStorage), false);
+});
+
+test('7.2 classifyPublicInvoiceResponse strips hash only on terminal 404 and preserves hash + retry on 429, 503, and network errors', () => {
+  const res404 = helpers.classifyPublicInvoiceResponse({ ok: false, status: 404, data: {} });
+  assert.equal(res404.action, 'INVALID_OR_NOT_FOUND');
+  assert.equal(res404.clearSessionToken, true);
+  assert.equal(res404.stripHash, true);
+  assert.equal(res404.showRetry, false);
+
+  const res503 = helpers.classifyPublicInvoiceResponse({ ok: false, status: 503, data: {} });
+  assert.equal(res503.action, 'SERVICE_UNAVAILABLE');
+  assert.equal(res503.clearSessionToken, false);
+  assert.equal(res503.stripHash, false);
+  assert.equal(res503.showRetry, true);
+
+  const res429 = helpers.classifyPublicInvoiceResponse({ ok: false, status: 429, data: {} });
+  assert.equal(res429.action, 'RATE_LIMITED');
+  assert.equal(res429.clearSessionToken, false);
+  assert.equal(res429.stripHash, false);
+  assert.equal(res429.showRetry, true);
+
+  const resNetErr = helpers.classifyPublicInvoiceResponse({ networkError: true });
+  assert.equal(resNetErr.action, 'TRANSIENT_ERROR');
+  assert.equal(resNetErr.clearSessionToken, false);
+  assert.equal(resNetErr.stripHash, false);
+  assert.equal(resNetErr.showRetry, true);
+
+  const res200 = helpers.classifyPublicInvoiceResponse({
+    ok: true,
+    status: 200,
+    data: { success: true, order: { invoiceCode: 'DNY-100200' } }
+  });
+  assert.equal(res200.action, 'RENDER_INVOICE');
+  assert.equal(res200.clearSessionToken, false);
+  assert.equal(res200.stripHash, false);
+  assert.equal(res200.showRetry, false);
+});
+
+test('7.3 invoice.astro script handles SecurityError sessionStorage, terminal 404 hash cleanup, 503/429 in-memory retry, and zero token leaks end-to-end', async () => {
+  const invoiceHtml = await fs.readFile(path.resolve('src/pages/invoice.astro'), 'utf8');
+
+  // Ensure no unguarded window.sessionStorage or bare sessionStorage.getItem/setItem remains in invoice.astro
+  assert.equal(invoiceHtml.includes('flow.clearInvoiceSessionToken(window.sessionStorage)'), false);
+  assert.equal(invoiceHtml.includes('flow.resolveInvoiceAccessToken(window.location.hash, window.sessionStorage)'), false);
+  assert.equal(/\bsessionStorage\.(getItem|setItem|removeItem)/.test(invoiceHtml), false);
+
+  // Ensure safe wrapper, rejected token guard, terminal hash strip on 404, and zero query/console leaks
+  assert.ok(invoiceHtml.includes('function getSafeSessionStorage()'));
+  assert.ok(invoiceHtml.includes('rejectedInvoiceTokens'));
+  assert.ok(invoiceHtml.includes('outcome.stripHash || outcome.clearSessionToken'));
+  assert.equal(invoiceHtml.includes('console.log'), false);
+  assert.equal(invoiceHtml.includes('?access='), false);
+  assert.equal(invoiceHtml.includes('?token='), false);
+
+  // Simulate browser execution of invoice page token lifecycle when window.sessionStorage throws SecurityError
+  const token = crypto.randomBytes(32).toString('base64url');
+  const blockedWin = {
+    location: {
+      pathname: '/invoice',
+      search: '',
+      hash: `#access=${encodeURIComponent(token)}`
+    }
+  };
+  Object.defineProperty(blockedWin, 'sessionStorage', {
+    get() {
+      const err = new Error('Access is denied');
+      err.name = 'SecurityError';
+      throw err;
+    }
+  });
+  let replaceStateCount = 0;
+  function stripHashSim() {
+    if (!blockedWin.location.hash) return;
+    replaceStateCount++;
+    blockedWin.location.hash = '';
+  }
+
+  // Step A: Bootstrap with SecurityError storage -> hash kept, token in memory
+  const safeStorage = helpers.getSafeSessionStorage(blockedWin);
+  assert.equal(safeStorage, null);
+  const tokenRes = helpers.resolveInvoiceAccessToken(blockedWin.location.hash, safeStorage);
+  if (tokenRes.shouldStripHash) stripHashSim();
+  assert.equal(blockedWin.location.hash, `#access=${encodeURIComponent(token)}`);
+  assert.equal(tokenRes.stripHashAfterRender, true);
+
+  // Step B: 503 then 429 -> hash retained, retry keeps token in memory
+  for (const status of [503, 429]) {
+    const out = helpers.classifyPublicInvoiceResponse({ ok: false, status, data: {} });
+    assert.equal(out.showRetry, true);
+    if (out.clearSessionToken) helpers.clearInvoiceSessionToken(helpers.getSafeSessionStorage(blockedWin));
+    if (out.stripHash || out.clearSessionToken) stripHashSim();
+    assert.equal(blockedWin.location.hash, `#access=${encodeURIComponent(token)}`);
+    assert.equal(replaceStateCount, 0);
+  }
+
+  // Step C: Terminal 404 when storage is unavailable -> clears memory, safe-clears storage, strips hash!
+  const out404 = helpers.classifyPublicInvoiceResponse({ ok: false, status: 404, data: {} });
+  if (out404.clearSessionToken) helpers.clearInvoiceSessionToken(helpers.getSafeSessionStorage(blockedWin));
+  if (out404.stripHash || out404.clearSessionToken) stripHashSim();
+  assert.equal(blockedWin.location.hash, '');
+  assert.equal(replaceStateCount, 1);
+});

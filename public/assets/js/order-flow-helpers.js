@@ -152,6 +152,21 @@
     return hex;
   }
 
+  function getSafeSessionStorage(rootObj) {
+    var target =
+      arguments.length > 0
+        ? rootObj
+        : typeof window !== 'undefined'
+          ? window
+          : null;
+    if (!target) return null;
+    try {
+      return target.sessionStorage || null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   function safeStorageGet(storageObj, key) {
     if (!storageObj || typeof storageObj.getItem !== 'function') return null;
     try {
@@ -620,6 +635,7 @@
         action: 'RENDER_INVOICE',
         order: data.order,
         clearSessionToken: false,
+        stripHash: false,
         showRetry: false
       };
     }
@@ -628,6 +644,7 @@
       return {
         action: 'INVALID_OR_NOT_FOUND',
         clearSessionToken: true,
+        stripHash: true,
         showRetry: false,
         title: 'رابط الفاتورة غير صالح أو انتهت صلاحيته',
         message:
@@ -639,6 +656,7 @@
       return {
         action: 'RATE_LIMITED',
         clearSessionToken: false,
+        stripHash: false,
         showRetry: true,
         title: 'تم تجاوز الحد المسموح مؤقتاً',
         message: 'يرجى الانتظار قليلاً ثم الضغط على «إعادة المحاولة» لعرض فاتورتكِ.'
@@ -649,6 +667,7 @@
       return {
         action: 'SERVICE_UNAVAILABLE',
         clearSessionToken: false,
+        stripHash: false,
         showRetry: true,
         title: 'الخدمة غير متاحة مؤقتاً',
         message: 'تعذر عرض الفاتورة مؤقتاً بسبب ضغط على الخادم. يرجى المحاولة بعد قليل.'
@@ -658,6 +677,7 @@
     return {
       action: 'TRANSIENT_ERROR',
       clearSessionToken: false,
+      stripHash: false,
       showRetry: true,
       title: 'تعذر تحميل الفاتورة مؤقتاً',
       message: 'حدث خطأ أثناء الاتصال بالخادم. يرجى إعادة المحاولة.'
@@ -807,6 +827,7 @@
     extractHashAccessToken: extractHashAccessToken,
     resolveInvoiceAccessToken: resolveInvoiceAccessToken,
     clearInvoiceSessionToken: clearInvoiceSessionToken,
+    getSafeSessionStorage: getSafeSessionStorage,
     classifyPublicInvoiceResponse: classifyPublicInvoiceResponse,
     normalizeInvoiceCodeClient: normalizeInvoiceCodeClient,
     sanitizeRecentLookupsList: sanitizeRecentLookupsList,
