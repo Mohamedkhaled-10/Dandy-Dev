@@ -3,7 +3,13 @@ import crypto from 'node:crypto';
 import { initializeApp, getApps, cert } from 'firebase-admin/app';
 import { getDatabase } from 'firebase-admin/database';
 import { getOrCreateInvoiceToken } from './invoice-token.ts';
-import { claimOutboxNotification, finalizeOutboxNotification } from './notifications-outbox.ts';
+import {
+  claimOutboxNotification,
+  finalizeOutboxNotification,
+  sanitizeOutboxErrorCode,
+  type OutboxProviderOutcome,
+  type OutboxPersistenceOutcome
+} from './notifications-outbox.ts';
 
 export type NotificationStatus =
   | 'accepted_by_mailapp'
@@ -11,6 +17,8 @@ export type NotificationStatus =
   | 'processing'
   | 'failed'
   | 'unknown'
+  | 'unavailable'
+  | 'unfinalized'
   | 'skipped_no_valid_email'
   | 'cancelled_order_deleted'
   | 'unknown_deleted_during_dispatch';
@@ -1528,6 +1536,11 @@ export async function sendOrderNotification(params: {
   notificationId: string;
   message?: string;
   deduplicated?: boolean;
+  providerOutcome?: OutboxProviderOutcome;
+  providerStatus?: NotificationStatus | string;
+  outboxFinalized?: boolean;
+  persistenceOutcome?: OutboxPersistenceOutcome;
+  outboxStatus?: string;
 }> {
   const { order, orderId, eventType, newStatus, oldStatus, retryNotificationId } = params;
   const effectiveNowMs =
@@ -1549,6 +1562,9 @@ export async function sendOrderNotification(params: {
         success: false,
         status: 'failed',
         notificationId: retryNotificationId || '',
+        providerOutcome: 'not_attempted',
+        outboxFinalized: false,
+        persistenceOutcome: 'not_attempted',
         message: 'Skipped: Invalid target order status'
       };
     }
@@ -1560,6 +1576,9 @@ export async function sendOrderNotification(params: {
         success: true,
         status: 'accepted_by_mailapp',
         notificationId: '',
+        providerOutcome: 'skipped',
+        outboxFinalized: true,
+        persistenceOutcome: 'not_attempted',
         message: 'Status unchanged; skipped notification generation'
       };
     }
@@ -1571,6 +1590,9 @@ export async function sendOrderNotification(params: {
       success: false,
       status: 'failed',
       notificationId: retryNotificationId || '',
+      providerOutcome: 'not_attempted',
+      outboxFinalized: false,
+      persistenceOutcome: 'not_attempted',
       message: 'Skipped: Order record has incomplete or invalid core shape'
     };
   }
@@ -1600,8 +1622,22 @@ export async function sendOrderNotification(params: {
 
   const adminDb = params.adminDb !== undefined ? params.adminDb : getAdminDb();
 
+  // Fail-closed: NEVER dispatch external notification without an atomic Outbox store
+  if (!adminDb || typeof adminDb.ref !== 'function') {
+    return {
+      success: false,
+      status: 'unavailable',
+      outboxStatus: 'unavailable',
+      notificationId,
+      providerOutcome: 'not_attempted',
+      outboxFinalized: false,
+      persistenceOutcome: 'claim_unavailable',
+      message: 'Notification outbox store is unavailable; blocked before external dispatch'
+    };
+  }
+
   // Check privateDeletedOrders BEFORE touching token or outbox (fail-closed on DB read errors)
-  if (adminDb && typeof adminDb.ref === 'function' && orderId && !orderId.startsWith('diag_')) {
+  if (orderId && !orderId.startsWith('diag_')) {
     try {
       const preDelSnap = await adminDb.ref(`privateDeletedOrders/${orderId}`).once('value');
       const preDelVal = preDelSnap?.val?.() ?? null;
@@ -1609,7 +1645,11 @@ export async function sendOrderNotification(params: {
         return {
           success: false,
           status: 'cancelled_order_deleted',
+          outboxStatus: 'cancelled_order_deleted',
           notificationId,
+          providerOutcome: 'skipped',
+          outboxFinalized: false,
+          persistenceOutcome: 'order_deleted',
           message: 'Skipped: Order is being deleted or has been deleted'
         };
       }
@@ -1620,8 +1660,12 @@ export async function sendOrderNotification(params: {
       );
       return {
         success: false,
-        status: 'failed',
+        status: 'unavailable',
+        outboxStatus: 'unavailable',
         notificationId,
+        providerOutcome: 'not_attempted',
+        outboxFinalized: false,
+        persistenceOutcome: 'claim_unavailable',
         message: 'Could not verify order deletion status'
       };
     }
@@ -1629,7 +1673,7 @@ export async function sendOrderNotification(params: {
 
   // Retrieve or generate secure invoice access token if not explicitly provided and not diagnostic
   let invoiceAccessToken = params.invoiceAccessToken;
-  if (!invoiceAccessToken && adminDb && orderId && !orderId.startsWith('diag_')) {
+  if (!invoiceAccessToken && orderId && !orderId.startsWith('diag_')) {
     try {
       invoiceAccessToken = await getOrCreateInvoiceToken(
         orderId,
@@ -1662,81 +1706,149 @@ export async function sendOrderNotification(params: {
     lastAttemptAt: nowIso
   };
 
-  let claimId = `mem_${crypto.randomUUID()}`;
-  if (adminDb) {
-    const claim = await claimOutboxNotification({
-      adminDb,
-      notificationId,
-      orderId,
-      initialRecord: outboxData,
-      allowRetryFailed: effectiveAllowRetryFailed,
-      allowSkipIfNoValidEmail: true,
-      hasValidEmail: hasValidCanonicalEmail,
-      nowMs: params.nowMs,
-      getNowMs: params.getNowMs,
-      leaseMs: params.leaseMs
-    });
+  const claim = await claimOutboxNotification({
+    adminDb,
+    notificationId,
+    orderId,
+    initialRecord: outboxData,
+    allowRetryFailed: effectiveAllowRetryFailed,
+    allowSkipIfNoValidEmail: true,
+    hasValidEmail: hasValidCanonicalEmail,
+    nowMs: params.nowMs,
+    getNowMs: params.getNowMs,
+    leaseMs: params.leaseMs
+  });
 
-    if (!claim.claimed) {
-      if (claim.reason === 'ALREADY_SENT') {
-        return {
-          success: true,
-          status: 'accepted_by_mailapp',
-          notificationId,
-          deduplicated: true,
-          message: 'Notification already accepted by MailApp previously'
-        };
-      }
-      if (claim.reason === 'ORDER_DELETED') {
-        return {
-          success: false,
-          status: (claim.status as NotificationStatus) || 'cancelled_order_deleted',
-          notificationId,
-          message: 'Notification skipped because order is being deleted or has been deleted'
-        };
-      }
-      if (claim.status === 'skipped_no_valid_email') {
-        return {
-          success: false,
-          status: 'skipped_no_valid_email',
-          notificationId,
-          message: 'Skipped: Order has no valid email address'
-        };
-      }
-      if (claim.reason === 'IN_FLIGHT') {
-        return {
-          success: false,
-          status: 'processing',
-          notificationId,
-          deduplicated: true,
-          message: 'Notification dispatch is already in progress by another worker'
-        };
-      }
-      if (claim.reason === 'AMBIGUOUS_UNKNOWN') {
-        return {
-          success: false,
-          status: 'unknown',
-          notificationId,
-          message: 'Notification status is unknown after timeout; automatic retry blocked to prevent duplicates'
-        };
-      }
+  if (!claim.claimed || !claim.claimId) {
+    if (claim.reason === 'ALREADY_SENT') {
       return {
-        success: false,
-        status: (claim.status as NotificationStatus) || 'failed',
+        success: true,
+        status: 'accepted_by_mailapp',
+        outboxStatus: 'accepted_by_mailapp',
         notificationId,
-        message: 'Notification could not be claimed for dispatch'
+        deduplicated: true,
+        providerOutcome: 'accepted',
+        providerStatus: 'accepted_by_mailapp',
+        outboxFinalized: true,
+        persistenceOutcome: 'committed',
+        message: 'Notification already accepted by MailApp previously'
       };
     }
-
-    claimId = claim.claimId || claimId;
+    if (claim.reason === 'ORDER_DELETED') {
+      return {
+        success: false,
+        status: (claim.status as NotificationStatus) || 'cancelled_order_deleted',
+        outboxStatus: claim.status || 'cancelled_order_deleted',
+        notificationId,
+        providerOutcome: 'skipped',
+        outboxFinalized: false,
+        persistenceOutcome: 'order_deleted',
+        message: 'Notification skipped because order is being deleted or has been deleted'
+      };
+    }
+    if (claim.status === 'skipped_no_valid_email') {
+      return {
+        success: false,
+        status: 'skipped_no_valid_email',
+        outboxStatus: 'skipped_no_valid_email',
+        notificationId,
+        providerOutcome: 'skipped',
+        outboxFinalized: true,
+        persistenceOutcome: 'committed',
+        message: 'Skipped: Order has no valid email address'
+      };
+    }
+    if (claim.reason === 'IN_FLIGHT') {
+      return {
+        success: false,
+        status: 'processing',
+        outboxStatus: 'processing',
+        notificationId,
+        deduplicated: true,
+        providerOutcome: 'not_attempted',
+        outboxFinalized: false,
+        persistenceOutcome: 'claim_blocked',
+        message: 'Notification dispatch is already in progress by another worker'
+      };
+    }
+    if (claim.reason === 'AMBIGUOUS_UNKNOWN') {
+      return {
+        success: false,
+        status: 'unknown',
+        outboxStatus: 'unknown',
+        notificationId,
+        providerOutcome: 'ambiguous',
+        outboxFinalized: false,
+        persistenceOutcome: 'claim_blocked',
+        message: 'Notification status is unknown after timeout; automatic retry blocked to prevent duplicates'
+      };
+    }
+    if (
+      claim.reason === 'STORE_UNAVAILABLE' ||
+      claim.reason === 'CLAIM_ERROR' ||
+      claim.reason === 'NOT_COMMITTED'
+    ) {
+      return {
+        success: false,
+        status: 'unavailable',
+        outboxStatus: 'unavailable',
+        notificationId,
+        providerOutcome: 'not_attempted',
+        outboxFinalized: false,
+        persistenceOutcome: 'claim_unavailable',
+        message: 'Outbox claim failed or store unavailable; blocked before external dispatch'
+      };
+    }
+    if (claim.reason === 'OWNERSHIP_MISMATCH' || claim.reason === 'IDENTITY_MISMATCH') {
+      return {
+        success: false,
+        status: 'unavailable',
+        outboxStatus: claim.status || 'unavailable',
+        notificationId,
+        providerOutcome: 'not_attempted',
+        outboxFinalized: false,
+        persistenceOutcome:
+          claim.reason === 'OWNERSHIP_MISMATCH' ? 'ownership_mismatch' : 'identity_mismatch',
+        message: 'Notification claim ownership or identity validation failed'
+      };
+    }
+    return {
+      success: false,
+      status: (claim.status as NotificationStatus) || 'failed',
+      outboxStatus: claim.status || 'failed',
+      notificationId,
+      providerOutcome: 'not_attempted',
+      outboxFinalized: false,
+      persistenceOutcome: 'claim_blocked',
+      message: 'Notification could not be claimed for dispatch'
+    };
   }
 
-  // If no valid email (e.g., when adminDb is null), skip dispatch immediately
+  const claimId = claim.claimId;
+
   if (!hasValidCanonicalEmail) {
+    await finalizeOutboxNotification({
+      adminDb,
+      notificationId,
+      claimId,
+      status: 'skipped_no_valid_email',
+      error: null,
+      message: null,
+      extra: {
+        providerOutcome: 'skipped',
+        persistenceOutcome: 'committed'
+      },
+      nowMs: params.nowMs,
+      getNowMs: params.getNowMs
+    });
     return {
       success: false,
       status: 'skipped_no_valid_email',
+      outboxStatus: 'skipped_no_valid_email',
       notificationId,
+      providerOutcome: 'skipped',
+      outboxFinalized: true,
+      persistenceOutcome: 'committed',
       message: 'Skipped: Order has no valid email address'
     };
   }
@@ -1760,29 +1872,43 @@ export async function sendOrderNotification(params: {
     invoiceCode
   });
 
-  // 6. Update Firebase Outbox & conditionally update Order metadata (never resurrect deleted orders)
-  let finalEffectiveSuccess = dispatchResult.success;
-  let finalEffectiveStatus: NotificationStatus = dispatchResult.status;
+  const providerStatus = dispatchResult.status;
+  const providerOutcome: OutboxProviderOutcome =
+    dispatchResult.status === 'accepted_by_mailapp'
+      ? 'accepted'
+      : dispatchResult.status === 'unknown'
+        ? 'timeout'
+        : 'rejected';
 
-  if (adminDb) {
-    try {
-      const finRes = await finalizeOutboxNotification({
-        adminDb,
-        notificationId,
-        claimId,
-        status: dispatchResult.status,
-        error: dispatchResult.error || null,
-        message: dispatchResult.message || null,
-        nowMs: params.nowMs,
-        getNowMs: params.getNowMs
-      });
+  // 6. Finalize Firebase Outbox & conditionally update Order metadata ONLY when finalization commits
+  let finRes: { finalized: boolean; status?: string; reason?: string } = {
+    finalized: false,
+    reason: 'FINALIZE_TRANSACTION_ERROR'
+  };
 
-      if (!finRes.finalized) {
-        finalEffectiveSuccess = false;
-        if (finRes.status) {
-          finalEffectiveStatus = finRes.status as NotificationStatus;
-        }
-      } else if (orderId && !orderId.startsWith('diag_')) {
+  try {
+    finRes = await finalizeOutboxNotification({
+      adminDb,
+      notificationId,
+      claimId,
+      status: dispatchResult.status,
+      error: sanitizeOutboxErrorCode(dispatchResult.error),
+      message: null,
+      extra: {
+        providerOutcome,
+        persistenceOutcome: 'committed'
+      },
+      nowMs: params.nowMs,
+      getNowMs: params.getNowMs
+    });
+  } catch (err) {
+    console.warn('[EmailService] Failed to update outbox record after dispatch:', err);
+    finRes = { finalized: false, reason: 'FINALIZE_TRANSACTION_ERROR' };
+  }
+
+  if (finRes.finalized) {
+    if (orderId && !orderId.startsWith('diag_')) {
+      try {
         let isDeletedNow = false;
         try {
           const postDelSnap = await adminDb.ref(`privateDeletedOrders/${orderId}`).once('value');
@@ -1813,18 +1939,47 @@ export async function sendOrderNotification(params: {
             };
           });
         }
+      } catch (orderTxErr) {
+        console.warn('[EmailService] Failed to update latestNotification after outbox finalize:', orderTxErr);
       }
-    } catch (err) {
-      console.warn('[EmailService] Failed to update outbox record after dispatch:', err);
     }
+
+    return {
+      success: dispatchResult.success,
+      status: dispatchResult.status,
+      outboxStatus: dispatchResult.status,
+      notificationId,
+      message: dispatchResult.message,
+      deduplicated: dispatchResult.deduplicated,
+      providerOutcome,
+      providerStatus,
+      outboxFinalized: true,
+      persistenceOutcome: 'committed'
+    };
   }
 
+  const isDeleted =
+    finRes.status === 'cancelled_order_deleted' ||
+    finRes.status === 'unknown_deleted_during_dispatch';
+  const persistenceOutcome: OutboxPersistenceOutcome = isDeleted
+    ? 'order_deleted'
+    : finRes.reason === 'OWNERSHIP_MISMATCH'
+      ? 'ownership_mismatch'
+      : 'finalization_failed';
+
   return {
-    success: finalEffectiveSuccess,
-    status: finalEffectiveStatus,
+    success: false,
+    status: isDeleted ? (finRes.status as NotificationStatus) : 'unfinalized',
+    outboxStatus: finRes.status || 'processing',
     notificationId,
-    message: dispatchResult.message,
-    deduplicated: dispatchResult.deduplicated
+    message: isDeleted
+      ? 'Order deleted during email notification dispatch'
+      : 'Email provider dispatch completed but outbox finalization failed',
+    deduplicated: dispatchResult.deduplicated,
+    providerOutcome,
+    providerStatus,
+    outboxFinalized: false,
+    persistenceOutcome
   };
 }
 

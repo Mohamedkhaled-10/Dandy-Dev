@@ -31,7 +31,10 @@ const NO_STORE_HEADERS = {
 const BLOCKED_OUTBOX_RETRY_STATUSES = new Set([
   'cancelled_order_deleted',
   'unknown_deleted_during_dispatch',
-  'unknown'
+  'unknown',
+  'unfinalized',
+  'unavailable',
+  'skipped_intentionally_disabled'
 ]);
 
 function isPlainObject(val) {
@@ -504,12 +507,29 @@ export async function POST({ request, _deps = undefined }) {
       const notifSnap = await notifRef.once('value');
       const notifData = notifSnap.val();
 
-      if (!notifData) {
+      if (!notifData || !isPlainObject(notifData)) {
         return new Response(JSON.stringify({
           success: false,
           error: 'NOTIFICATION_NOT_FOUND',
           message: `Outbox notification ${notificationId} not found`
-        }), { status: 404, headers: { 'Content-Type': 'application/json' } });
+        }), { status: 404, headers: NO_STORE_HEADERS });
+      }
+
+      if (
+        notifData.orderId !== orderId ||
+        (typeof notifData.notificationId === 'string' &&
+          notifData.notificationId.trim() !== '' &&
+          notifData.notificationId.trim() !== notificationId) ||
+        (typeof notifData.channel === 'string' &&
+          notifData.channel !== '' &&
+          notifData.channel !== 'email')
+      ) {
+        return new Response(JSON.stringify({
+          success: false,
+          error: 'INVALID_NOTIFICATION_IDENTITY',
+          message: 'سجل الإشعار غير متطابق مع معرف الطلب أو القناة المطلوبة.',
+          notificationId
+        }), { status: 409, headers: NO_STORE_HEADERS });
       }
 
       if (
@@ -522,15 +542,15 @@ export async function POST({ request, _deps = undefined }) {
           status: notifData.status,
           message: 'تم حذف الطلب المرتبط بهذا الإشعار ولا يمكن إعادة إرساله',
           notificationId
-        }), { status: 409, headers: { 'Content-Type': 'application/json' } });
+        }), { status: 409, headers: NO_STORE_HEADERS });
       }
 
-      if (notifData.status === 'unknown') {
+      if (notifData.status === 'unknown' || notifData.status === 'unfinalized' || notifData.status === 'unavailable') {
         return new Response(JSON.stringify({
           success: false,
-          error: 'AMBIGUOUS_NOTIFICATION_STATUS',
-          status: 'unknown',
-          message: 'حالة الإشعار غير مؤكدة (unknown)؛ يُمنع إعادة الإرسال لتجنب التكرار',
+          error: notifData.status === 'unavailable' ? 'SERVICE_TEMPORARILY_UNAVAILABLE' : 'AMBIGUOUS_NOTIFICATION_STATUS',
+          status: notifData.status,
+          message: 'حالة الإشعار غير مؤكدة أو لم يكتمل تثبيتها؛ يُمنع إعادة الإرسال لتجنب التكرار',
           notificationId
         }), { status: 409, headers: NO_STORE_HEADERS });
       }
@@ -583,7 +603,11 @@ export async function POST({ request, _deps = undefined }) {
         }
       }
 
-      if (notifData.status === 'skipped_no_valid_email' || notifData.status === 'skipped_not_configured') {
+      if (
+        notifData.status === 'skipped_no_valid_email' ||
+        notifData.status === 'skipped_not_configured' ||
+        notifData.status === 'skipped_intentionally_disabled'
+      ) {
         return new Response(JSON.stringify({
           success: false,
           error: 'NOTIFICATION_SKIPPED',
@@ -659,20 +683,45 @@ export async function POST({ request, _deps = undefined }) {
 
       const retryResult = await sendNotifFn(retryArgs);
 
-      const httpStatus =
-        retryResult?.status === 'cancelled_order_deleted' ||
-        retryResult?.status === 'unknown_deleted_during_dispatch' ||
-        retryResult?.status === 'unknown' ||
-        retryResult?.status === 'processing'
+      const finalizationFailed =
+        retryResult?.outboxFinalized === false &&
+        (retryResult?.persistenceOutcome === 'finalization_failed' ||
+          retryResult?.persistenceOutcome === 'ownership_mismatch' ||
+          retryResult?.status === 'unfinalized');
+      const storeUnavailable =
+        retryResult?.status === 'unavailable' ||
+        retryResult?.persistenceOutcome === 'claim_unavailable';
+
+      const effectiveSuccess =
+        Boolean(retryResult?.success) && retryResult?.outboxFinalized !== false;
+      const effectiveStatus = finalizationFailed
+        ? 'unfinalized'
+        : retryResult?.status || 'failed';
+
+      const httpStatus = storeUnavailable
+        ? 503
+        : finalizationFailed ||
+            effectiveStatus === 'cancelled_order_deleted' ||
+            effectiveStatus === 'unknown_deleted_during_dispatch' ||
+            effectiveStatus === 'unknown' ||
+            effectiveStatus === 'processing'
           ? 409
           : 200;
 
       return new Response(JSON.stringify({
-        success: retryResult.success,
+        success: effectiveSuccess,
         notificationId,
-        status: retryResult.status,
-        message: retryResult.message || 'Retry attempted',
-        result: retryResult
+        status: effectiveStatus,
+        ...(retryResult?.outboxStatus ? { outboxStatus: retryResult.outboxStatus } : {}),
+        ...(retryResult?.providerOutcome ? { providerOutcome: retryResult.providerOutcome } : {}),
+        ...(typeof retryResult?.outboxFinalized === 'boolean' ? { outboxFinalized: retryResult.outboxFinalized } : {}),
+        ...(retryResult?.persistenceOutcome ? { persistenceOutcome: retryResult.persistenceOutcome } : {}),
+        message: retryResult?.message || 'Retry attempted',
+        result: {
+          ...retryResult,
+          success: effectiveSuccess,
+          status: effectiveStatus
+        }
       }), { status: httpStatus, headers: NO_STORE_HEADERS });
     }
 
@@ -752,15 +801,27 @@ export async function POST({ request, _deps = undefined }) {
       const notifSnap = await notifRef.once('value');
       const existingNotif = notifSnap.val();
 
+      if (existingNotif && isPlainObject(existingNotif) && existingNotif.orderId && existingNotif.orderId !== orderId) {
+        return new Response(JSON.stringify({
+          success: false,
+          error: 'INVALID_NOTIFICATION_IDENTITY',
+          notificationId,
+          message: 'سجل الإشعار غير متطابق مع معرف الطلب.'
+        }), { status: 409, headers: NO_STORE_HEADERS });
+      }
+
       if (existingNotif && BLOCKED_OUTBOX_RETRY_STATUSES.has(existingNotif.status)) {
-        const isUnknown = existingNotif.status === 'unknown';
+        const isUnknown =
+          existingNotif.status === 'unknown' ||
+          existingNotif.status === 'unfinalized' ||
+          existingNotif.status === 'unavailable';
         return new Response(JSON.stringify({
           success: false,
           error: isUnknown ? 'AMBIGUOUS_NOTIFICATION_STATUS' : 'ORDER_DELETED',
           status: existingNotif.status,
           notificationId,
           message: isUnknown
-            ? 'حالة الإشعار غير مؤكدة (unknown)؛ يُمنع إعادة الإرسال لتجنب التكرار'
+            ? 'حالة الإشعار غير مؤكدة؛ يُمنع إعادة الإرسال لتجنب التكرار'
             : 'تم حذف الطلب المرتبط بهذا الإشعار ولا يمكن إرساله'
         }), { status: 409, headers: NO_STORE_HEADERS });
       }
@@ -817,7 +878,7 @@ export async function POST({ request, _deps = undefined }) {
           notificationId,
           deduplicated: true,
           message: 'تم إرسال وقبول إشعار هذه الحالة مسبقاً بنجاح عبر MailApp (تم منع التكرار)',
-          notification: sanitizeOutboxRecordForAdmin(existingNotif) || existingNotif
+          notification: sanitizeOutboxRecordForAdmin(existingNotif, notificationId) || existingNotif
         }), { status: 200, headers: NO_STORE_HEADERS });
       }
 
@@ -858,22 +919,47 @@ export async function POST({ request, _deps = undefined }) {
 
       const sendResult = await sendNotifFn(sendArgs);
 
-      const httpStatus =
-        sendResult?.status === 'cancelled_order_deleted' ||
-        sendResult?.status === 'unknown_deleted_during_dispatch' ||
-        sendResult?.status === 'unknown' ||
-        sendResult?.status === 'processing'
+      const finalizationFailed =
+        sendResult?.outboxFinalized === false &&
+        (sendResult?.persistenceOutcome === 'finalization_failed' ||
+          sendResult?.persistenceOutcome === 'ownership_mismatch' ||
+          sendResult?.status === 'unfinalized');
+      const storeUnavailable =
+        sendResult?.status === 'unavailable' ||
+        sendResult?.persistenceOutcome === 'claim_unavailable';
+
+      const effectiveSuccess =
+        Boolean(sendResult?.success) && sendResult?.outboxFinalized !== false;
+      const effectiveStatus = finalizationFailed
+        ? 'unfinalized'
+        : sendResult?.status || 'failed';
+
+      const httpStatus = storeUnavailable
+        ? 503
+        : finalizationFailed ||
+            effectiveStatus === 'cancelled_order_deleted' ||
+            effectiveStatus === 'unknown_deleted_during_dispatch' ||
+            effectiveStatus === 'unknown' ||
+            effectiveStatus === 'processing'
           ? 409
           : 200;
 
       return new Response(JSON.stringify({
-        success: sendResult.success,
+        success: effectiveSuccess,
         orderId,
         currentStatus: currentCanonicalStatus,
         notificationId,
-        status: sendResult.status,
-        message: sendResult.message || 'تم إرسال إشعار الحالة الحالية للعميل بنجاح',
-        notification: sendResult
+        status: effectiveStatus,
+        ...(sendResult?.outboxStatus ? { outboxStatus: sendResult.outboxStatus } : {}),
+        ...(sendResult?.providerOutcome ? { providerOutcome: sendResult.providerOutcome } : {}),
+        ...(typeof sendResult?.outboxFinalized === 'boolean' ? { outboxFinalized: sendResult.outboxFinalized } : {}),
+        ...(sendResult?.persistenceOutcome ? { persistenceOutcome: sendResult.persistenceOutcome } : {}),
+        message: sendResult?.message || 'تم إرسال إشعار الحالة الحالية للعميل بنجاح',
+        notification: {
+          ...sendResult,
+          success: effectiveSuccess,
+          status: effectiveStatus
+        }
       }), { status: httpStatus, headers: NO_STORE_HEADERS });
     }
 
@@ -984,10 +1070,10 @@ export async function GET({ request, _deps = undefined }) {
       }
       const snap = await query.once('value');
       const val = snap.val() || {};
-      const notifications = Object.values(val)
+      const notifications = Object.entries(val)
         .slice(0, 20)
-        .map((rec) => sanitizeOutboxRecordForAdmin(rec))
-        .filter(Boolean);
+        .map(([recordKey, rec]) => sanitizeOutboxRecordForAdmin(rec, recordKey))
+        .filter((item) => Boolean(item) && item.orderId === orderId);
 
       return new Response(JSON.stringify({
         success: true,
@@ -1003,9 +1089,9 @@ export async function GET({ request, _deps = undefined }) {
     }
     const snap = await latestQuery.once('value');
     const val = snap.val() || {};
-    const notifications = Object.values(val)
+    const notifications = Object.entries(val)
       .slice(-50)
-      .map((rec) => sanitizeOutboxRecordForAdmin(rec))
+      .map(([recordKey, rec]) => sanitizeOutboxRecordForAdmin(rec, recordKey))
       .filter(Boolean);
 
     return new Response(JSON.stringify({

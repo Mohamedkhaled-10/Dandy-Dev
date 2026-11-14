@@ -19,10 +19,130 @@ export type OutboxNotificationStatus =
   | 'sent'
   | 'failed'
   | 'unknown'
+  | 'unavailable'
+  | 'unfinalized'
   | 'skipped_no_valid_email'
   | 'skipped_not_configured'
+  | 'skipped_intentionally_disabled'
   | 'cancelled_order_deleted'
   | 'unknown_deleted_during_dispatch';
+
+export type OutboxProviderOutcome =
+  | 'accepted'
+  | 'rejected'
+  | 'timeout'
+  | 'ambiguous'
+  | 'skipped'
+  | 'not_attempted'
+  | 'unknown';
+
+export type OutboxPersistenceOutcome =
+  | 'committed'
+  | 'finalization_failed'
+  | 'claim_unavailable'
+  | 'claim_blocked'
+  | 'order_deleted'
+  | 'ownership_mismatch'
+  | 'identity_mismatch'
+  | 'intentionally_disabled'
+  | 'not_attempted';
+
+export const RECOGNIZED_OUTBOX_CHANNELS = new Set(['email', 'telegram', 'make']);
+
+export const RECOGNIZED_OUTBOX_STATUSES = new Set<string>([
+  'pending',
+  'processing',
+  'accepted_by_mailapp',
+  'sent',
+  'failed',
+  'unknown',
+  'unavailable',
+  'unfinalized',
+  'skipped_no_valid_email',
+  'skipped_not_configured',
+  'skipped_intentionally_disabled',
+  'cancelled_order_deleted',
+  'unknown_deleted_during_dispatch'
+]);
+
+export const RECOGNIZED_OUTBOX_EVENT_TYPES = new Set([
+  'ORDER_CONFIRMATION',
+  'ORDER_STATUS_CHANGED',
+  'TELEGRAM_ORDER_NOTIFICATION',
+  'MAKE_ORDER_WEBHOOK',
+  'UNKNOWN'
+]);
+
+export const RECOGNIZED_ORDER_STATUSES = new Set([
+  'جديد',
+  'قيد التجهيز',
+  'تم التواصل',
+  'تم الشحن',
+  'جاري الشحن',
+  'تم التوصيل',
+  'مكتمل',
+  'ملغي'
+]);
+
+export const SAFE_OUTBOX_DIAGNOSTIC_CODES = new Set([
+  'PROCESSING_LEASE_EXPIRED',
+  'LEGACY_PROCESSING_STALE',
+  'MISSING_OR_INVALID_PROCESSING_TIMESTAMP',
+  'RECONCILE_UNAVAILABLE',
+  'RECONCILE_TRANSACTION_FAILED',
+  'OUTBOX_FINALIZE_FAILED',
+  'OUTBOX_CLAIM_OWNERSHIP_MISMATCH',
+  'OUTBOX_STORE_UNAVAILABLE'
+]);
+
+export const SAFE_OUTBOX_ERROR_CODES = new Set([
+  'NETWORK_TIMEOUT',
+  'NETWORK_ERROR',
+  'RELAY_CONFIG_MISSING',
+  'RELAY_DISABLED',
+  'RELAY_DOWN',
+  'RELAY_ERROR',
+  'TELEGRAM_DISPATCH_FAILED',
+  'TELEGRAM_EXCEPTION',
+  'TELEGRAM_CONFIG_MISSING',
+  'PROCESSING_LEASE_EXPIRED',
+  'LEGACY_PROCESSING_STALE',
+  'MISSING_OR_INVALID_PROCESSING_TIMESTAMP',
+  'RECONCILE_UNAVAILABLE',
+  'RECONCILE_TRANSACTION_FAILED',
+  'OUTBOX_FINALIZE_FAILED',
+  'OUTBOX_STORE_UNAVAILABLE',
+  'OUTBOX_CLAIM_NOT_COMMITTED',
+  'OUTBOX_CLAIM_OWNERSHIP_MISMATCH',
+  'INVALID_NOTIFICATION_IDENTITY',
+  'INVOICE_TOKEN_ERROR',
+  'ORDER_DELETED',
+  'UNSPECIFIED_ERROR'
+]);
+
+export const RECOGNIZED_PROVIDER_OUTCOMES = new Set<string>([
+  'accepted',
+  'rejected',
+  'timeout',
+  'ambiguous',
+  'skipped',
+  'not_attempted',
+  'unknown'
+]);
+
+export const RECOGNIZED_PERSISTENCE_OUTCOMES = new Set<string>([
+  'committed',
+  'finalization_failed',
+  'claim_unavailable',
+  'claim_blocked',
+  'order_deleted',
+  'ownership_mismatch',
+  'identity_mismatch',
+  'intentionally_disabled',
+  'not_attempted'
+]);
+
+const EMAIL_STATUS_SLUGS = new Set(['new', 'processing', 'shipped', 'delivered', 'cancelled']);
 
 export interface OutboxClaimResult {
   claimed: boolean;
@@ -34,9 +154,26 @@ export interface OutboxClaimResult {
     | 'SKIPPED'
     | 'FAILED_BLOCKED'
     | 'ORDER_DELETED'
+    | 'STORE_UNAVAILABLE'
+    | 'NOT_COMMITTED'
+    | 'OWNERSHIP_MISMATCH'
+    | 'IDENTITY_MISMATCH'
     | 'CLAIM_ERROR';
   status: OutboxNotificationStatus | string;
   record?: Record<string, any> | null;
+}
+
+export interface OutboxFinalizeResult {
+  finalized: boolean;
+  status?: string;
+  reason?:
+    | 'STORE_UNAVAILABLE'
+    | 'ORDER_DELETED'
+    | 'OWNERSHIP_MISMATCH'
+    | 'STATE_CHANGED'
+    | 'NOT_FOUND'
+    | 'NOT_COMMITTED'
+    | 'FINALIZE_TRANSACTION_ERROR';
 }
 
 export interface OutboxLeaseInspectionResult {
@@ -70,6 +207,223 @@ export interface OutboxReconcileResult {
 
 function isPlainObject(val: unknown): val is Record<string, any> {
   return Boolean(val) && typeof val === 'object' && !Array.isArray(val);
+}
+
+export function isValidFirebaseOutboxKey(raw: unknown, maxLen = 180): raw is string {
+  if (typeof raw !== 'string') return false;
+  if (raw.length === 0 || raw.length > maxLen) return false;
+  if (raw.trim() !== raw) return false;
+  if (/[.#$\[\]/]/.test(raw)) return false;
+  if (/[\u0000-\u001f\u007f]/.test(raw)) return false;
+  return true;
+}
+
+export function sanitizeOutboxErrorCode(rawError: unknown): string | null {
+  if (rawError === undefined || rawError === null) return null;
+  if (typeof rawError !== 'string') return 'UNSPECIFIED_ERROR';
+  const trimmed = rawError.trim();
+  if (!trimmed) return null;
+  if (SAFE_OUTBOX_ERROR_CODES.has(trimmed)) return trimmed;
+  if (/^HTTP_[1-5]\d{2}$/.test(trimmed)) return trimmed;
+  return 'UNSPECIFIED_ERROR';
+}
+
+export function sanitizeOutboxIsoTimestamp(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null;
+  const trimmed = raw.trim();
+  if (!trimmed || trimmed.length > 64) return null;
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(trimmed)) return null;
+  const parsed = Date.parse(trimmed);
+  if (!Number.isFinite(parsed)) return null;
+  return new Date(parsed).toISOString();
+}
+
+export function isDeterministicOutboxIdForOrder(
+  notificationId: string,
+  orderId: string,
+  channel: string,
+  eventType?: unknown
+): boolean {
+  if (!isValidFirebaseOutboxKey(notificationId) || !isValidFirebaseOutboxKey(orderId, 128)) {
+    return false;
+  }
+  if (!RECOGNIZED_OUTBOX_CHANNELS.has(channel)) {
+    return false;
+  }
+  if (channel === 'telegram') {
+    if (notificationId !== getTelegramOutboxId(orderId)) return false;
+    if (eventType !== undefined && eventType !== null && eventType !== '') {
+      return eventType === 'TELEGRAM_ORDER_NOTIFICATION';
+    }
+    return true;
+  }
+  if (channel === 'make') {
+    if (notificationId !== getMakeOutboxId(orderId)) return false;
+    if (eventType !== undefined && eventType !== null && eventType !== '') {
+      return eventType === 'MAKE_ORDER_WEBHOOK';
+    }
+    return true;
+  }
+  // channel === 'email'
+  const confirmationId = getConfirmationOutboxId(orderId);
+  if (notificationId === confirmationId) {
+    if (eventType !== undefined && eventType !== null && eventType !== '') {
+      return eventType === 'ORDER_CONFIRMATION' || eventType === 'ORDER_STATUS_CHANGED';
+    }
+    return true;
+  }
+  const statusPrefix = `notif_order_${orderId}_status_`;
+  if (notificationId.startsWith(statusPrefix)) {
+    const slug = notificationId.slice(statusPrefix.length);
+    if (!EMAIL_STATUS_SLUGS.has(slug)) return false;
+    if (eventType !== undefined && eventType !== null && eventType !== '') {
+      return eventType === 'ORDER_STATUS_CHANGED' || eventType === 'ORDER_CONFIRMATION';
+    }
+    return true;
+  }
+  return false;
+}
+
+export function isCleanLegacyPendingOutboxRecord(rec: Record<string, any>): boolean {
+  if (!isPlainObject(rec)) return false;
+  if (rec.status !== undefined && rec.status !== null && rec.status !== '') return false;
+  if (
+    rec.claimId !== undefined ||
+    rec.processingStartedAt !== undefined ||
+    rec.processingLeaseExpiresAt !== undefined ||
+    rec.staleProcessingDetectedAt !== undefined ||
+    rec.staleDiagnosticCode !== undefined ||
+    rec.manualReviewRequired === true ||
+    rec.cancelledAt !== undefined ||
+    rec.orderDeletedAt !== undefined ||
+    (rec.error !== undefined && rec.error !== null && rec.error !== '') ||
+    rec.outboxFinalized !== undefined ||
+    rec.providerOutcome !== undefined ||
+    rec.persistenceOutcome !== undefined
+  ) {
+    return false;
+  }
+  if (rec.attempts !== undefined && rec.attempts !== null) {
+    const n = Number(rec.attempts);
+    if (!Number.isFinite(n) || n !== 0) return false;
+  }
+  return true;
+}
+
+export function validateOutboxRecordForRecovery(
+  recordKey: string,
+  rawRec: unknown,
+  expectedOrderId: string
+):
+  | {
+      ok: true;
+      canonicalNotificationId: string;
+      channel: 'email' | 'telegram' | 'make';
+      status: OutboxNotificationStatus;
+      isLegacyMissingStatus: boolean;
+      record: Record<string, any>;
+    }
+  | {
+      ok: false;
+      reason: string;
+      canonicalNotificationId: string;
+      channel: string;
+      status: OutboxNotificationStatus;
+    } {
+  const validKey = isValidFirebaseOutboxKey(recordKey);
+  const canonicalNotificationId = validKey ? recordKey : '';
+  const safeChannel =
+    isPlainObject(rawRec) && typeof rawRec.channel === 'string' && RECOGNIZED_OUTBOX_CHANNELS.has(rawRec.channel)
+      ? rawRec.channel
+      : 'unknown';
+
+  if (!validKey || !isPlainObject(rawRec)) {
+    return {
+      ok: false,
+      reason: 'MALFORMED_OUTBOX_RECORD',
+      canonicalNotificationId,
+      channel: safeChannel,
+      status: 'unknown'
+    };
+  }
+
+  if (typeof rawRec.orderId !== 'string' || rawRec.orderId !== expectedOrderId) {
+    return {
+      ok: false,
+      reason: 'ORDER_ID_MISMATCH',
+      canonicalNotificationId,
+      channel: safeChannel,
+      status: 'unknown'
+    };
+  }
+
+  if (rawRec.notificationId !== undefined && rawRec.notificationId !== null) {
+    if (typeof rawRec.notificationId !== 'string' || rawRec.notificationId.trim() !== recordKey) {
+      return {
+        ok: false,
+        reason: 'NOTIFICATION_ID_MISMATCH',
+        canonicalNotificationId,
+        channel: safeChannel,
+        status: 'unknown'
+      };
+    }
+  }
+
+  if (typeof rawRec.channel !== 'string' || !RECOGNIZED_OUTBOX_CHANNELS.has(rawRec.channel)) {
+    return {
+      ok: false,
+      reason: 'UNRECOGNIZED_CHANNEL',
+      canonicalNotificationId,
+      channel: 'unknown',
+      status: 'unknown'
+    };
+  }
+
+  if (!isDeterministicOutboxIdForOrder(recordKey, expectedOrderId, rawRec.channel, rawRec.eventType)) {
+    return {
+      ok: false,
+      reason: 'NON_DETERMINISTIC_NOTIFICATION_ID',
+      canonicalNotificationId,
+      channel: rawRec.channel,
+      status: 'unknown'
+    };
+  }
+
+  let resolvedStatus: OutboxNotificationStatus;
+  let isLegacyMissingStatus = false;
+
+  if (rawRec.status === undefined || rawRec.status === null || rawRec.status === '') {
+    if (!isCleanLegacyPendingOutboxRecord(rawRec)) {
+      return {
+        ok: false,
+        reason: 'INVALID_OR_CORRUPTED_STATUS',
+        canonicalNotificationId,
+        channel: rawRec.channel,
+        status: 'unknown'
+      };
+    }
+    resolvedStatus = 'pending';
+    isLegacyMissingStatus = true;
+  } else if (typeof rawRec.status === 'string' && RECOGNIZED_OUTBOX_STATUSES.has(rawRec.status)) {
+    resolvedStatus = rawRec.status as OutboxNotificationStatus;
+  } else {
+    return {
+      ok: false,
+      reason: 'INVALID_OR_CORRUPTED_STATUS',
+      canonicalNotificationId,
+      channel: rawRec.channel,
+      status: 'unknown'
+    };
+  }
+
+  return {
+    ok: true,
+    canonicalNotificationId,
+    channel: rawRec.channel as 'email' | 'telegram' | 'make',
+    status: resolvedStatus,
+    isLegacyMissingStatus,
+    record: rawRec
+  };
 }
 
 function resolveNowMs(nowMs?: number, getNowMs?: () => number): number {
@@ -268,6 +622,15 @@ export async function claimOutboxNotification(params: {
     hasValidEmail = true
   } = params;
 
+  if (!isValidFirebaseOutboxKey(notificationId)) {
+    return {
+      claimed: false,
+      reason: 'IDENTITY_MISMATCH',
+      status: 'unavailable',
+      record: null
+    };
+  }
+
   const targetOrderId =
     typeof orderId === 'string' && orderId.trim()
       ? orderId.trim()
@@ -277,10 +640,10 @@ export async function claimOutboxNotification(params: {
 
   if (!adminDb || typeof adminDb.ref !== 'function') {
     return {
-      claimed: true,
-      claimId: `mem_${crypto.randomUUID()}`,
-      status: 'processing',
-      record: initialRecord || null
+      claimed: false,
+      reason: 'STORE_UNAVAILABLE',
+      status: 'unavailable',
+      record: null
     };
   }
 
@@ -305,7 +668,7 @@ export async function claimOutboxNotification(params: {
       return {
         claimed: false,
         reason: 'CLAIM_ERROR',
-        status: 'unknown',
+        status: 'unavailable',
         record: null
       };
     }
@@ -318,12 +681,12 @@ export async function claimOutboxNotification(params: {
   const nowIso = new Date(claimNowMs).toISOString();
   const processingLeaseExpiresAt = new Date(claimNowMs + effectiveLeaseMs).toISOString();
 
-  if (typeof outboxRef.transaction !== 'function') {
+  if (!outboxRef || typeof outboxRef.transaction !== 'function') {
     return {
-      claimed: true,
-      claimId,
-      status: 'processing',
-      record: initialRecord || null
+      claimed: false,
+      reason: 'STORE_UNAVAILABLE',
+      status: 'unavailable',
+      record: null
     };
   }
 
@@ -363,7 +726,36 @@ export async function claimOutboxNotification(params: {
         };
       }
 
-      const st = String(current.status || 'pending');
+      if (
+        targetOrderId &&
+        typeof current.orderId === 'string' &&
+        current.orderId.trim() &&
+        current.orderId.trim() !== targetOrderId
+      ) {
+        blockedReason = 'IDENTITY_MISMATCH';
+        return undefined;
+      }
+
+      if (
+        typeof current.notificationId === 'string' &&
+        current.notificationId.trim() &&
+        current.notificationId.trim() !== notificationId
+      ) {
+        blockedReason = 'IDENTITY_MISMATCH';
+        return undefined;
+      }
+
+      const rawSt = current.status;
+      if (rawSt !== undefined && rawSt !== null && rawSt !== '' && (typeof rawSt !== 'string' || !RECOGNIZED_OUTBOX_STATUSES.has(rawSt))) {
+        blockedReason = 'AMBIGUOUS_UNKNOWN';
+        return undefined;
+      }
+      if ((rawSt === undefined || rawSt === null || rawSt === '') && !isCleanLegacyPendingOutboxRecord(current)) {
+        blockedReason = 'AMBIGUOUS_UNKNOWN';
+        return undefined;
+      }
+
+      const st = String(rawSt || 'pending');
       previousStatusBeforeClaim = st;
 
       if (st === 'accepted_by_mailapp' || st === 'sent') {
@@ -374,11 +766,11 @@ export async function claimOutboxNotification(params: {
         blockedReason = 'IN_FLIGHT';
         return undefined;
       }
-      if (st === 'unknown') {
+      if (st === 'unknown' || st === 'unfinalized' || st === 'unavailable') {
         blockedReason = 'AMBIGUOUS_UNKNOWN';
         return undefined;
       }
-      if (st === 'skipped_not_configured') {
+      if (st === 'skipped_not_configured' || st === 'skipped_intentionally_disabled') {
         blockedReason = 'SKIPPED';
         return undefined;
       }
@@ -415,6 +807,7 @@ export async function claimOutboxNotification(params: {
               eventType: current.eventType || initialRecord.eventType
             }
           : {}),
+        notificationId,
         status: 'processing',
         claimId,
         processingStartedAt: nowIso,
@@ -425,16 +818,28 @@ export async function claimOutboxNotification(params: {
 
     const val = tx?.snapshot?.val?.() ?? null;
 
-    if (skippedNoEmail || val?.status === 'skipped_no_valid_email') {
+    if (
+      (tx?.committed && skippedNoEmail && isPlainObject(val) && val.status === 'skipped_no_valid_email') ||
+      blockedReason === 'SKIPPED'
+    ) {
       return {
         claimed: false,
         reason: 'SKIPPED',
-        status: 'skipped_no_valid_email',
+        status: isPlainObject(val) && val.status ? String(val.status) : 'skipped_no_valid_email',
         record: val
       };
     }
 
-    if (tx?.committed && isPlainObject(val) && val.status === 'processing' && val.claimId === claimId) {
+    if (tx?.committed && isPlainObject(val) && val.status === 'processing') {
+      if (val.claimId !== claimId) {
+        return {
+          claimed: false,
+          reason: 'OWNERSHIP_MISMATCH',
+          status: 'processing',
+          record: val
+        };
+      }
+
       // Post-claim fencing check before handing control to external dispatch:
       // If the order entered DELETING / DELETED concurrently just before dispatch,
       // cancel cleanly (no external dispatch ever occurred) and abort.
@@ -490,7 +895,7 @@ export async function claimOutboxNotification(params: {
           return {
             claimed: false,
             reason: 'CLAIM_ERROR',
-            status: 'unknown',
+            status: 'unavailable',
             record: null
           };
         }
@@ -504,7 +909,7 @@ export async function claimOutboxNotification(params: {
       };
     }
 
-    const currentStatus = String(val?.status || '');
+    const currentStatus = isPlainObject(val) && val.status ? String(val.status) : '';
     const resolvedReason: OutboxClaimResult['reason'] =
       blockedReason ||
       (currentStatus === 'accepted_by_mailapp' || currentStatus === 'sent'
@@ -518,12 +923,15 @@ export async function claimOutboxNotification(params: {
               ? 'ORDER_DELETED'
               : currentStatus === 'failed'
                 ? 'FAILED_BLOCKED'
-                : 'IN_FLIGHT');
+                : 'NOT_COMMITTED');
 
     return {
       claimed: false,
       reason: resolvedReason,
-      status: currentStatus || 'unknown',
+      status:
+        resolvedReason === 'NOT_COMMITTED'
+          ? 'unavailable'
+          : currentStatus || 'unavailable',
       record: val
     };
   } catch (err: any) {
@@ -534,7 +942,7 @@ export async function claimOutboxNotification(params: {
     return {
       claimed: false,
       reason: 'CLAIM_ERROR',
-      status: 'unknown',
+      status: 'unavailable',
       record: null
     };
   }
@@ -555,31 +963,53 @@ export async function finalizeOutboxNotification(params: {
   extra?: Record<string, any>;
   nowMs?: number;
   getNowMs?: () => number;
-}): Promise<{ finalized: boolean; status?: string }> {
+}): Promise<OutboxFinalizeResult> {
   const { adminDb, notificationId, claimId, status, error = null, message = null, extra = {} } = params;
-  if (!adminDb || typeof adminDb.ref !== 'function') {
-    return { finalized: false };
+  if (!adminDb || typeof adminDb.ref !== 'function' || !isValidFirebaseOutboxKey(notificationId)) {
+    return { finalized: false, reason: 'STORE_UNAVAILABLE' };
+  }
+  if (!claimId || typeof claimId !== 'string') {
+    return { finalized: false, reason: 'OWNERSHIP_MISMATCH' };
+  }
+  if (status === 'pending' || status === 'processing') {
+    return { finalized: false, reason: 'STATE_CHANGED' };
   }
 
   try {
     const outboxRef = adminDb.ref(`notifications_outbox/${notificationId}`);
-    if (typeof outboxRef.transaction !== 'function') {
-      return { finalized: false };
+    if (!outboxRef || typeof outboxRef.transaction !== 'function') {
+      return { finalized: false, reason: 'STORE_UNAVAILABLE' };
     }
 
+    let abortReason: OutboxFinalizeResult['reason'] | undefined;
     const nowIso = new Date(resolveNowMs(params.nowMs, params.getNowMs)).toISOString();
+    const safeError = sanitizeOutboxErrorCode(error);
+
     const tx = await outboxRef.transaction((current: any) => {
-      if (!isPlainObject(current)) return undefined;
+      abortReason = undefined;
+      if (!isPlainObject(current)) {
+        abortReason = 'NOT_FOUND';
+        return undefined;
+      }
       if (
         current.status === 'cancelled_order_deleted' ||
         current.status === 'unknown_deleted_during_dispatch'
       ) {
+        abortReason = 'ORDER_DELETED';
         return undefined;
       }
-      if (current.status !== 'processing') return undefined;
-      if (!current.claimId || current.claimId !== claimId) return undefined;
+      if (current.status !== 'processing') {
+        abortReason = 'STATE_CHANGED';
+        return undefined;
+      }
+      if (!current.claimId || current.claimId !== claimId) {
+        abortReason = 'OWNERSHIP_MISMATCH';
+        return undefined;
+      }
 
-      const nextAttempts = (Number(current.attempts) || 0) + (status === 'skipped_not_configured' ? 0 : 1);
+      const nextAttempts =
+        (Number(current.attempts) || 0) +
+        (status === 'skipped_not_configured' || status === 'skipped_intentionally_disabled' ? 0 : 1);
       const {
         claimId: _clearedClaim,
         processingStartedAt: _clearedStart,
@@ -592,22 +1022,36 @@ export async function finalizeOutboxNotification(params: {
         status,
         attempts: nextAttempts,
         lastAttemptAt: nowIso,
-        error,
+        error: safeError,
         message
       };
     });
 
     const finalSnapVal = tx?.snapshot?.val?.() ?? null;
+    const snapStatus = isPlainObject(finalSnapVal) && finalSnapVal.status ? String(finalSnapVal.status) : undefined;
+    const committedExpected = Boolean(tx?.committed) && snapStatus === status;
+
+    if (!committedExpected) {
+      return {
+        finalized: false,
+        status: snapStatus,
+        reason: abortReason || 'NOT_COMMITTED'
+      };
+    }
+
     return {
-      finalized: Boolean(tx?.committed),
-      status: isPlainObject(finalSnapVal) ? String(finalSnapVal.status || '') : undefined
+      finalized: true,
+      status: snapStatus
     };
   } catch (err: any) {
     console.warn(
       `[NotificationsOutbox] Finalize transaction error for ${notificationId}:`,
       err?.code || err?.message || 'finalize_error'
     );
-    return { finalized: false };
+    return {
+      finalized: false,
+      reason: 'FINALIZE_TRANSACTION_ERROR'
+    };
   }
 }
 
@@ -815,6 +1259,68 @@ export async function reconcileStaleOutboxNotification(params: {
   }
 }
 
+function deriveUnclaimedOutcomes(claim: OutboxClaimResult): {
+  providerOutcome: OutboxProviderOutcome;
+  persistenceOutcome: OutboxPersistenceOutcome;
+  outboxFinalized: boolean;
+} {
+  if (claim.reason === 'ALREADY_SENT') {
+    return {
+      providerOutcome: 'accepted',
+      persistenceOutcome: 'committed',
+      outboxFinalized: true
+    };
+  }
+  if (claim.reason === 'ORDER_DELETED') {
+    return {
+      providerOutcome: 'skipped',
+      persistenceOutcome: 'order_deleted',
+      outboxFinalized: false
+    };
+  }
+  if (claim.reason === 'SKIPPED') {
+    return {
+      providerOutcome: 'skipped',
+      persistenceOutcome:
+        claim.status === 'skipped_intentionally_disabled' ? 'intentionally_disabled' : 'committed',
+      outboxFinalized: claim.status !== 'skipped_intentionally_disabled'
+    };
+  }
+  if (claim.reason === 'STORE_UNAVAILABLE' || claim.reason === 'CLAIM_ERROR' || claim.reason === 'NOT_COMMITTED') {
+    return {
+      providerOutcome: 'not_attempted',
+      persistenceOutcome: 'claim_unavailable',
+      outboxFinalized: false
+    };
+  }
+  if (claim.reason === 'OWNERSHIP_MISMATCH') {
+    return {
+      providerOutcome: 'not_attempted',
+      persistenceOutcome: 'ownership_mismatch',
+      outboxFinalized: false
+    };
+  }
+  if (claim.reason === 'IDENTITY_MISMATCH') {
+    return {
+      providerOutcome: 'not_attempted',
+      persistenceOutcome: 'identity_mismatch',
+      outboxFinalized: false
+    };
+  }
+  if (claim.reason === 'AMBIGUOUS_UNKNOWN') {
+    return {
+      providerOutcome: 'ambiguous',
+      persistenceOutcome: 'claim_blocked',
+      outboxFinalized: false
+    };
+  }
+  return {
+    providerOutcome: 'not_attempted',
+    persistenceOutcome: 'claim_blocked',
+    outboxFinalized: false
+  };
+}
+
 /**
  * Safely dispatches Telegram order notification backed by fixed-ID Outbox fencing.
  * Never throws synchronously or rejects.
@@ -828,7 +1334,16 @@ export async function dispatchTelegramOutboxNotification(params: {
   nowMs?: number;
   getNowMs?: () => number;
   leaseMs?: number;
-}): Promise<{ status: string; claimed: boolean; message?: string }> {
+}): Promise<{
+  status: string;
+  claimed: boolean;
+  message?: string;
+  providerOutcome?: OutboxProviderOutcome;
+  providerStatus?: string;
+  outboxFinalized?: boolean;
+  persistenceOutcome?: OutboxPersistenceOutcome;
+  outboxStatus?: string;
+}> {
   const {
     orderId,
     orderData,
@@ -866,19 +1381,27 @@ export async function dispatchTelegramOutboxNotification(params: {
     });
 
     if (!claim.claimed || !claim.claimId) {
+      const outcomes = deriveUnclaimedOutcomes(claim);
       return {
         claimed: false,
         status: claim.status,
+        outboxStatus: claim.status,
+        providerOutcome: outcomes.providerOutcome,
+        outboxFinalized: outcomes.outboxFinalized,
+        persistenceOutcome: outcomes.persistenceOutcome,
         message:
           claim.reason === 'ORDER_DELETED'
             ? 'Telegram notification skipped because order is being deleted or deleted'
-            : 'Telegram notification already handled or in progress'
+            : claim.reason === 'STORE_UNAVAILABLE' || claim.reason === 'CLAIM_ERROR' || claim.reason === 'NOT_COMMITTED'
+              ? 'Telegram notification blocked because outbox claim store is unavailable'
+              : 'Telegram notification already handled or in progress'
       };
     }
 
     let finalStatus: OutboxNotificationStatus = 'failed';
     let finalError: string | null = null;
     let finalMessage: string | null = null;
+    let providerOutcome: OutboxProviderOutcome = 'rejected';
     const extra: Record<string, any> = {};
 
     try {
@@ -897,26 +1420,30 @@ export async function dispatchTelegramOutboxNotification(params: {
         (tgResult.success === true && tgResult.status !== 'PARTIAL_SUCCESS' && tgResult.status !== 'FAILURE')
       ) {
         finalStatus = 'sent';
+        providerOutcome = 'accepted';
         finalMessage = 'Telegram notification dispatched';
       } else if (tgResult.status === 'SIMULATED') {
         finalStatus = 'sent';
+        providerOutcome = 'accepted';
         extra.simulated = true;
-        finalMessage = tgResult.message || 'Telegram notification simulated (not configured)';
+        finalMessage = 'Telegram notification simulated (not configured)';
       } else {
         const hasTimeout =
           Array.isArray(tgResult.results) &&
           tgResult.results.some((r: any) => r?.error?.code === 'NETWORK_TIMEOUT' || r?.error?.code === 'TIMEOUT');
         if (tgResult.anySuccessful === true || tgResult.status === 'PARTIAL_SUCCESS' || hasTimeout) {
           finalStatus = 'unknown';
-          finalError = hasTimeout ? 'NETWORK_TIMEOUT' : 'PARTIAL_DELIVERY_UNKNOWN';
+          providerOutcome = hasTimeout ? 'timeout' : 'ambiguous';
+          finalError = hasTimeout ? 'NETWORK_TIMEOUT' : 'TELEGRAM_DISPATCH_FAILED';
           finalMessage = 'Telegram delivery outcome is partial or ambiguous after timeout';
         } else {
           finalStatus = 'failed';
+          providerOutcome = 'rejected';
           const firstErr = Array.isArray(tgResult.results)
             ? tgResult.results.find((r: any) => !r?.success)?.error
             : null;
-          finalError = firstErr?.code || 'TELEGRAM_DISPATCH_FAILED';
-          finalMessage = firstErr?.description || 'Telegram notification delivery failed';
+          finalError = sanitizeOutboxErrorCode(firstErr?.code) || 'TELEGRAM_DISPATCH_FAILED';
+          finalMessage = 'Telegram notification delivery failed';
         }
       }
     } catch (tgErr: any) {
@@ -928,10 +1455,14 @@ export async function dispatchTelegramOutboxNotification(params: {
         errMsg.toLowerCase().includes('aborted');
 
       finalStatus = isTimeout ? 'unknown' : 'failed';
+      providerOutcome = isTimeout ? 'timeout' : 'rejected';
       finalError = isTimeout ? 'NETWORK_TIMEOUT' : 'TELEGRAM_EXCEPTION';
-      finalMessage = errMsg;
+      finalMessage = isTimeout ? 'Telegram request timed out' : 'Telegram notification dispatch threw exception';
       console.error('[CreateOrder] Telegram order notification failed (resilient):', errMsg);
     }
+
+    extra.providerOutcome = providerOutcome;
+    extra.persistenceOutcome = 'committed';
 
     const finRes = await finalizeOutboxNotification({
       adminDb,
@@ -945,14 +1476,51 @@ export async function dispatchTelegramOutboxNotification(params: {
       getNowMs
     });
 
+    if (finRes.finalized) {
+      return {
+        claimed: true,
+        status: finalStatus,
+        outboxStatus: finalStatus,
+        providerOutcome,
+        providerStatus: finalStatus,
+        outboxFinalized: true,
+        persistenceOutcome: 'committed',
+        message: finalMessage || undefined
+      };
+    }
+
+    const isDeleted =
+      finRes.status === 'cancelled_order_deleted' ||
+      finRes.status === 'unknown_deleted_during_dispatch';
+    const persistenceOutcome: OutboxPersistenceOutcome = isDeleted
+      ? 'order_deleted'
+      : finRes.reason === 'OWNERSHIP_MISMATCH'
+        ? 'ownership_mismatch'
+        : 'finalization_failed';
+
     return {
       claimed: true,
-      status: finRes.finalized ? finalStatus : finRes.status || finalStatus,
-      message: finalMessage || undefined
+      status: isDeleted ? finRes.status! : 'unfinalized',
+      outboxStatus: finRes.status || 'processing',
+      providerOutcome,
+      providerStatus: finalStatus,
+      outboxFinalized: false,
+      persistenceOutcome,
+      message: isDeleted
+        ? 'Order deleted during Telegram notification dispatch'
+        : 'Telegram dispatch completed but outbox finalization failed'
     };
   } catch (outerErr: any) {
     console.error('[NotificationsOutbox] Unexpected Telegram outbox error (isolated):', outerErr?.message || outerErr);
-    return { claimed: false, status: 'failed', message: outerErr?.message || 'telegram_outbox_error' };
+    return {
+      claimed: false,
+      status: 'unavailable',
+      outboxStatus: 'unavailable',
+      providerOutcome: 'not_attempted',
+      outboxFinalized: false,
+      persistenceOutcome: 'claim_unavailable',
+      message: 'Unexpected Telegram outbox error'
+    };
   }
 }
 
@@ -971,7 +1539,16 @@ export async function dispatchMakeWebhookOutboxNotification(params: {
   nowMs?: number;
   getNowMs?: () => number;
   leaseMs?: number;
-}): Promise<{ status: string; claimed: boolean; message?: string }> {
+}): Promise<{
+  status: string;
+  claimed: boolean;
+  message?: string;
+  providerOutcome?: OutboxProviderOutcome;
+  providerStatus?: string;
+  outboxFinalized?: boolean;
+  persistenceOutcome?: OutboxPersistenceOutcome;
+  outboxStatus?: string;
+}> {
   const {
     orderId,
     orderData,
@@ -1010,13 +1587,20 @@ export async function dispatchMakeWebhookOutboxNotification(params: {
     });
 
     if (!claim.claimed || !claim.claimId) {
+      const outcomes = deriveUnclaimedOutcomes(claim);
       return {
         claimed: false,
         status: claim.status,
+        outboxStatus: claim.status,
+        providerOutcome: outcomes.providerOutcome,
+        outboxFinalized: outcomes.outboxFinalized,
+        persistenceOutcome: outcomes.persistenceOutcome,
         message:
           claim.reason === 'ORDER_DELETED'
             ? 'Make webhook skipped because order is being deleted or deleted'
-            : 'Make webhook already handled or in progress'
+            : claim.reason === 'STORE_UNAVAILABLE' || claim.reason === 'CLAIM_ERROR' || claim.reason === 'NOT_COMMITTED'
+              ? 'Make webhook blocked because outbox claim store is unavailable'
+              : 'Make webhook already handled or in progress'
       };
     }
 
@@ -1028,12 +1612,35 @@ export async function dispatchMakeWebhookOutboxNotification(params: {
         status: 'skipped_not_configured',
         error: null,
         message: 'MAKE_WEBHOOK_URL is not configured',
+        extra: {
+          providerOutcome: 'skipped',
+          persistenceOutcome: 'committed'
+        },
         nowMs,
         getNowMs
       });
+      if (finSkipped.finalized) {
+        return {
+          claimed: true,
+          status: 'skipped_not_configured',
+          outboxStatus: 'skipped_not_configured',
+          providerOutcome: 'skipped',
+          providerStatus: 'skipped_not_configured',
+          outboxFinalized: true,
+          persistenceOutcome: 'committed'
+        };
+      }
+      const isDeleted =
+        finSkipped.status === 'cancelled_order_deleted' ||
+        finSkipped.status === 'unknown_deleted_during_dispatch';
       return {
         claimed: true,
-        status: finSkipped.finalized ? 'skipped_not_configured' : finSkipped.status || 'skipped_not_configured'
+        status: isDeleted ? finSkipped.status! : 'unfinalized',
+        outboxStatus: finSkipped.status || 'processing',
+        providerOutcome: 'skipped',
+        providerStatus: 'skipped_not_configured',
+        outboxFinalized: false,
+        persistenceOutcome: isDeleted ? 'order_deleted' : 'finalization_failed'
       };
     }
 
@@ -1055,6 +1662,7 @@ export async function dispatchMakeWebhookOutboxNotification(params: {
     let finalStatus: OutboxNotificationStatus = 'failed';
     let finalError: string | null = null;
     let finalMessage: string | null = null;
+    let providerOutcome: OutboxProviderOutcome = 'rejected';
 
     try {
       const response = await Promise.resolve().then(() =>
@@ -1070,11 +1678,13 @@ export async function dispatchMakeWebhookOutboxNotification(params: {
 
       if (response && response.ok) {
         finalStatus = 'sent';
+        providerOutcome = 'accepted';
         finalMessage = `Make webhook accepted (HTTP ${response.status})`;
       } else {
         const httpStatus = response?.status ?? 'UNKNOWN';
         finalStatus = 'failed';
-        finalError = `HTTP_${httpStatus}`;
+        providerOutcome = 'rejected';
+        finalError = sanitizeOutboxErrorCode(`HTTP_${httpStatus}`) || 'NETWORK_ERROR';
         finalMessage = `Make webhook returned HTTP ${httpStatus}`;
       }
     } catch (whErr: any) {
@@ -1087,8 +1697,9 @@ export async function dispatchMakeWebhookOutboxNotification(params: {
         errMsg.toLowerCase().includes('timeout');
 
       finalStatus = isTimeout ? 'unknown' : 'failed';
+      providerOutcome = isTimeout ? 'timeout' : 'rejected';
       finalError = isTimeout ? 'NETWORK_TIMEOUT' : 'NETWORK_ERROR';
-      finalMessage = errMsg;
+      finalMessage = isTimeout ? 'Make webhook request timed out' : 'Make webhook network error';
       console.error('Make webhook sending failed (resilient):', errMsg);
     }
 
@@ -1099,43 +1710,193 @@ export async function dispatchMakeWebhookOutboxNotification(params: {
       status: finalStatus,
       error: finalError,
       message: finalMessage,
+      extra: {
+        providerOutcome,
+        persistenceOutcome: 'committed'
+      },
       nowMs,
       getNowMs
     });
 
+    if (finRes.finalized) {
+      return {
+        claimed: true,
+        status: finalStatus,
+        outboxStatus: finalStatus,
+        providerOutcome,
+        providerStatus: finalStatus,
+        outboxFinalized: true,
+        persistenceOutcome: 'committed',
+        message: finalMessage || undefined
+      };
+    }
+
+    const isDeleted =
+      finRes.status === 'cancelled_order_deleted' ||
+      finRes.status === 'unknown_deleted_during_dispatch';
+    const persistenceOutcome: OutboxPersistenceOutcome = isDeleted
+      ? 'order_deleted'
+      : finRes.reason === 'OWNERSHIP_MISMATCH'
+        ? 'ownership_mismatch'
+        : 'finalization_failed';
+
     return {
       claimed: true,
-      status: finRes.finalized ? finalStatus : finRes.status || finalStatus,
-      message: finalMessage || undefined
+      status: isDeleted ? finRes.status! : 'unfinalized',
+      outboxStatus: finRes.status || 'processing',
+      providerOutcome,
+      providerStatus: finalStatus,
+      outboxFinalized: false,
+      persistenceOutcome,
+      message: isDeleted
+        ? 'Order deleted during Make webhook dispatch'
+        : 'Make webhook completed but outbox finalization failed'
     };
   } catch (outerErr: any) {
     console.error('[NotificationsOutbox] Unexpected Make outbox error (isolated):', outerErr?.message || outerErr);
-    return { claimed: false, status: 'failed', message: outerErr?.message || 'make_outbox_error' };
+    return {
+      claimed: false,
+      status: 'unavailable',
+      outboxStatus: 'unavailable',
+      providerOutcome: 'not_attempted',
+      outboxFinalized: false,
+      persistenceOutcome: 'claim_unavailable',
+      message: 'Unexpected Make outbox error'
+    };
   }
 }
 
+function deriveSafePersistenceOutcome(
+  rec: Record<string, any>,
+  safeStatus: string
+): OutboxPersistenceOutcome {
+  if (
+    typeof rec.persistenceOutcome === 'string' &&
+    RECOGNIZED_PERSISTENCE_OUTCOMES.has(rec.persistenceOutcome)
+  ) {
+    return rec.persistenceOutcome as OutboxPersistenceOutcome;
+  }
+  if (safeStatus === 'skipped_intentionally_disabled') return 'intentionally_disabled';
+  if (safeStatus === 'cancelled_order_deleted' || safeStatus === 'unknown_deleted_during_dispatch') {
+    return 'order_deleted';
+  }
+  if (
+    safeStatus === 'accepted_by_mailapp' ||
+    safeStatus === 'sent' ||
+    safeStatus === 'failed' ||
+    safeStatus === 'unknown' ||
+    safeStatus === 'skipped_no_valid_email' ||
+    safeStatus === 'skipped_not_configured'
+  ) {
+    return 'committed';
+  }
+  if (safeStatus === 'unfinalized') return 'finalization_failed';
+  if (safeStatus === 'unavailable') return 'claim_unavailable';
+  return 'not_attempted';
+}
+
+function deriveSafeProviderOutcome(
+  rec: Record<string, any>,
+  safeStatus: string
+): OutboxProviderOutcome {
+  if (
+    typeof rec.providerOutcome === 'string' &&
+    RECOGNIZED_PROVIDER_OUTCOMES.has(rec.providerOutcome)
+  ) {
+    return rec.providerOutcome as OutboxProviderOutcome;
+  }
+  if (safeStatus === 'accepted_by_mailapp' || safeStatus === 'sent') return 'accepted';
+  if (safeStatus === 'failed') return 'rejected';
+  if (safeStatus === 'unknown') return 'ambiguous';
+  if (
+    safeStatus === 'skipped_no_valid_email' ||
+    safeStatus === 'skipped_not_configured' ||
+    safeStatus === 'skipped_intentionally_disabled' ||
+    safeStatus === 'cancelled_order_deleted'
+  ) {
+    return 'skipped';
+  }
+  return 'not_attempted';
+}
+
 /**
- * Strips customer PII, claim internals, payloads, and token artifacts from an outbox record
- * before exposing metadata to admin API consumers.
+ * Strips customer PII, raw provider errors/messages, claim internals, payloads, and token artifacts
+ * from an outbox record using strict allowlists before exposing metadata to admin API consumers.
  */
-export function sanitizeOutboxRecordForAdmin(rec: unknown): Record<string, any> | null {
+export function sanitizeOutboxRecordForAdmin(
+  rec: unknown,
+  fallbackRecordKey?: string
+): Record<string, any> | null {
   if (!isPlainObject(rec)) return null;
+
+  const rawId = typeof rec.notificationId === 'string' ? rec.notificationId.trim() : '';
+  const canonicalId =
+    fallbackRecordKey && isValidFirebaseOutboxKey(fallbackRecordKey)
+      ? fallbackRecordKey
+      : isValidFirebaseOutboxKey(rawId)
+        ? rawId
+        : '';
+
+  const safeOrderId = isValidFirebaseOutboxKey(rec.orderId, 128) ? rec.orderId : '';
+  const safeChannel =
+    typeof rec.channel === 'string' && RECOGNIZED_OUTBOX_CHANNELS.has(rec.channel)
+      ? rec.channel
+      : 'unknown';
+  const safeEventType =
+    typeof rec.eventType === 'string' && RECOGNIZED_OUTBOX_EVENT_TYPES.has(rec.eventType)
+      ? rec.eventType
+      : '';
+  const safeOrderStatus =
+    typeof rec.orderStatus === 'string' && RECOGNIZED_ORDER_STATUSES.has(rec.orderStatus)
+      ? rec.orderStatus
+      : undefined;
+  const safeStatus =
+    typeof rec.status === 'string' && RECOGNIZED_OUTBOX_STATUSES.has(rec.status)
+      ? rec.status
+      : 'unknown';
+
+  const parsedAttempts = Number(rec.attempts);
+  const safeAttempts = Number.isFinite(parsedAttempts)
+    ? Math.min(1000, Math.max(0, Math.trunc(parsedAttempts)))
+    : 0;
+
+  const safeDiagnosticCode =
+    typeof rec.staleDiagnosticCode === 'string' &&
+    SAFE_OUTBOX_DIAGNOSTIC_CODES.has(rec.staleDiagnosticCode)
+      ? rec.staleDiagnosticCode
+      : null;
+
+  const safeError = sanitizeOutboxErrorCode(rec.error);
+  const identityMismatch =
+    Boolean(fallbackRecordKey && rawId && isValidFirebaseOutboxKey(fallbackRecordKey) && rawId !== fallbackRecordKey);
+
+  const persistenceOutcome = identityMismatch
+    ? 'identity_mismatch'
+    : deriveSafePersistenceOutcome(rec, safeStatus);
+  const providerOutcome = deriveSafeProviderOutcome(rec, safeStatus);
+  const outboxFinalized =
+    typeof rec.outboxFinalized === 'boolean'
+      ? rec.outboxFinalized
+      : persistenceOutcome === 'committed';
+
   return {
-    notificationId: typeof rec.notificationId === 'string' ? rec.notificationId : '',
-    orderId: typeof rec.orderId === 'string' ? rec.orderId : '',
-    channel: typeof rec.channel === 'string' ? rec.channel : 'unknown',
-    eventType: typeof rec.eventType === 'string' ? rec.eventType : '',
-    orderStatus: typeof rec.orderStatus === 'string' ? rec.orderStatus : undefined,
-    status: typeof rec.status === 'string' ? rec.status : 'unknown',
-    attempts: Number(rec.attempts) || 0,
-    createdAt: typeof rec.createdAt === 'string' ? rec.createdAt : null,
-    lastAttemptAt: typeof rec.lastAttemptAt === 'string' ? rec.lastAttemptAt : null,
-    processingStartedAt: typeof rec.processingStartedAt === 'string' ? rec.processingStartedAt : null,
-    processingLeaseExpiresAt: typeof rec.processingLeaseExpiresAt === 'string' ? rec.processingLeaseExpiresAt : null,
-    staleProcessingDetectedAt: typeof rec.staleProcessingDetectedAt === 'string' ? rec.staleProcessingDetectedAt : null,
-    staleDiagnosticCode: typeof rec.staleDiagnosticCode === 'string' ? rec.staleDiagnosticCode : null,
-    manualReviewRequired: Boolean(rec.manualReviewRequired),
-    error: typeof rec.error === 'string' ? rec.error : null,
-    message: typeof rec.message === 'string' ? rec.message : null
+    notificationId: canonicalId,
+    orderId: safeOrderId,
+    channel: safeChannel,
+    eventType: safeEventType,
+    ...(safeOrderStatus !== undefined ? { orderStatus: safeOrderStatus } : {}),
+    status: safeStatus,
+    attempts: safeAttempts,
+    createdAt: sanitizeOutboxIsoTimestamp(rec.createdAt),
+    lastAttemptAt: sanitizeOutboxIsoTimestamp(rec.lastAttemptAt),
+    processingStartedAt: sanitizeOutboxIsoTimestamp(rec.processingStartedAt),
+    processingLeaseExpiresAt: sanitizeOutboxIsoTimestamp(rec.processingLeaseExpiresAt),
+    staleProcessingDetectedAt: sanitizeOutboxIsoTimestamp(rec.staleProcessingDetectedAt),
+    staleDiagnosticCode: safeDiagnosticCode,
+    manualReviewRequired: Boolean(rec.manualReviewRequired) || identityMismatch || safeStatus === 'unfinalized',
+    error: identityMismatch && !safeError ? 'INVALID_NOTIFICATION_IDENTITY' : safeError,
+    providerOutcome,
+    persistenceOutcome,
+    outboxFinalized
   };
 }

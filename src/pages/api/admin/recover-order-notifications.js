@@ -13,8 +13,9 @@ import { getOrCreateInvoiceToken } from '../../../utils/invoice-token.ts';
 import {
   reconcileStaleOutboxNotification,
   dispatchTelegramOutboxNotification,
-  dispatchMakeWebhookOutboxNotification,
-  sanitizeOutboxRecordForAdmin
+  sanitizeOutboxRecordForAdmin,
+  validateOutboxRecordForRecovery,
+  isValidFirebaseOutboxKey
 } from '../../../utils/notifications-outbox.ts';
 
 const MAX_OUTBOX_RECOVERY_RECORDS = 20;
@@ -244,9 +245,7 @@ export async function POST({ request, _deps = undefined }) {
     }
 
     const entries = isPlainObject(rawOutboxVal)
-      ? Object.entries(rawOutboxVal)
-          .filter(([, rec]) => isPlainObject(rec))
-          .slice(0, MAX_OUTBOX_RECOVERY_RECORDS)
+      ? Object.entries(rawOutboxVal).slice(0, MAX_OUTBOX_RECOVERY_RECORDS)
       : [];
 
     const summary = {
@@ -261,34 +260,189 @@ export async function POST({ request, _deps = undefined }) {
     const sendNotifFn = _deps?.sendOrderNotification || sendOrderNotification;
     const resolveTokenFn = _deps?.getOrCreateInvoiceToken || getOrCreateInvoiceToken;
     const dispatchTgFn = _deps?.dispatchTelegramOutboxNotification || dispatchTelegramOutboxNotification;
-    const dispatchMakeFn = _deps?.dispatchMakeWebhookOutboxNotification || dispatchMakeWebhookOutboxNotification;
 
     const settledResults = await Promise.allSettled(
       entries.map(async ([recordKey, rawRec]) => {
-        const notificationId =
-          typeof rawRec.notificationId === 'string' && rawRec.notificationId.trim()
-            ? rawRec.notificationId.trim()
-            : recordKey;
-        const channel = typeof rawRec.channel === 'string' ? rawRec.channel : 'unknown';
-        const status = String(rawRec.status || 'pending');
+        const validation = validateOutboxRecordForRecovery(recordKey, rawRec, orderId);
+        if (!validation.ok) {
+          return {
+            bucket: 'skipped',
+            notificationId: validation.canonicalNotificationId,
+            channel: validation.channel,
+            status: 'unknown',
+            error: 'INVALID_NOTIFICATION_IDENTITY',
+            manualReviewRequired: true,
+            providerOutcome: 'not_attempted',
+            outboxFinalized: false,
+            persistenceOutcome: 'identity_mismatch'
+          };
+        }
+
+        const { canonicalNotificationId: notificationId, channel, status, record: validRec } = validation;
+
+        // Owner business decision: Make.com is intentionally disabled and replaced by alternative email service.
+        // Never initiate Make requests or mutate historical Make DB records during recovery.
+        if (channel === 'make') {
+          if (status === 'processing') {
+            const recRes = await reconcileStaleOutboxNotification({
+              adminDb,
+              notificationId,
+              nowMs: resolveNowMs(),
+              getNowMs: _deps?.getNowMs,
+              leaseMs: _deps?.leaseMs,
+              legacyStaleMs: _deps?.legacyStaleMs
+            });
+
+            if (!recRes.ok) {
+              return {
+                bucket: 'failed',
+                notificationId,
+                channel,
+                status: 'unknown',
+                manualReviewRequired: true,
+                providerOutcome: 'not_attempted',
+                outboxFinalized: false,
+                persistenceOutcome: 'claim_unavailable'
+              };
+            }
+            if (recRes.outcome === 'RECONCILED_UNKNOWN') {
+              return {
+                bucket: 'reconciledUnknown',
+                notificationId,
+                channel,
+                status: 'unknown',
+                providerOutcome: 'ambiguous',
+                outboxFinalized: true,
+                persistenceOutcome: 'committed'
+              };
+            }
+            if (recRes.outcome === 'MANUAL_REVIEW_REQUIRED') {
+              return {
+                bucket: 'inFlight',
+                notificationId,
+                channel,
+                status: recRes.status || 'processing',
+                manualReviewRequired: true,
+                providerOutcome: 'not_attempted',
+                outboxFinalized: false,
+                persistenceOutcome: 'claim_blocked'
+              };
+            }
+            if (recRes.outcome === 'IN_FLIGHT') {
+              return {
+                bucket: 'inFlight',
+                notificationId,
+                channel,
+                status: 'processing',
+                providerOutcome: 'not_attempted',
+                outboxFinalized: false,
+                persistenceOutcome: 'claim_blocked'
+              };
+            }
+            if (recRes.outcome === 'ORDER_DELETED') {
+              return {
+                bucket: 'skipped',
+                notificationId,
+                channel,
+                status: recRes.status || 'cancelled_order_deleted',
+                providerOutcome: 'skipped',
+                outboxFinalized: false,
+                persistenceOutcome: 'order_deleted'
+              };
+            }
+          }
+
+          return {
+            bucket: 'skipped',
+            notificationId,
+            channel: 'make',
+            status: 'skipped_intentionally_disabled',
+            providerOutcome: 'skipped',
+            outboxFinalized: false,
+            persistenceOutcome: 'intentionally_disabled'
+          };
+        }
 
         if (status === 'accepted_by_mailapp' || status === 'sent') {
-          return { bucket: 'alreadyCompleted', notificationId, channel, status };
+          return {
+            bucket: 'alreadyCompleted',
+            notificationId,
+            channel,
+            status,
+            providerOutcome: 'accepted',
+            outboxFinalized: true,
+            persistenceOutcome: 'committed'
+          };
         }
 
         if (
           status === 'cancelled_order_deleted' ||
-          status === 'unknown_deleted_during_dispatch' ||
+          status === 'unknown_deleted_during_dispatch'
+        ) {
+          return {
+            bucket: 'skipped',
+            notificationId,
+            channel,
+            status,
+            providerOutcome: 'skipped',
+            outboxFinalized: false,
+            persistenceOutcome: 'order_deleted'
+          };
+        }
+
+        if (
           status === 'skipped_no_valid_email' ||
           status === 'skipped_not_configured' ||
-          status === 'unknown'
+          status === 'skipped_intentionally_disabled'
         ) {
-          return { bucket: 'skipped', notificationId, channel, status };
+          return {
+            bucket: 'skipped',
+            notificationId,
+            channel,
+            status,
+            providerOutcome: 'skipped',
+            outboxFinalized: status !== 'skipped_intentionally_disabled',
+            persistenceOutcome:
+              status === 'skipped_intentionally_disabled' ? 'intentionally_disabled' : 'committed'
+          };
+        }
+
+        if (status === 'unknown') {
+          return {
+            bucket: 'skipped',
+            notificationId,
+            channel,
+            status,
+            providerOutcome: 'ambiguous',
+            outboxFinalized: true,
+            persistenceOutcome: 'committed'
+          };
         }
 
         if (status === 'failed') {
           // Manual retry only — never auto-dispatch failed records during recovery
-          return { bucket: 'failed', notificationId, channel, status };
+          return {
+            bucket: 'failed',
+            notificationId,
+            channel,
+            status,
+            providerOutcome: 'rejected',
+            outboxFinalized: true,
+            persistenceOutcome: 'committed'
+          };
+        }
+
+        if (status === 'unfinalized' || status === 'unavailable') {
+          return {
+            bucket: 'failed',
+            notificationId,
+            channel,
+            status,
+            manualReviewRequired: true,
+            providerOutcome: status === 'unavailable' ? 'not_attempted' : 'unknown',
+            outboxFinalized: false,
+            persistenceOutcome: status === 'unavailable' ? 'claim_unavailable' : 'finalization_failed'
+          };
         }
 
         if (status === 'processing') {
@@ -307,11 +461,22 @@ export async function POST({ request, _deps = undefined }) {
               notificationId,
               channel,
               status: 'unknown',
-              manualReviewRequired: true
+              manualReviewRequired: true,
+              providerOutcome: 'not_attempted',
+              outboxFinalized: false,
+              persistenceOutcome: 'claim_unavailable'
             };
           }
           if (recRes.outcome === 'RECONCILED_UNKNOWN') {
-            return { bucket: 'reconciledUnknown', notificationId, channel, status: 'unknown' };
+            return {
+              bucket: 'reconciledUnknown',
+              notificationId,
+              channel,
+              status: 'unknown',
+              providerOutcome: 'ambiguous',
+              outboxFinalized: true,
+              persistenceOutcome: 'committed'
+            };
           }
           if (recRes.outcome === 'MANUAL_REVIEW_REQUIRED') {
             return {
@@ -319,26 +484,69 @@ export async function POST({ request, _deps = undefined }) {
               notificationId,
               channel,
               status: recRes.status || 'processing',
-              manualReviewRequired: true
+              manualReviewRequired: true,
+              providerOutcome: 'not_attempted',
+              outboxFinalized: false,
+              persistenceOutcome: 'claim_blocked'
             };
           }
           if (recRes.outcome === 'IN_FLIGHT') {
-            return { bucket: 'inFlight', notificationId, channel, status: 'processing' };
+            return {
+              bucket: 'inFlight',
+              notificationId,
+              channel,
+              status: 'processing',
+              providerOutcome: 'not_attempted',
+              outboxFinalized: false,
+              persistenceOutcome: 'claim_blocked'
+            };
           }
           if (recRes.outcome === 'ORDER_DELETED') {
-            return { bucket: 'skipped', notificationId, channel, status: recRes.status || 'cancelled_order_deleted' };
+            return {
+              bucket: 'skipped',
+              notificationId,
+              channel,
+              status: recRes.status || 'cancelled_order_deleted',
+              providerOutcome: 'skipped',
+              outboxFinalized: false,
+              persistenceOutcome: 'order_deleted'
+            };
           }
-          return { bucket: 'skipped', notificationId, channel, status: recRes.status || status };
+          return {
+            bucket: 'skipped',
+            notificationId,
+            channel,
+            status: recRes.status || status,
+            providerOutcome: 'not_attempted',
+            outboxFinalized: false,
+            persistenceOutcome: 'not_attempted'
+          };
         }
 
         if (status === 'pending') {
           // Re-check deletion tombstone right before dispatching this channel
           const preDispatchDel = await checkOrderDeletionState(adminDb, orderId);
           if (!preDispatchDel.ok) {
-            return { bucket: 'failed', notificationId, channel, status: 'unknown' };
+            return {
+              bucket: 'failed',
+              notificationId,
+              channel,
+              status: 'unavailable',
+              providerOutcome: 'not_attempted',
+              outboxFinalized: false,
+              persistenceOutcome: 'claim_unavailable'
+            };
           }
           if (preDispatchDel.deleted) {
-            return { bucket: 'skipped', notificationId, channel, status: 'cancelled_order_deleted' };
+            return {
+              bucket: 'skipped',
+              notificationId,
+              channel,
+              status: 'cancelled_order_deleted',
+              providerOutcome: 'skipped',
+              outboxFinalized: false,
+              persistenceOutcome: 'order_deleted'
+            };
           }
 
           if (channel === 'email') {
@@ -350,23 +558,48 @@ export async function POST({ request, _deps = undefined }) {
                 _deps?.encryptionKey !== undefined ? { encryptionKey: _deps.encryptionKey } : {}
               );
             } catch {
-              return { bucket: 'failed', notificationId, channel, status: 'failed' };
+              return {
+                bucket: 'failed',
+                notificationId,
+                channel,
+                status: 'failed',
+                error: 'INVOICE_TOKEN_ERROR',
+                providerOutcome: 'not_attempted',
+                outboxFinalized: false,
+                persistenceOutcome: 'not_attempted'
+              };
             }
 
             // Re-verify deletion state after async token lookup
             const postTokenDel = await checkOrderDeletionState(adminDb, orderId);
             if (!postTokenDel.ok) {
-              return { bucket: 'failed', notificationId, channel, status: 'unknown' };
+              return {
+                bucket: 'failed',
+                notificationId,
+                channel,
+                status: 'unavailable',
+                providerOutcome: 'not_attempted',
+                outboxFinalized: false,
+                persistenceOutcome: 'claim_unavailable'
+              };
             }
             if (postTokenDel.deleted) {
-              return { bucket: 'skipped', notificationId, channel, status: 'cancelled_order_deleted' };
+              return {
+                bucket: 'skipped',
+                notificationId,
+                channel,
+                status: 'cancelled_order_deleted',
+                providerOutcome: 'skipped',
+                outboxFinalized: false,
+                persistenceOutcome: 'order_deleted'
+              };
             }
 
             const emailArgs = {
               order: orderData,
               orderId,
-              eventType: rawRec.eventType || 'ORDER_CONFIRMATION',
-              newStatus: rawRec.orderStatus || orderData.status,
+              eventType: validRec.eventType || 'ORDER_CONFIRMATION',
+              newStatus: validRec.orderStatus || orderData.status,
               retryNotificationId: notificationId,
               allowRetryFailed: false,
               invoiceAccessToken,
@@ -381,18 +614,95 @@ export async function POST({ request, _deps = undefined }) {
             const resStatus = String(emailRes?.status || 'failed');
 
             if (resStatus === 'accepted_by_mailapp' || resStatus === 'sent') {
+              if (emailRes?.deduplicated === true && emailRes?.outboxFinalized !== false) {
+                return {
+                  bucket: 'alreadyCompleted',
+                  notificationId,
+                  channel,
+                  status: resStatus,
+                  providerOutcome: emailRes?.providerOutcome || 'accepted',
+                  outboxFinalized: true,
+                  persistenceOutcome: 'committed'
+                };
+              }
+              if (emailRes?.outboxFinalized === true) {
+                return {
+                  bucket: 'processed',
+                  notificationId,
+                  channel,
+                  status: resStatus,
+                  providerOutcome: emailRes?.providerOutcome || 'accepted',
+                  outboxFinalized: true,
+                  persistenceOutcome: 'committed'
+                };
+              }
               return {
-                bucket: emailRes?.deduplicated ? 'alreadyCompleted' : 'processed',
+                bucket: 'failed',
                 notificationId,
                 channel,
-                status: resStatus
+                status: 'unfinalized',
+                outboxStatus: emailRes?.outboxStatus || 'processing',
+                providerOutcome: emailRes?.providerOutcome || 'accepted',
+                providerStatus: emailRes?.providerStatus || resStatus,
+                outboxFinalized: false,
+                persistenceOutcome: emailRes?.persistenceOutcome || 'finalization_failed',
+                manualReviewRequired: true
               };
             }
+
+            if (
+              resStatus === 'unfinalized' ||
+              (emailRes?.outboxFinalized === false &&
+                (emailRes?.persistenceOutcome === 'finalization_failed' ||
+                  emailRes?.persistenceOutcome === 'ownership_mismatch'))
+            ) {
+              return {
+                bucket: 'failed',
+                notificationId,
+                channel,
+                status: 'unfinalized',
+                outboxStatus: emailRes?.outboxStatus || 'processing',
+                providerOutcome: emailRes?.providerOutcome || 'unknown',
+                providerStatus: emailRes?.providerStatus,
+                outboxFinalized: false,
+                persistenceOutcome: emailRes?.persistenceOutcome || 'finalization_failed',
+                manualReviewRequired: true
+              };
+            }
+
+            if (resStatus === 'unavailable') {
+              return {
+                bucket: 'failed',
+                notificationId,
+                channel,
+                status: 'unavailable',
+                providerOutcome: 'not_attempted',
+                outboxFinalized: false,
+                persistenceOutcome: emailRes?.persistenceOutcome || 'claim_unavailable'
+              };
+            }
+
             if (resStatus === 'processing') {
-              return { bucket: 'inFlight', notificationId, channel, status: 'processing' };
+              return {
+                bucket: 'inFlight',
+                notificationId,
+                channel,
+                status: 'processing',
+                providerOutcome: 'not_attempted',
+                outboxFinalized: false,
+                persistenceOutcome: 'claim_blocked'
+              };
             }
             if (resStatus === 'unknown') {
-              return { bucket: 'reconciledUnknown', notificationId, channel, status: 'unknown' };
+              return {
+                bucket: 'reconciledUnknown',
+                notificationId,
+                channel,
+                status: 'unknown',
+                providerOutcome: emailRes?.providerOutcome || 'timeout',
+                outboxFinalized: emailRes?.outboxFinalized === true,
+                persistenceOutcome: emailRes?.persistenceOutcome || 'committed'
+              };
             }
             if (
               resStatus === 'skipped_no_valid_email' ||
@@ -400,9 +710,29 @@ export async function POST({ request, _deps = undefined }) {
               resStatus === 'cancelled_order_deleted' ||
               resStatus === 'unknown_deleted_during_dispatch'
             ) {
-              return { bucket: 'skipped', notificationId, channel, status: resStatus };
+              return {
+                bucket: 'skipped',
+                notificationId,
+                channel,
+                status: resStatus,
+                providerOutcome: 'skipped',
+                outboxFinalized: emailRes?.outboxFinalized === true,
+                persistenceOutcome:
+                  resStatus === 'cancelled_order_deleted' ||
+                  resStatus === 'unknown_deleted_during_dispatch'
+                    ? 'order_deleted'
+                    : 'committed'
+              };
             }
-            return { bucket: 'failed', notificationId, channel, status: resStatus };
+            return {
+              bucket: 'failed',
+              notificationId,
+              channel,
+              status: resStatus,
+              providerOutcome: emailRes?.providerOutcome || 'rejected',
+              outboxFinalized: emailRes?.outboxFinalized === true,
+              persistenceOutcome: emailRes?.persistenceOutcome || 'committed'
+            };
           }
 
           if (channel === 'telegram') {
@@ -417,19 +747,97 @@ export async function POST({ request, _deps = undefined }) {
               leaseMs: _deps?.leaseMs
             });
             const resStatus = String(tgRes?.status || 'failed');
+
             if (resStatus === 'sent' || resStatus === 'accepted_by_mailapp') {
+              if (!tgRes?.claimed && tgRes?.outboxFinalized !== false) {
+                return {
+                  bucket: 'alreadyCompleted',
+                  notificationId,
+                  channel,
+                  status: resStatus,
+                  providerOutcome: tgRes?.providerOutcome || 'accepted',
+                  outboxFinalized: true,
+                  persistenceOutcome: 'committed'
+                };
+              }
+              if (tgRes?.outboxFinalized === true) {
+                return {
+                  bucket: 'processed',
+                  notificationId,
+                  channel,
+                  status: resStatus,
+                  providerOutcome: tgRes?.providerOutcome || 'accepted',
+                  outboxFinalized: true,
+                  persistenceOutcome: 'committed'
+                };
+              }
               return {
-                bucket: tgRes?.claimed ? 'processed' : 'alreadyCompleted',
+                bucket: 'failed',
                 notificationId,
                 channel,
-                status: resStatus
+                status: 'unfinalized',
+                outboxStatus: tgRes?.outboxStatus || 'processing',
+                providerOutcome: tgRes?.providerOutcome || 'accepted',
+                providerStatus: tgRes?.providerStatus || resStatus,
+                outboxFinalized: false,
+                persistenceOutcome: tgRes?.persistenceOutcome || 'finalization_failed',
+                manualReviewRequired: true
               };
             }
+
+            if (
+              resStatus === 'unfinalized' ||
+              (tgRes?.outboxFinalized === false &&
+                (tgRes?.persistenceOutcome === 'finalization_failed' ||
+                  tgRes?.persistenceOutcome === 'ownership_mismatch'))
+            ) {
+              return {
+                bucket: 'failed',
+                notificationId,
+                channel,
+                status: 'unfinalized',
+                outboxStatus: tgRes?.outboxStatus || 'processing',
+                providerOutcome: tgRes?.providerOutcome || 'unknown',
+                providerStatus: tgRes?.providerStatus,
+                outboxFinalized: false,
+                persistenceOutcome: tgRes?.persistenceOutcome || 'finalization_failed',
+                manualReviewRequired: true
+              };
+            }
+
+            if (resStatus === 'unavailable') {
+              return {
+                bucket: 'failed',
+                notificationId,
+                channel,
+                status: 'unavailable',
+                providerOutcome: 'not_attempted',
+                outboxFinalized: false,
+                persistenceOutcome: tgRes?.persistenceOutcome || 'claim_unavailable'
+              };
+            }
+
             if (resStatus === 'processing') {
-              return { bucket: 'inFlight', notificationId, channel, status: 'processing' };
+              return {
+                bucket: 'inFlight',
+                notificationId,
+                channel,
+                status: 'processing',
+                providerOutcome: 'not_attempted',
+                outboxFinalized: false,
+                persistenceOutcome: 'claim_blocked'
+              };
             }
             if (resStatus === 'unknown') {
-              return { bucket: 'reconciledUnknown', notificationId, channel, status: 'unknown' };
+              return {
+                bucket: 'reconciledUnknown',
+                notificationId,
+                channel,
+                status: 'unknown',
+                providerOutcome: tgRes?.providerOutcome || 'timeout',
+                outboxFinalized: tgRes?.outboxFinalized === true,
+                persistenceOutcome: tgRes?.persistenceOutcome || 'committed'
+              };
             }
             if (
               resStatus === 'skipped_not_configured' ||
@@ -437,53 +845,51 @@ export async function POST({ request, _deps = undefined }) {
               resStatus === 'cancelled_order_deleted' ||
               resStatus === 'unknown_deleted_during_dispatch'
             ) {
-              return { bucket: 'skipped', notificationId, channel, status: resStatus };
-            }
-            return { bucket: 'failed', notificationId, channel, status: resStatus };
-          }
-
-          if (channel === 'make') {
-            const makeRes = await dispatchMakeFn({
-              orderId,
-              orderData,
-              adminDb,
-              fetchFn: _deps?.fetchFn,
-              makeWebhookUrl: _deps?.makeWebhookUrl,
-              timeoutMs: _deps?.makeTimeoutMs,
-              nowMs: resolveNowMs(),
-              getNowMs: _deps?.getNowMs,
-              leaseMs: _deps?.leaseMs
-            });
-            const resStatus = String(makeRes?.status || 'failed');
-            if (resStatus === 'sent' || resStatus === 'accepted_by_mailapp') {
               return {
-                bucket: makeRes?.claimed ? 'processed' : 'alreadyCompleted',
+                bucket: 'skipped',
                 notificationId,
                 channel,
-                status: resStatus
+                status: resStatus,
+                providerOutcome: 'skipped',
+                outboxFinalized: tgRes?.outboxFinalized === true,
+                persistenceOutcome:
+                  resStatus === 'cancelled_order_deleted' ||
+                  resStatus === 'unknown_deleted_during_dispatch'
+                    ? 'order_deleted'
+                    : 'committed'
               };
             }
-            if (resStatus === 'processing') {
-              return { bucket: 'inFlight', notificationId, channel, status: 'processing' };
-            }
-            if (resStatus === 'unknown') {
-              return { bucket: 'reconciledUnknown', notificationId, channel, status: 'unknown' };
-            }
-            if (
-              resStatus === 'skipped_not_configured' ||
-              resStatus === 'skipped_no_valid_email' ||
-              resStatus === 'cancelled_order_deleted' ||
-              resStatus === 'unknown_deleted_during_dispatch'
-            ) {
-              return { bucket: 'skipped', notificationId, channel, status: resStatus };
-            }
-            return { bucket: 'failed', notificationId, channel, status: resStatus };
+            return {
+              bucket: 'failed',
+              notificationId,
+              channel,
+              status: resStatus,
+              providerOutcome: tgRes?.providerOutcome || 'rejected',
+              outboxFinalized: tgRes?.outboxFinalized === true,
+              persistenceOutcome: tgRes?.persistenceOutcome || 'committed'
+            };
           }
 
-          return { bucket: 'skipped', notificationId, channel, status };
+          return {
+            bucket: 'skipped',
+            notificationId,
+            channel,
+            status,
+            providerOutcome: 'not_attempted',
+            outboxFinalized: false,
+            persistenceOutcome: 'not_attempted'
+          };
         }
 
-        return { bucket: 'skipped', notificationId, channel, status };
+        return {
+          bucket: 'skipped',
+          notificationId,
+          channel,
+          status,
+          providerOutcome: 'not_attempted',
+          outboxFinalized: false,
+          persistenceOutcome: 'not_attempted'
+        };
       })
     );
 
@@ -499,23 +905,40 @@ export async function POST({ request, _deps = undefined }) {
           notificationId: item.notificationId,
           channel: item.channel,
           status: item.status,
+          ...(item.outboxStatus ? { outboxStatus: item.outboxStatus } : {}),
+          ...(item.providerOutcome ? { providerOutcome: item.providerOutcome } : {}),
+          ...(item.providerStatus ? { providerStatus: item.providerStatus } : {}),
+          ...(typeof item.outboxFinalized === 'boolean' ? { outboxFinalized: item.outboxFinalized } : {}),
+          ...(item.persistenceOutcome ? { persistenceOutcome: item.persistenceOutcome } : {}),
+          ...(item.error ? { error: item.error } : {}),
           ...(item.manualReviewRequired ? { manualReviewRequired: true } : {})
         });
       } else {
         const [recordKey, rawRec] = entries[i] || [];
         summary.failed++;
         fallbackItems.push({
-          notificationId:
-            typeof rawRec?.notificationId === 'string' && rawRec.notificationId.trim()
-              ? rawRec.notificationId.trim()
-              : String(recordKey || ''),
-          channel: typeof rawRec?.channel === 'string' ? rawRec.channel : 'unknown',
-          status: 'failed'
+          notificationId: isValidFirebaseOutboxKey(recordKey) ? recordKey : '',
+          channel:
+            isPlainObject(rawRec) && typeof rawRec.channel === 'string' && (rawRec.channel === 'email' || rawRec.channel === 'telegram' || rawRec.channel === 'make')
+              ? rawRec.channel
+              : 'unknown',
+          status: 'failed',
+          outboxFinalized: false,
+          persistenceOutcome: 'claim_unavailable'
         });
       }
     }
 
-    // Re-read sanitized notifications snapshot to reflect latest persisted state without exposing PII/tokens
+    // Re-read sanitized notifications snapshot and preserve Make's skipped_intentionally_disabled
+    // and any in-request unfinalized/identity outcomes without mutating historical DB records.
+    const fallbackByKey = new Map();
+    for (let i = 0; i < entries.length; i++) {
+      const [recordKey] = entries[i] || [];
+      if (fallbackItems[i]) {
+        fallbackByKey.set(String(recordKey || ''), fallbackItems[i]);
+      }
+    }
+
     let sanitizedNotifications = fallbackItems;
     try {
       let postQuery = adminDb.ref('notifications_outbox').orderByChild('orderId').equalTo(orderId);
@@ -525,9 +948,62 @@ export async function POST({ request, _deps = undefined }) {
       const postSnap = await postQuery.once('value');
       const postVal = postSnap?.val?.() ?? null;
       if (isPlainObject(postVal)) {
-        sanitizedNotifications = Object.values(postVal)
+        sanitizedNotifications = Object.entries(postVal)
           .slice(0, MAX_OUTBOX_RECOVERY_RECORDS)
-          .map((rec) => sanitizeOutboxRecordForAdmin(rec))
+          .map(([postKey, rec]) => {
+            const base = sanitizeOutboxRecordForAdmin(rec, postKey);
+            const inReq = fallbackByKey.get(postKey);
+
+            if (inReq && inReq.error === 'INVALID_NOTIFICATION_IDENTITY') {
+              return {
+                ...(base || {}),
+                notificationId: inReq.notificationId,
+                channel: inReq.channel,
+                status: 'unknown',
+                error: 'INVALID_NOTIFICATION_IDENTITY',
+                manualReviewRequired: true,
+                providerOutcome: 'not_attempted',
+                persistenceOutcome: 'identity_mismatch',
+                outboxFinalized: false
+              };
+            }
+
+            if (inReq && inReq.channel === 'make' && inReq.status === 'skipped_intentionally_disabled') {
+              return {
+                ...(base || {}),
+                notificationId: inReq.notificationId,
+                channel: 'make',
+                status: 'skipped_intentionally_disabled',
+                providerOutcome: 'skipped',
+                persistenceOutcome: 'intentionally_disabled',
+                outboxFinalized: false
+              };
+            }
+
+            if (
+              inReq &&
+              inReq.outboxFinalized === false &&
+              (inReq.status === 'unfinalized' ||
+                inReq.status === 'unavailable' ||
+                inReq.persistenceOutcome === 'finalization_failed' ||
+                inReq.persistenceOutcome === 'ownership_mismatch')
+            ) {
+              return {
+                ...(base || {}),
+                notificationId: inReq.notificationId || base?.notificationId || '',
+                channel: inReq.channel || base?.channel || 'unknown',
+                status: inReq.status,
+                outboxStatus: base?.status || inReq.outboxStatus || 'processing',
+                providerOutcome: inReq.providerOutcome || 'unknown',
+                ...(inReq.providerStatus ? { providerStatus: inReq.providerStatus } : {}),
+                persistenceOutcome: inReq.persistenceOutcome || 'finalization_failed',
+                outboxFinalized: false,
+                manualReviewRequired: true
+              };
+            }
+
+            return base;
+          })
           .filter(Boolean);
       }
     } catch {

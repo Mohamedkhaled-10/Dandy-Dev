@@ -688,7 +688,25 @@ test('J. recover-order-notifications fails closed on tombstone DB errors, blocks
 test('K. recover-order-notifications uses bounded indexed query on notifications_outbox by orderId', async () => {
   const orderId = 'ord_bounded';
   const outbox = {};
-  for (let i = 0; i < 25; i++) {
+  const validIds = [
+    `notif_order_${orderId}_confirmation`,
+    `notif_order_${orderId}_telegram`,
+    `notif_order_${orderId}_status_new`,
+    `notif_order_${orderId}_status_processing`,
+    `notif_order_${orderId}_status_shipped`,
+    `notif_order_${orderId}_status_delivered`,
+    `notif_order_${orderId}_status_cancelled`
+  ];
+  for (const id of validIds) {
+    outbox[id] = {
+      notificationId: id,
+      orderId,
+      channel: id.endsWith('_telegram') ? 'telegram' : 'email',
+      status: id.endsWith('_telegram') ? 'sent' : 'accepted_by_mailapp',
+      attempts: 1
+    };
+  }
+  for (let i = 0; i < 18; i++) {
     const id = `notif_order_${orderId}_extra_${i}`;
     outbox[id] = {
       notificationId: id,
@@ -714,7 +732,8 @@ test('K. recover-order-notifications uses bounded indexed query on notifications
   assert.equal(res.status, 200);
   const data = await res.json();
   assert.equal(data.notifications.length, 20);
-  assert.equal(data.summary.alreadyCompleted, 20);
+  assert.equal(data.summary.alreadyCompleted, validIds.length);
+  assert.equal(data.summary.skipped, 20 - validIds.length);
   assert.ok(
     mockDb.queryLogs.some(
       (q) =>
@@ -731,7 +750,7 @@ test('K. recover-order-notifications uses bounded indexed query on notifications
 // ===========================================================================
 // L. Independent multi-channel recovery of pending notifications + same notificationId reuse
 // ===========================================================================
-test('L. recover-order-notifications recovers pending Email, Telegram, and Make independently even when one channel fails', async () => {
+test('L. recover-order-notifications recovers pending Email and Telegram independently while skipping intentionally disabled Make without calling Make webhook', async () => {
   const hexKey = crypto.randomBytes(32).toString('hex');
   const orderId = 'ord_multi_pending';
   const emailNotifId = `notif_order_${orderId}_confirmation`;
@@ -781,7 +800,7 @@ test('L. recover-order-notifications recovers pending Email, Telegram, and Make 
   let seenEmailEnvelope = null;
   let makeWebhookCalls = 0;
 
-  // Email relay returns HTTP 500 failure cleanly while Make succeeds!
+  // Email relay returns HTTP 500 failure cleanly while Telegram succeeds and Make is skipped without webhook call
   globalThis.fetch = async (url, init) => {
     if (String(url).includes('mock_2b_relay')) {
       seenEmailEnvelope = JSON.parse(init.body);
@@ -814,13 +833,18 @@ test('L. recover-order-notifications recovers pending Email, Telegram, and Make 
     const data = await res.json();
     assert.equal(data.success, true);
     assert.equal(seenEmailEnvelope.notificationId, emailNotifId);
-    assert.equal(makeWebhookCalls, 1);
-    assert.equal(data.summary.processed, 2);
+    assert.equal(makeWebhookCalls, 0);
+    assert.equal(data.summary.processed, 1);
     assert.equal(data.summary.failed, 1);
+    assert.equal(data.summary.skipped, 1);
+
+    const makeResult = (data.notifications || []).find((r) => r.channel === 'make');
+    assert.equal(makeResult?.status, 'skipped_intentionally_disabled');
+    assert.equal(makeResult?.persistenceOutcome, 'intentionally_disabled');
 
     assert.equal(mockDb.data.notifications_outbox[emailNotifId].status, 'failed');
     assert.equal(mockDb.data.notifications_outbox[tgNotifId].status, 'sent');
-    assert.equal(mockDb.data.notifications_outbox[makeNotifId].status, 'sent');
+    assert.equal(mockDb.data.notifications_outbox[makeNotifId].status, 'pending');
   } finally {
     globalThis.fetch = origFetch;
     process.env.GMAIL_NOTIFICATIONS_ENABLED = origGmail;
@@ -886,8 +910,8 @@ test('M-Q. Recovery skips completed/unknown/failed/skipped/deleted and reconcile
         status: 'skipped_no_valid_email',
         attempts: 0
       },
-      [`notif_order_${orderId}_del_audit`]: {
-        notificationId: `notif_order_${orderId}_del_audit`,
+      [`notif_order_${orderId}_status_new`]: {
+        notificationId: `notif_order_${orderId}_status_new`,
         orderId,
         channel: 'email',
         status: 'cancelled_order_deleted',
@@ -939,7 +963,7 @@ test('M-Q. Recovery skips completed/unknown/failed/skipped/deleted and reconcile
   // Failed email remained failed (allowRetryFailed never bypassed)
   assert.equal(mockDb.data.notifications_outbox[`notif_order_${orderId}_status_delivered`].status, 'failed');
   // Deleted audit remained untouched
-  assert.equal(mockDb.data.notifications_outbox[`notif_order_${orderId}_del_audit`].status, 'cancelled_order_deleted');
+  assert.equal(mockDb.data.notifications_outbox[`notif_order_${orderId}_status_new`].status, 'cancelled_order_deleted');
 });
 
 // ===========================================================================

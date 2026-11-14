@@ -1063,8 +1063,11 @@ import BaseLayout from '../layouts/BaseLayout.astro';
       'sent',
       'processing',
       'unknown',
+      'unfinalized',
+      'unavailable',
       'skipped_no_valid_email',
       'skipped_not_configured',
+      'skipped_intentionally_disabled',
       'cancelled_order_deleted',
       'unknown_deleted_during_dispatch',
       'none'
@@ -1078,7 +1081,25 @@ import BaseLayout from '../layouts/BaseLayout.astro';
       return String(channel || 'قناة غير معروفة');
     }
 
-    function getOutboxStatusLabel(status) {
+    function getOutboxStatusLabel(status, rec) {
+      if (
+        rec &&
+        (status === 'unfinalized' ||
+          rec.persistenceOutcome === 'finalization_failed' ||
+          rec.persistenceOutcome === 'ownership_mismatch')
+      ) {
+        if (rec.providerOutcome === 'accepted') {
+          return 'قبل المزوّد الإرسال — فشل تثبيت السجل';
+        }
+        if (rec.providerOutcome === 'rejected') {
+          return 'رفض المزوّد الإرسال — فشل تثبيت السجل';
+        }
+        if (rec.providerOutcome === 'timeout' || rec.providerOutcome === 'ambiguous') {
+          return 'نتيجة المزوّد غير مؤكدة — فشل تثبيت السجل';
+        }
+        return 'تمت محاولة الإرسال — فشل تثبيت السجل';
+      }
+
       switch (status) {
         case 'pending': return 'قيد الانتظار';
         case 'processing': return 'قيد الإرسال';
@@ -1086,6 +1107,10 @@ import BaseLayout from '../layouts/BaseLayout.astro';
         case 'sent': return 'تم الإرسال';
         case 'failed': return 'فشل الإرسال';
         case 'unknown': return 'نتيجة غير مؤكدة';
+        case 'unfinalized': return 'تمت محاولة الإرسال — فشل تثبيت السجل';
+        case 'unavailable': return 'غير متاح (تعذّر حجز السجل)';
+        case 'skipped_intentionally_disabled':
+          return 'معطّل بقرار الإدارة';
         case 'cancelled_order_deleted':
         case 'unknown_deleted_during_dispatch':
           return 'ملغي بسبب حذف الطلب';
@@ -1101,11 +1126,41 @@ import BaseLayout from '../layouts/BaseLayout.astro';
     function getOutboxStatusBadgeClass(status) {
       if (status === 'accepted_by_mailapp' || status === 'sent') return 'st-accepted';
       if (status === 'processing') return 'st-processing';
-      if (status === 'failed') return 'st-failed';
-      if (status === 'unknown') return 'st-unknown';
+      if (status === 'failed' || status === 'unavailable') return 'st-failed';
+      if (status === 'unknown' || status === 'unfinalized') return 'st-unknown';
       if (status === 'cancelled_order_deleted' || status === 'unknown_deleted_during_dispatch') return 'st-deleted';
-      if (status === 'skipped_no_valid_email' || status === 'skipped_not_configured' || status === 'none') return 'st-skipped';
+      if (
+        status === 'skipped_no_valid_email' ||
+        status === 'skipped_not_configured' ||
+        status === 'skipped_intentionally_disabled' ||
+        status === 'none'
+      ) {
+        return 'st-skipped';
+      }
       return 'st-pending';
+    }
+
+    function getSafeOutboxDiagnosticText(rec) {
+      if (!rec || typeof rec !== 'object') return '';
+      if (rec.status === 'skipped_intentionally_disabled' || rec.persistenceOutcome === 'intentionally_disabled') {
+        return 'Make معطّل بقرار الإدارة ولم يُرسل أي طلب';
+      }
+      if (rec.persistenceOutcome === 'finalization_failed' || rec.persistenceOutcome === 'ownership_mismatch') {
+        return 'تعذّر تثبيت حالة السجل في قاعدة البيانات بعد محاولة الإرسال؛ يُمنع إعادة الإرسال التلقائي قبل المراجعة';
+      }
+      if (rec.persistenceOutcome === 'claim_unavailable' || rec.status === 'unavailable') {
+        return 'قاعدة بيانات الإشعارات غير متاحة أو فشل الحجز الذري قبل الإرسال';
+      }
+      if (rec.error === 'INVALID_NOTIFICATION_IDENTITY' || rec.persistenceOutcome === 'identity_mismatch') {
+        return 'سجل إشعار غير متطابق الهوية؛ تم تجاهله بأمان';
+      }
+      const code = rec.staleDiagnosticCode || rec.error || '';
+      if (code === 'PROCESSING_LEASE_EXPIRED') return 'انتهت مهلة قفل المعالجة دون تأكيد النتيجة';
+      if (code === 'LEGACY_PROCESSING_STALE') return 'سجل معالجة قديم تجاوز المهلة الآمنة';
+      if (code === 'MISSING_OR_INVALID_PROCESSING_TIMESTAMP') return 'توقيت المعالجة مفقود أو غير صالح — يتطلب مراجعة يدوية';
+      if (code) return String(code);
+      if (rec.manualReviewRequired) return 'يتطلب مراجعة يدوية';
+      return '';
     }
 
     function formatOutboxTimestamp(isoStr) {
@@ -1136,7 +1191,7 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 
       const badge = document.createElement('span');
       badge.className = 'notif-badge ' + getOutboxStatusBadgeClass(status);
-      badge.textContent = getOutboxStatusLabel(status);
+      badge.textContent = getOutboxStatusLabel(status, rec);
 
       top.appendChild(nameEl);
       top.appendChild(badge);
@@ -1160,9 +1215,7 @@ import BaseLayout from '../layouts/BaseLayout.astro';
       meta.appendChild(timeSpan);
       row.appendChild(meta);
 
-      const errText = rec?.staleDiagnosticCode || rec?.error || (rec?.manualReviewRequired ? 'يتطلب مراجعة يدوية' : '') || '';
-      const msgText = (!rec?.error && rec?.message && status !== 'accepted_by_mailapp' && status !== 'sent') ? rec.message : '';
-      const safeDetail = errText || msgText;
+      const safeDetail = getSafeOutboxDiagnosticText(rec);
       if (safeDetail) {
         const errDiv = document.createElement('div');
         errDiv.className = 'outbox-channel-error';
@@ -1206,7 +1259,7 @@ import BaseLayout from '../layouts/BaseLayout.astro';
       const emailStatus = primaryEmailRec?.status || (hasEmail ? 'none' : 'skipped_no_valid_email');
       const emailId = primaryEmailRec?.notificationId || '-';
 
-      if (stEl) stEl.textContent = getOutboxStatusLabel(emailStatus);
+      if (stEl) stEl.textContent = getOutboxStatusLabel(emailStatus, primaryEmailRec);
       if (idEl) idEl.textContent = emailId;
 
       if (container) {
@@ -1238,8 +1291,14 @@ import BaseLayout from '../layouts/BaseLayout.astro';
       }
 
       const hasUnknownOrManual = list.some(
-        r => r && (r.status === 'unknown' || r.manualReviewRequired)
-      ) || emailStatus === 'unknown';
+        r =>
+          r &&
+          (r.status === 'unknown' ||
+            r.status === 'unfinalized' ||
+            r.status === 'unavailable' ||
+            r.persistenceOutcome === 'finalization_failed' ||
+            r.manualReviewRequired)
+      ) || emailStatus === 'unknown' || emailStatus === 'unfinalized' || emailStatus === 'unavailable';
 
       if (warnEl) {
         warnEl.style.display = hasUnknownOrManual ? 'block' : 'none';
@@ -1248,14 +1307,15 @@ import BaseLayout from '../layouts/BaseLayout.astro';
       if (btnRetry) {
         btnRetry.setAttribute('data-order-id', orderObj.id);
         btnRetry.setAttribute('data-notif-id', emailId);
-        // Never display retry controls for unknown, processing, sent, accepted, skipped, or deleted states
+        // Never display retry controls for unknown, unfinalized, unavailable, processing, sent, accepted, skipped, or deleted states
         const canRetry = Boolean(
           hasEmail &&
           primaryEmailRec &&
           primaryEmailRec.notificationId &&
           primaryEmailRec.notificationId !== '-' &&
           !NON_RETRYABLE_OUTBOX_STATUSES.has(emailStatus) &&
-          RETRYABLE_EMAIL_STATUSES.has(emailStatus)
+          RETRYABLE_EMAIL_STATUSES.has(emailStatus) &&
+          primaryEmailRec.persistenceOutcome !== 'finalization_failed'
         );
         btnRetry.style.display = canRetry ? 'inline-flex' : 'none';
         btnRetry.disabled = false;
@@ -1271,9 +1331,12 @@ import BaseLayout from '../layouts/BaseLayout.astro';
         btnSendCurrent.setAttribute('data-order-status', orderObj.status || 'جديد');
         const currentBlocked =
           emailStatus === 'unknown' ||
+          emailStatus === 'unfinalized' ||
+          emailStatus === 'unavailable' ||
           emailStatus === 'processing' ||
           emailStatus === 'cancelled_order_deleted' ||
-          emailStatus === 'unknown_deleted_during_dispatch';
+          emailStatus === 'unknown_deleted_during_dispatch' ||
+          primaryEmailRec?.persistenceOutcome === 'finalization_failed';
         btnSendCurrent.style.display = (hasEmail && !currentBlocked) ? 'inline-flex' : 'none';
         btnSendCurrent.disabled = false;
         btnSendCurrent.textContent = '';
@@ -1375,7 +1438,7 @@ import BaseLayout from '../layouts/BaseLayout.astro';
           ' | متجاوز: ' + (s.skipped || 0);
 
         const perChannelLines = Array.isArray(data.notifications)
-          ? data.notifications.map(n => '• ' + getOutboxChannelLabel(n.channel) + ': ' + getOutboxStatusLabel(n.status))
+          ? data.notifications.map(n => '• ' + getOutboxChannelLabel(n.channel) + ': ' + getOutboxStatusLabel(n.status, n))
           : [];
 
         if (resultBox) {
@@ -1386,7 +1449,7 @@ import BaseLayout from '../layouts/BaseLayout.astro';
         const orderObj = rawOrders.find(order => order.id === orderId);
         if (orderObj && Array.isArray(data.notifications)) {
           const emailRec = data.notifications.find(n => n && n.channel === 'email');
-          if (emailRec) {
+          if (emailRec && emailRec.outboxFinalized !== false && emailRec.status !== 'unfinalized' && emailRec.status !== 'unavailable') {
             orderObj.latestNotification = {
               notificationId: emailRec.notificationId,
               status: emailRec.status,
@@ -1399,7 +1462,6 @@ import BaseLayout from '../layouts/BaseLayout.astro';
         }
 
         logAdminAction('معالجة الإشعارات المعلقة للطلب ' + (orderObj?.invoiceCode || orderId));
-        await loadOrderOutboxDetails(orderId);
       } catch (err) {
         if (resultBox) {
           resultBox.textContent = 'حدث خطأ بالاتصال أثناء معالجة الإشعارات المعلقة.';
