@@ -546,7 +546,15 @@ test('3. Unified Admin Auth enforces admin@dandy.com + email_verified=true acros
 
   const mockDb = createAsyncRtdbMock({
     orders: {
-      ord_1: { invoiceCode: 'DNY-101010', status: 'جديد', name: 'عميلة', phone: '01012345678', email: 'N/A', totalAmount: 200 }
+      ord_1: {
+        invoiceCode: 'DNY-101010',
+        status: 'جديد',
+        name: 'عميلة',
+        phone: '01012345678',
+        email: 'N/A',
+        totalAmount: 200,
+        products: [{ name: 'كريم', quantity: 1, price: 200, lineTotal: 200 }]
+      }
     },
     settings: {
       pinkFriday: {

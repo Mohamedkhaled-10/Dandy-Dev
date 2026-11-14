@@ -7,6 +7,8 @@ import { verifyAdminRequest, adminUnauthorizedResponse } from '../../utils/admin
 import {
   sendOrderNotification,
   normalizeOrderStatus,
+  isValidOrderStatusValue,
+  hasValidCoreOrderShape,
   CANONICAL_STATUSES,
   isValidEmail,
   sendDiagnosticRelayEmail,
@@ -40,20 +42,6 @@ function validateOutboxKey(raw) {
     return null;
   }
   return trimmed;
-}
-
-function hasValidCoreOrderShape(val) {
-  if (!isPlainObject(val)) return false;
-  return Boolean(
-    (typeof val.invoiceCode === 'string' && val.invoiceCode.trim() !== '') ||
-      Array.isArray(val.products) ||
-      isPlainObject(val.products) ||
-      Array.isArray(val.items) ||
-      isPlainObject(val.items) ||
-      (typeof val.name === 'string' && val.name.trim() !== '') ||
-      (typeof val.phone === 'string' && val.phone.trim() !== '') ||
-      typeof val.totalAmount === 'number'
-  );
 }
 
 function isTombstoneDeletedState(val) {
@@ -115,6 +103,14 @@ export async function POST({ request, _deps = undefined }) {
         }), { status: 400, headers: { 'Content-Type': 'application/json' } });
       }
 
+      if (!isValidOrderStatusValue(newStatus)) {
+        return new Response(JSON.stringify({
+          success: false,
+          error: 'INVALID_STATUS',
+          message: 'حالة الطلب المستهدفة غير صالحة.'
+        }), { status: 400, headers: { 'Content-Type': 'application/json' } });
+      }
+
       const preDelCheck = await checkOrderDeletionState(db, orderId);
       if (!preDelCheck.ok) {
         return new Response(JSON.stringify({
@@ -137,12 +133,20 @@ export async function POST({ request, _deps = undefined }) {
       const orderSnap = await orderRef.once('value');
       const orderData = orderSnap.val();
 
-      if (!hasValidCoreOrderShape(orderData)) {
+      if (orderData === null || orderData === undefined) {
         return new Response(JSON.stringify({
           success: false,
           error: 'ORDER_NOT_FOUND',
           message: `Order ${orderId} not found`
         }), { status: 404, headers: { 'Content-Type': 'application/json' } });
+      }
+
+      if (!hasValidCoreOrderShape(orderData)) {
+        return new Response(JSON.stringify({
+          success: false,
+          error: 'INVALID_ORDER_SHAPE',
+          message: `Order ${orderId} has incomplete or invalid core shape`
+        }), { status: 422, headers: { 'Content-Type': 'application/json' } });
       }
 
       const oldStatus = normalizeOrderStatus(orderData.status);
@@ -188,8 +192,12 @@ export async function POST({ request, _deps = undefined }) {
 
       const txResult = await orderRef.transaction((current) => {
         txAbortReason = null;
-        if (!hasValidCoreOrderShape(current)) {
+        if (current === null || current === undefined) {
           txAbortReason = 'ORDER_NOT_FOUND';
+          return undefined;
+        }
+        if (!hasValidCoreOrderShape(current)) {
+          txAbortReason = 'INVALID_ORDER_SHAPE';
           return undefined;
         }
         txPrevStatus = normalizeOrderStatus(current.status);
@@ -216,7 +224,7 @@ export async function POST({ request, _deps = undefined }) {
         }), { status: 200, headers: { 'Content-Type': 'application/json' } });
       }
 
-      if (!txResult?.committed || txAbortReason === 'ORDER_NOT_FOUND') {
+      if (!txResult?.committed || txAbortReason === 'ORDER_NOT_FOUND' || txAbortReason === 'INVALID_ORDER_SHAPE') {
         const postAbortDel = await checkOrderDeletionState(db, orderId);
         if (postAbortDel.ok && postAbortDel.deleted) {
           return new Response(JSON.stringify({
@@ -224,6 +232,13 @@ export async function POST({ request, _deps = undefined }) {
             error: 'ORDER_DELETED',
             message: 'تم حذف الطلب أثناء محاولة تحديث حالته ولم يتم إعادة إنشائه.'
           }), { status: 409, headers: { 'Content-Type': 'application/json' } });
+        }
+        if (txAbortReason === 'INVALID_ORDER_SHAPE') {
+          return new Response(JSON.stringify({
+            success: false,
+            error: 'INVALID_ORDER_SHAPE',
+            message: `Order ${orderId} has incomplete or invalid core shape`
+          }), { status: 422, headers: { 'Content-Type': 'application/json' } });
         }
         return new Response(JSON.stringify({
           success: false,
@@ -280,6 +295,14 @@ export async function POST({ request, _deps = undefined }) {
         }), { status: 400, headers: { 'Content-Type': 'application/json' } });
       }
 
+      if (!isValidOrderStatusValue(newStatus)) {
+        return new Response(JSON.stringify({
+          success: false,
+          error: 'INVALID_STATUS',
+          message: 'حالة الطلب المستهدفة غير صالحة.'
+        }), { status: 400, headers: { 'Content-Type': 'application/json' } });
+      }
+
       const normalizedNewStatus = normalizeOrderStatus(newStatus);
       const results = [];
       let updatedCount = 0;
@@ -307,8 +330,12 @@ export async function POST({ request, _deps = undefined }) {
           const oSnap = await oRef.once('value');
           const oData = oSnap.val();
 
-          if (!hasValidCoreOrderShape(oData)) {
+          if (oData === null || oData === undefined) {
             results.push({ orderId: id, success: false, error: 'NOT_FOUND' });
+            continue;
+          }
+          if (!hasValidCoreOrderShape(oData)) {
+            results.push({ orderId: id, success: false, error: 'INVALID_ORDER_SHAPE' });
             continue;
           }
 
@@ -340,8 +367,12 @@ export async function POST({ request, _deps = undefined }) {
 
           const itemTx = await oRef.transaction((current) => {
             itemAbortReason = null;
-            if (!hasValidCoreOrderShape(current)) {
+            if (current === null || current === undefined) {
               itemAbortReason = 'NOT_FOUND';
+              return undefined;
+            }
+            if (!hasValidCoreOrderShape(current)) {
+              itemAbortReason = 'INVALID_ORDER_SHAPE';
               return undefined;
             }
             itemPrevStatus = normalizeOrderStatus(current.status);
@@ -364,12 +395,17 @@ export async function POST({ request, _deps = undefined }) {
             continue;
           }
 
-          if (!itemTx?.committed || itemAbortReason === 'NOT_FOUND') {
+          if (!itemTx?.committed || itemAbortReason === 'NOT_FOUND' || itemAbortReason === 'INVALID_ORDER_SHAPE') {
             const postAbortDel = await checkOrderDeletionState(db, id);
             results.push({
               orderId: id,
               success: false,
-              error: postAbortDel.ok && postAbortDel.deleted ? 'ORDER_DELETED' : 'NOT_FOUND'
+              error:
+                postAbortDel.ok && postAbortDel.deleted
+                  ? 'ORDER_DELETED'
+                  : itemAbortReason === 'INVALID_ORDER_SHAPE'
+                    ? 'INVALID_ORDER_SHAPE'
+                    : 'NOT_FOUND'
             });
             continue;
           }
@@ -500,12 +536,19 @@ export async function POST({ request, _deps = undefined }) {
       // Fetch fresh order details
       const orderSnap = await db.ref(`orders/${orderId}`).once('value');
       const orderData = orderSnap.val();
-      if (!hasValidCoreOrderShape(orderData)) {
+      if (orderData === null || orderData === undefined) {
         return new Response(JSON.stringify({
           success: false,
           error: 'ORDER_NOT_FOUND',
           message: `Order ${orderId} not found for retry`
         }), { status: 404, headers: { 'Content-Type': 'application/json' } });
+      }
+      if (!hasValidCoreOrderShape(orderData)) {
+        return new Response(JSON.stringify({
+          success: false,
+          error: 'INVALID_ORDER_SHAPE',
+          message: `Order ${orderId} has incomplete or invalid core shape`
+        }), { status: 422, headers: { 'Content-Type': 'application/json' } });
       }
 
       // Fetch or generate secure private invoice access token
@@ -589,15 +632,22 @@ export async function POST({ request, _deps = undefined }) {
       const orderSnap = await orderRef.once('value');
       const orderData = orderSnap.val();
 
-      if (!hasValidCoreOrderShape(orderData)) {
+      if (orderData === null || orderData === undefined) {
         return new Response(JSON.stringify({
           success: false,
           error: 'ORDER_NOT_FOUND',
           message: `Order ${orderId} not found`
         }), { status: 404, headers: { 'Content-Type': 'application/json' } });
       }
+      if (!hasValidCoreOrderShape(orderData)) {
+        return new Response(JSON.stringify({
+          success: false,
+          error: 'INVALID_ORDER_SHAPE',
+          message: `Order ${orderId} has incomplete or invalid core shape`
+        }), { status: 422, headers: { 'Content-Type': 'application/json' } });
+      }
 
-      const rawEmail = orderData.email;
+      const rawEmail = orderData.email ?? (isPlainObject(orderData.customer) ? orderData.customer.email : undefined);
       if (!isValidEmail(rawEmail)) {
         return new Response(JSON.stringify({
           success: false,

@@ -21,19 +21,235 @@ function isOrderDeletionTombstone(val: unknown): boolean {
   return st === 'DELETING' || st === 'COMMITTING_DELETE' || st === 'DELETED';
 }
 
-function hasCoreOrderFieldsForNotif(val: unknown): boolean {
-  if (!val || typeof val !== 'object' || Array.isArray(val)) return false;
-  const o = val as Record<string, any>;
-  return Boolean(
-    (typeof o.invoiceCode === 'string' && o.invoiceCode.trim() !== '') ||
-      Array.isArray(o.products) ||
-      (o.products && typeof o.products === 'object') ||
-      Array.isArray(o.items) ||
-      (o.items && typeof o.items === 'object') ||
-      (typeof o.name === 'string' && o.name.trim() !== '') ||
-      (typeof o.phone === 'string' && o.phone.trim() !== '') ||
-      typeof o.totalAmount === 'number'
-  );
+const VALID_RAW_ORDER_STATUSES = new Set([
+  'جديد',
+  'قيد التجهيز',
+  'تم التواصل',
+  'تم الشحن',
+  'جاري الشحن',
+  'تم التوصيل',
+  'مكتمل',
+  'ملغي',
+  'new',
+  'processing',
+  'shipped',
+  'delivered',
+  'completed',
+  'cancelled',
+  'canceled'
+]);
+
+const PLACEHOLDER_TEXT_VALUES = new Set(['n/a', 'na', 'null', 'undefined', '-']);
+
+function isPlainRecord(val: unknown): val is Record<string, any> {
+  return Boolean(val) && typeof val === 'object' && !Array.isArray(val);
+}
+
+function parseStrictOrderNumber(val: unknown): number | null {
+  if (val === undefined || val === null) return null;
+  if (typeof val === 'number') {
+    return Number.isFinite(val) ? val : NaN;
+  }
+  if (typeof val === 'string') {
+    const trimmed = val.trim();
+    if (!trimmed) return null;
+    if (!/^-?\d+(?:\.\d+)?$/.test(trimmed)) return NaN;
+    const parsed = Number(trimmed);
+    return Number.isFinite(parsed) ? parsed : NaN;
+  }
+  return NaN;
+}
+
+export function isValidOrderStatusValue(status: unknown): boolean {
+  if (typeof status !== 'string') return false;
+  const trimmed = status.trim();
+  if (!trimmed) return false;
+  return VALID_RAW_ORDER_STATUSES.has(trimmed) || VALID_RAW_ORDER_STATUSES.has(trimmed.toLowerCase());
+}
+
+function isValidInvoiceCodeValue(code: unknown): boolean {
+  if (typeof code !== 'string') return false;
+  const trimmed = code.trim();
+  if (trimmed.length < 3 || trimmed.length > 64) return false;
+  if (/\s/.test(trimmed)) return false;
+  if (PLACEHOLDER_TEXT_VALUES.has(trimmed.toLowerCase())) return false;
+  return /[A-Za-z0-9]/.test(trimmed);
+}
+
+function hasValidCustomerBasics(o: Record<string, any>): boolean {
+  const customerObj = isPlainRecord(o.customer) ? o.customer : null;
+  const rawName = o.name !== undefined && o.name !== null ? o.name : customerObj?.name;
+  if (typeof rawName !== 'string') return false;
+  const trimmedName = rawName.trim();
+  if (trimmedName.length < 2 || PLACEHOLDER_TEXT_VALUES.has(trimmedName.toLowerCase())) {
+    return false;
+  }
+
+  const rawPhone = o.phone !== undefined && o.phone !== null ? o.phone : customerObj?.phone;
+  const rawEmail = o.email !== undefined && o.email !== null ? o.email : customerObj?.email;
+
+  let hasValidPhone = false;
+  if (rawPhone !== undefined && rawPhone !== null) {
+    if (typeof rawPhone !== 'string' && typeof rawPhone !== 'number') {
+      return false;
+    }
+    const phoneStr = String(rawPhone).trim();
+    if (phoneStr !== '' && !PLACEHOLDER_TEXT_VALUES.has(phoneStr.toLowerCase())) {
+      const digits = phoneStr.replace(/\D/g, '');
+      if (digits.length < 7 || digits.length > 15) {
+        return false;
+      }
+      hasValidPhone = true;
+    }
+  }
+
+  let hasValidEmailValue = false;
+  if (rawEmail !== undefined && rawEmail !== null) {
+    if (typeof rawEmail !== 'string') {
+      return false;
+    }
+    const emailStr = rawEmail.trim();
+    if (emailStr !== '' && !PLACEHOLDER_TEXT_VALUES.has(emailStr.toLowerCase())) {
+      if (!isValidEmail(emailStr)) {
+        return false;
+      }
+      hasValidEmailValue = true;
+    }
+  }
+
+  return hasValidPhone || hasValidEmailValue;
+}
+
+function validateOrderLineItems(o: Record<string, any>): { valid: boolean; computedSum: number } {
+  const rawList =
+    o.products !== undefined && o.products !== null ? o.products : o.items;
+
+  if (!Array.isArray(rawList) && !isPlainRecord(rawList)) {
+    return { valid: false, computedSum: 0 };
+  }
+
+  const entries = Array.isArray(rawList) ? rawList : Object.values(rawList);
+  if (entries.length === 0) {
+    return { valid: false, computedSum: 0 };
+  }
+
+  let computedSum = 0;
+  for (const item of entries) {
+    if (!isPlainRecord(item)) {
+      return { valid: false, computedSum: 0 };
+    }
+
+    const rawItemName =
+      typeof item.name === 'string' && item.name.trim()
+        ? item.name.trim()
+        : typeof item.productName === 'string' && item.productName.trim()
+          ? item.productName.trim()
+          : '';
+    if (!rawItemName || PLACEHOLDER_TEXT_VALUES.has(rawItemName.toLowerCase())) {
+      return { valid: false, computedSum: 0 };
+    }
+
+    const rawQty =
+      item.quantity !== undefined && item.quantity !== null && item.quantity !== ''
+        ? item.quantity
+        : item.qty;
+    const qty = parseStrictOrderNumber(rawQty);
+    if (qty === null || !Number.isFinite(qty) || qty <= 0) {
+      return { valid: false, computedSum: 0 };
+    }
+
+    const effPrice = parseStrictOrderNumber(item.effectiveUnitPrice);
+    const regPrice = parseStrictOrderNumber(item.price);
+    const lineTotal = parseStrictOrderNumber(item.lineTotal);
+    const campPrice = parseStrictOrderNumber(item.campaignPrice);
+    const pkgPrice = parseStrictOrderNumber(item.packagePrice);
+    const unitPriceField = parseStrictOrderNumber(item.unitPrice);
+
+    const priceCandidates = [effPrice, regPrice, lineTotal, campPrice, pkgPrice, unitPriceField];
+    let hasAtLeastOnePrice = false;
+    for (const candidate of priceCandidates) {
+      if (candidate === null) continue;
+      if (!Number.isFinite(candidate) || candidate < 0) {
+        return { valid: false, computedSum: 0 };
+      }
+      hasAtLeastOnePrice = true;
+    }
+    if (!hasAtLeastOnePrice) {
+      return { valid: false, computedSum: 0 };
+    }
+
+    const resolvedUnitPrice =
+      effPrice ?? regPrice ?? campPrice ?? pkgPrice ?? unitPriceField ?? 0;
+    const resolvedLineContribution =
+      lineTotal !== null ? lineTotal : resolvedUnitPrice * qty;
+    if (!Number.isFinite(resolvedLineContribution) || resolvedLineContribution < 0) {
+      return { valid: false, computedSum: 0 };
+    }
+    computedSum += resolvedLineContribution;
+  }
+
+  return { valid: true, computedSum };
+}
+
+export function hasValidCoreOrderShape(
+  val: unknown,
+  options: { requireStatus?: boolean } = {}
+): boolean {
+  if (!isPlainRecord(val)) return false;
+  const requireStatus = options.requireStatus !== false;
+
+  // 1. Valid invoiceCode
+  if (!isValidInvoiceCodeValue(val.invoiceCode)) return false;
+
+  // 2. Valid order status (mandatory unless explicitly optional for pre-persist confirmation payloads)
+  if (requireStatus || (val.status !== undefined && val.status !== null)) {
+    if (!isValidOrderStatusValue(val.status)) return false;
+  }
+
+  // 3. Basic customer info (name + phone or valid email)
+  if (!hasValidCustomerBasics(val)) return false;
+
+  // 4. Valid products / items (supports array and RTDB object map + legacy field names)
+  const itemCheck = validateOrderLineItems(val);
+  if (!itemCheck.valid) return false;
+
+  // 5. Numeric financial totals validation
+  const totalAmount = parseStrictOrderNumber(val.totalAmount);
+  const grandTotal = parseStrictOrderNumber(val.grandTotal);
+  const subtotal = parseStrictOrderNumber(val.subtotal);
+  const shippingFee = parseStrictOrderNumber(val.shippingFee);
+
+  if (totalAmount !== null && (!Number.isFinite(totalAmount) || totalAmount <= 0)) {
+    return false;
+  }
+  if (grandTotal !== null && (!Number.isFinite(grandTotal) || grandTotal <= 0)) {
+    return false;
+  }
+  if (totalAmount !== null && grandTotal !== null && Math.abs(totalAmount - grandTotal) > 0.01) {
+    return false;
+  }
+  if (subtotal !== null && (!Number.isFinite(subtotal) || subtotal < 0)) {
+    return false;
+  }
+  if (shippingFee !== null && (!Number.isFinite(shippingFee) || shippingFee < 0)) {
+    return false;
+  }
+
+  if (totalAmount === null && grandTotal === null) {
+    const hasPositiveSubtotal = subtotal !== null && subtotal > 0;
+    if (!hasPositiveSubtotal && itemCheck.computedSum <= 0) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+export function hasCoreOrderFieldsForNotif(
+  val: unknown,
+  options: { requireStatus?: boolean } = {}
+): boolean {
+  return hasValidCoreOrderShape(val, options);
 }
 
 export type NotificationEventType = 'ORDER_CONFIRMATION' | 'ORDER_STATUS_CHANGED';
@@ -1311,13 +1527,17 @@ export async function sendOrderNotification(params: {
 }> {
   const { order, orderId, eventType, newStatus, oldStatus, retryNotificationId } = params;
 
-  const invoiceCode = order.invoiceCode || orderId;
-  const rawEmail = order.email;
-  const canonicalEmail = isValidEmail(rawEmail) ? String(rawEmail).trim().toLowerCase() : '';
-
   // 1. Determine canonical status & check if status actually changed
   let targetStatus: CanonicalStatus = 'جديد';
   if (eventType === 'ORDER_STATUS_CHANGED') {
+    if (newStatus !== undefined && newStatus !== null && !isValidOrderStatusValue(newStatus)) {
+      return {
+        success: false,
+        status: 'failed',
+        notificationId: retryNotificationId || '',
+        message: 'Skipped: Invalid target order status'
+      };
+    }
     targetStatus = normalizeOrderStatus(newStatus);
     const prevNormalized = normalizeOrderStatus(oldStatus);
     if (!retryNotificationId && prevNormalized === targetStatus) {
@@ -1330,6 +1550,26 @@ export async function sendOrderNotification(params: {
       };
     }
   }
+
+  // Enforce strict core order shape validation before reading tombstones, generating tokens, or enqueueing outbox
+  if (!hasCoreOrderFieldsForNotif(order, { requireStatus: eventType !== 'ORDER_CONFIRMATION' })) {
+    return {
+      success: false,
+      status: 'failed',
+      notificationId: retryNotificationId || '',
+      message: 'Skipped: Order record has incomplete or invalid core shape'
+    };
+  }
+
+  const invoiceCode = String(order.invoiceCode).trim();
+  const rawEmail = order.email ?? (isPlainRecord(order.customer) ? order.customer.email : undefined);
+  const canonicalEmail = isValidEmail(rawEmail) ? String(rawEmail).trim().toLowerCase() : '';
+  const customerName =
+    typeof order.name === 'string' && order.name.trim()
+      ? order.name.trim()
+      : isPlainRecord(order.customer) && typeof order.customer.name === 'string'
+        ? order.customer.name.trim()
+        : '';
 
   // 2. Generate unique notification ID (Idempotency key)
   const statusSlug = targetStatus === 'قيد التجهيز' ? 'processing'
@@ -1399,7 +1639,7 @@ export async function sendOrderNotification(params: {
     invoiceCode,
     channel: 'email',
     recipientEmail: canonicalEmail || 'N/A',
-    recipientName: order.name || 'N/A',
+    recipientName: customerName || 'N/A',
     eventType,
     orderStatus: targetStatus,
     status: hasValidCanonicalEmail ? 'pending' : 'skipped_no_valid_email',

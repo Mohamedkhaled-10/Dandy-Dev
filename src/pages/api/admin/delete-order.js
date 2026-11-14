@@ -16,6 +16,7 @@ const SECURITY_HEADERS = {
 };
 
 const DEFAULT_DELETE_LEASE_MS = 30_000;
+const DEFAULT_COMMITTING_DELETE_LEASE_MS = 45_000;
 
 const SENT_OR_AMBIGUOUS_OUTBOX_STATUSES = new Set([
   'sent',
@@ -47,16 +48,27 @@ function validateOrderId(raw) {
   return trimmed;
 }
 
-function isLeaseExpired(record, nowMs = Date.now(), fallbackLeaseMs = DEFAULT_DELETE_LEASE_MS) {
+function isLeaseExpired(
+  record,
+  nowMs = Date.now(),
+  deletingLeaseMs = DEFAULT_DELETE_LEASE_MS,
+  committingLeaseMs = DEFAULT_COMMITTING_DELETE_LEASE_MS
+) {
   if (!isPlainObject(record)) return false;
-  const expStr = record.deleteLeaseExpiresAt || record.leaseExpiresAt;
+  const isCommitting = record.status === 'COMMITTING_DELETE';
+  const expStr = isCommitting
+    ? record.committingLeaseExpiresAt || record.deleteLeaseExpiresAt || record.leaseExpiresAt
+    : record.deleteLeaseExpiresAt || record.leaseExpiresAt;
   if (typeof expStr === 'string' && expStr.trim()) {
     const expMs = Date.parse(expStr);
     if (Number.isFinite(expMs)) {
       return nowMs >= expMs;
     }
   }
-  const startStr = record.deletingAt || record.requestedAt || record.updatedAt;
+  const startStr = isCommitting
+    ? record.committingAt || record.updatedAt || record.deletingAt || record.requestedAt
+    : record.deletingAt || record.requestedAt || record.updatedAt;
+  const fallbackLeaseMs = isCommitting ? committingLeaseMs : deletingLeaseMs;
   if (typeof startStr === 'string' && startStr.trim()) {
     const startMs = Date.parse(startStr);
     if (Number.isFinite(startMs)) {
@@ -162,11 +174,33 @@ export async function POST({ request, _deps = undefined }) {
     );
   }
 
-  const nowMs = typeof _deps?.nowMs === 'number' && Number.isFinite(_deps.nowMs) ? _deps.nowMs : Date.now();
+  const resolveNowMs = (explicitMs = undefined) => {
+    if (typeof explicitMs === 'number' && Number.isFinite(explicitMs)) {
+      return explicitMs;
+    }
+    if (typeof _deps?.getNowMs === 'function') {
+      const dynamicMs = _deps.getNowMs();
+      if (typeof dynamicMs === 'number' && Number.isFinite(dynamicMs)) {
+        return dynamicMs;
+      }
+    }
+    if (typeof _deps?.nowMs === 'number' && Number.isFinite(_deps.nowMs)) {
+      return _deps.nowMs;
+    }
+    return Date.now();
+  };
+
+  const nowMs = resolveNowMs();
   const deleteLeaseMs =
     typeof _deps?.deleteLeaseMs === 'number' && _deps.deleteLeaseMs > 0
       ? _deps.deleteLeaseMs
       : DEFAULT_DELETE_LEASE_MS;
+  const commitDeleteLeaseMs =
+    typeof _deps?.commitDeleteLeaseMs === 'number' && _deps.commitDeleteLeaseMs > 0
+      ? _deps.commitDeleteLeaseMs
+      : typeof _deps?.committingDeleteLeaseMs === 'number' && _deps.committingDeleteLeaseMs > 0
+        ? _deps.committingDeleteLeaseMs
+        : DEFAULT_COMMITTING_DELETE_LEASE_MS;
   const nowIso = new Date(nowMs).toISOString();
   const deleteLeaseExpiresAt = new Date(nowMs + deleteLeaseMs).toISOString();
   const deleteAttemptId = crypto.randomUUID();
@@ -226,7 +260,7 @@ export async function POST({ request, _deps = undefined }) {
           return undefined;
         }
         if (current.status === 'DELETING' || current.status === 'COMMITTING_DELETE') {
-          if (isLeaseExpired(current, nowMs, deleteLeaseMs)) {
+          if (isLeaseExpired(current, nowMs, deleteLeaseMs, commitDeleteLeaseMs)) {
             isRecoveryAttempt = true;
             recoveredFromAttemptId =
               typeof current.deleteAttemptId === 'string' ? current.deleteAttemptId : null;
@@ -393,7 +427,7 @@ export async function POST({ request, _deps = undefined }) {
         }
         if (current.status === 'DELETING') {
           const canTakeOverDeleting =
-            isLeaseExpired(current, nowMs, deleteLeaseMs) ||
+            isLeaseExpired(current, nowMs, deleteLeaseMs, commitDeleteLeaseMs) ||
             (isRecoveryAttempt &&
               recoveredFromAttemptId &&
               current.deleteAttemptId === recoveredFromAttemptId);
@@ -463,7 +497,11 @@ export async function POST({ request, _deps = undefined }) {
     }
 
     // 8. Fence step: atomically verify & promote tombstone DELETING -> COMMITTING_DELETE
-    // Prevents a stale Worker 1 from executing deleteUpdates after lease takeover or completion.
+    // Renews deleteLeaseExpiresAt from the transition timestamp so multi-path cleanup gets a fresh commit lease.
+    const commitTransitionMs = resolveNowMs(_deps?.commitNowMs);
+    const commitTransitionIso = new Date(commitTransitionMs).toISOString();
+    const commitLeaseExpiresAt = new Date(commitTransitionMs + commitDeleteLeaseMs).toISOString();
+
     let commitFenceReason = null;
     const commitFenceTx = await deletedOrderRef.transaction((cur) => {
       commitFenceReason = null;
@@ -479,10 +517,17 @@ export async function POST({ request, _deps = undefined }) {
         commitFenceReason = 'LEASE_STOLEN';
         return undefined;
       }
+      if (isLeaseExpired(cur, commitTransitionMs, deleteLeaseMs, commitDeleteLeaseMs)) {
+        commitFenceReason = 'LEASE_EXPIRED';
+        return undefined;
+      }
       return {
         ...cur,
         status: 'COMMITTING_DELETE',
-        committingAt: new Date().toISOString()
+        committingAt: commitTransitionIso,
+        deleteLeaseExpiresAt: commitLeaseExpiresAt,
+        committingLeaseExpiresAt: commitLeaseExpiresAt,
+        updatedAt: commitTransitionIso
       };
     });
 
@@ -503,6 +548,7 @@ export async function POST({ request, _deps = undefined }) {
           404
         );
       }
+      await rollbackLocksSafely();
       return jsonResponse(
         {
           success: false,
@@ -652,6 +698,39 @@ export async function POST({ request, _deps = undefined }) {
 
     if (typeof _deps?.beforeRootUpdate === 'function') {
       await _deps.beforeRootUpdate({ orderId, deleteAttemptId, deleteUpdates, adminDb });
+    }
+
+    // Re-verify single-path tombstone ownership (status === COMMITTING_DELETE && deleteAttemptId === ours
+    // and lease still active) immediately before executing the multi-location root update.
+    // Note: RTDB root .update() is an atomic multi-path write, not a multi-path CAS.
+    const preUpdateCheckNowMs = resolveNowMs(_deps?.preUpdateNowMs ?? _deps?.commitNowMs);
+    const preUpdateSnap = await deletedOrderRef.once('value');
+    const preUpdateVal = preUpdateSnap?.val?.();
+    if (isPlainObject(preUpdateVal) && preUpdateVal.status === 'DELETED') {
+      return jsonResponse(
+        {
+          success: false,
+          error: 'ORDER_NOT_FOUND',
+          message: 'تم حذف الطلب بالفعل عبر عملية أحدث.'
+        },
+        404
+      );
+    }
+    if (
+      !isPlainObject(preUpdateVal) ||
+      preUpdateVal.status !== 'COMMITTING_DELETE' ||
+      preUpdateVal.deleteAttemptId !== deleteAttemptId ||
+      isLeaseExpired(preUpdateVal, preUpdateCheckNowMs, deleteLeaseMs, commitDeleteLeaseMs)
+    ) {
+      await rollbackLocksSafely();
+      return jsonResponse(
+        {
+          success: false,
+          error: 'DELETE_LEASE_LOST',
+          message: 'تم فقدان قفل مرحلة التثبيت للحذف قبل التنفيذ النهائي.'
+        },
+        409
+      );
     }
 
     // 11. Execute multi-path cleanup atomically in RTDB root update; roll back fencing on failure

@@ -317,15 +317,19 @@ test('A2. BULK_UPDATE_STATUS racing with delete-order never resurrects deleted o
         invoiceCode: 'DNY-200001',
         status: 'جديد',
         name: 'سارة',
+        phone: '01012345678',
         email: 'N/A',
-        totalAmount: 200
+        totalAmount: 200,
+        products: [{ id: 'p1', name: 'كريم', quantity: 1, price: 200, lineTotal: 200 }]
       },
       [liveId]: {
         invoiceCode: 'DNY-200002',
         status: 'جديد',
         name: 'نور',
+        phone: '01098765432',
         email: 'N/A',
-        totalAmount: 250
+        totalAmount: 250,
+        products: [{ id: 'p2', name: 'سيروم', quantity: 1, price: 250, lineTotal: 250 }]
       }
     }
   });
@@ -1115,8 +1119,10 @@ test('C4. RETRY_NOTIFICATION and SEND_CURRENT_STATUS_NOTIFICATION reject cancell
         invoiceCode: 'DNY-700001',
         status: 'قيد التجهيز',
         name: 'ليلى',
+        phone: '01011223344',
         email: 'layla@example.com',
-        totalAmount: 300
+        totalAmount: 300,
+        products: [{ id: 'p3', name: 'غسول', quantity: 1, price: 300, lineTotal: 300 }]
       }
     },
     privateDeletedOrders: {
