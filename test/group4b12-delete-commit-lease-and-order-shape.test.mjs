@@ -874,12 +874,12 @@ test('12. Prevents sending notifications for incomplete orders (direct sendOrder
       }
     },
     notifications_outbox: {
-      notif_bad_retry: {
-        notificationId: 'notif_bad_retry',
+      [`notif_order_${incompleteOrderId}_status_delivered`]: {
+        notificationId: `notif_order_${incompleteOrderId}_status_delivered`,
         orderId: incompleteOrderId,
         channel: 'email',
         eventType: 'ORDER_STATUS_CHANGED',
-        orderStatus: 'تم الشحن',
+        orderStatus: 'تم التوصيل',
         status: 'failed',
         attempts: 1
       }
@@ -929,7 +929,7 @@ test('12. Prevents sending notifications for incomplete orders (direct sendOrder
         {
           action: 'RETRY_NOTIFICATION',
           orderId: incompleteOrderId,
-          notificationId: 'notif_bad_retry'
+          notificationId: `notif_order_${incompleteOrderId}_status_delivered`
         },
         { Authorization: 'Bearer tok-admin-verified' }
       ),

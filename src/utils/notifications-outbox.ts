@@ -268,7 +268,7 @@ export function isDeterministicOutboxIdForOrder(
   const confirmationId = getConfirmationOutboxId(orderId);
   if (notificationId === confirmationId) {
     if (eventType !== undefined && eventType !== null && eventType !== '') {
-      return eventType === 'ORDER_CONFIRMATION' || eventType === 'ORDER_STATUS_CHANGED';
+      return eventType === 'ORDER_CONFIRMATION';
     }
     return true;
   }
@@ -277,11 +277,86 @@ export function isDeterministicOutboxIdForOrder(
     const slug = notificationId.slice(statusPrefix.length);
     if (!EMAIL_STATUS_SLUGS.has(slug)) return false;
     if (eventType !== undefined && eventType !== null && eventType !== '') {
-      return eventType === 'ORDER_STATUS_CHANGED' || eventType === 'ORDER_CONFIRMATION';
+      return eventType === 'ORDER_STATUS_CHANGED';
     }
     return true;
   }
   return false;
+}
+
+export function getExpectedEmailEventTypeFromOutboxId(
+  notificationId: string,
+  orderId: string
+): 'ORDER_CONFIRMATION' | 'ORDER_STATUS_CHANGED' | null {
+  if (!isDeterministicOutboxIdForOrder(notificationId, orderId, 'email')) {
+    return null;
+  }
+  return notificationId === getConfirmationOutboxId(orderId)
+    ? 'ORDER_CONFIRMATION'
+    : 'ORDER_STATUS_CHANGED';
+}
+
+export function validateEmailOutboxRecordIdentity(params: {
+  notificationId: string;
+  orderId: string;
+  record: unknown;
+  expectedEventType?: 'ORDER_CONFIRMATION' | 'ORDER_STATUS_CHANGED';
+}):
+  | {
+      ok: true;
+      canonicalNotificationId: string;
+      eventType: 'ORDER_CONFIRMATION' | 'ORDER_STATUS_CHANGED';
+    }
+  | {
+      ok: false;
+      reason: string;
+    } {
+  const { notificationId, orderId, record, expectedEventType } = params;
+
+  if (!isDeterministicOutboxIdForOrder(notificationId, orderId, 'email')) {
+    return { ok: false, reason: 'NON_DETERMINISTIC_NOTIFICATION_ID' };
+  }
+
+  const derivedEventType = getExpectedEmailEventTypeFromOutboxId(notificationId, orderId);
+  if (!derivedEventType) {
+    return { ok: false, reason: 'NON_DETERMINISTIC_NOTIFICATION_ID' };
+  }
+
+  if (expectedEventType && expectedEventType !== derivedEventType) {
+    return { ok: false, reason: 'EVENT_TYPE_MISMATCH' };
+  }
+
+  if (!isPlainObject(record)) {
+    return { ok: false, reason: 'MALFORMED_OUTBOX_RECORD' };
+  }
+
+  if (typeof record.orderId !== 'string' || record.orderId !== orderId) {
+    return { ok: false, reason: 'ORDER_ID_MISMATCH' };
+  }
+
+  if (record.notificationId !== undefined && record.notificationId !== null && record.notificationId !== '') {
+    if (typeof record.notificationId !== 'string' || record.notificationId.trim() !== notificationId) {
+      return { ok: false, reason: 'NOTIFICATION_ID_MISMATCH' };
+    }
+  }
+
+  if (record.channel !== undefined && record.channel !== null && record.channel !== '') {
+    if (typeof record.channel !== 'string' || record.channel !== 'email') {
+      return { ok: false, reason: 'CHANNEL_MISMATCH' };
+    }
+  }
+
+  if (record.eventType !== undefined && record.eventType !== null && record.eventType !== '') {
+    if (typeof record.eventType !== 'string' || record.eventType !== derivedEventType) {
+      return { ok: false, reason: 'EVENT_TYPE_MISMATCH' };
+    }
+  }
+
+  return {
+    ok: true,
+    canonicalNotificationId: notificationId,
+    eventType: derivedEventType
+  };
 }
 
 export function isCleanLegacyPendingOutboxRecord(rec: Record<string, any>): boolean {
@@ -604,6 +679,8 @@ export async function claimOutboxNotification(params: {
   adminDb: any;
   notificationId: string;
   orderId?: string;
+  channel?: string;
+  eventType?: string;
   initialRecord?: Record<string, any>;
   allowRetryFailed?: boolean;
   allowSkipIfNoValidEmail?: boolean;
@@ -637,6 +714,29 @@ export async function claimOutboxNotification(params: {
       : typeof initialRecord?.orderId === 'string' && initialRecord.orderId.trim()
         ? initialRecord.orderId.trim()
         : '';
+
+  const expectedChannel =
+    typeof params.channel === 'string' && params.channel.trim()
+      ? params.channel.trim()
+      : typeof initialRecord?.channel === 'string' && initialRecord.channel.trim()
+        ? initialRecord.channel.trim()
+        : '';
+
+  const expectedEventType =
+    typeof params.eventType === 'string' && params.eventType.trim()
+      ? params.eventType.trim()
+      : typeof initialRecord?.eventType === 'string' && initialRecord.eventType.trim()
+        ? initialRecord.eventType.trim()
+        : '';
+
+  if (expectedChannel && !RECOGNIZED_OUTBOX_CHANNELS.has(expectedChannel)) {
+    return {
+      claimed: false,
+      reason: 'IDENTITY_MISMATCH',
+      status: 'unavailable',
+      record: null
+    };
+  }
 
   if (!adminDb || typeof adminDb.ref !== 'function') {
     return {
@@ -674,6 +774,19 @@ export async function claimOutboxNotification(params: {
     }
   }
 
+  if (
+    targetOrderId &&
+    expectedChannel &&
+    !isDeterministicOutboxIdForOrder(notificationId, targetOrderId, expectedChannel, expectedEventType || undefined)
+  ) {
+    return {
+      claimed: false,
+      reason: 'IDENTITY_MISMATCH',
+      status: 'unavailable',
+      record: null
+    };
+  }
+
   const outboxRef = adminDb.ref(`notifications_outbox/${notificationId}`);
   const claimId = crypto.randomUUID();
   const claimNowMs = resolveNowMs(params.nowMs, params.getNowMs);
@@ -699,7 +812,7 @@ export async function claimOutboxNotification(params: {
       blockedReason = undefined;
       skippedNoEmail = false;
 
-      if (!isPlainObject(current)) {
+      if (current === null || current === undefined) {
         previousStatusBeforeClaim = 'pending';
         if (allowSkipIfNoValidEmail && !hasValidEmail) {
           skippedNoEmail = true;
@@ -726,26 +839,87 @@ export async function claimOutboxNotification(params: {
         };
       }
 
-      if (
-        targetOrderId &&
-        typeof current.orderId === 'string' &&
-        current.orderId.trim() &&
-        current.orderId.trim() !== targetOrderId
-      ) {
+      if (!isPlainObject(current)) {
         blockedReason = 'IDENTITY_MISMATCH';
         return undefined;
       }
 
-      if (
-        typeof current.notificationId === 'string' &&
-        current.notificationId.trim() &&
-        current.notificationId.trim() !== notificationId
-      ) {
-        blockedReason = 'IDENTITY_MISMATCH';
-        return undefined;
+      if (targetOrderId) {
+        if (current.orderId !== undefined && current.orderId !== null && current.orderId !== '') {
+          if (typeof current.orderId !== 'string' || current.orderId.trim() !== targetOrderId) {
+            blockedReason = 'IDENTITY_MISMATCH';
+            return undefined;
+          }
+        } else if (expectedChannel) {
+          blockedReason = 'IDENTITY_MISMATCH';
+          return undefined;
+        }
+      }
+
+      if (current.notificationId !== undefined && current.notificationId !== null && current.notificationId !== '') {
+        if (typeof current.notificationId !== 'string' || current.notificationId.trim() !== notificationId) {
+          blockedReason = 'IDENTITY_MISMATCH';
+          return undefined;
+        }
       }
 
       const rawSt = current.status;
+      if (rawSt === 'cancelled_order_deleted' || rawSt === 'unknown_deleted_during_dispatch') {
+        blockedReason = 'ORDER_DELETED';
+        return undefined;
+      }
+
+      if (current.channel !== undefined && current.channel !== null && current.channel !== '') {
+        if (typeof current.channel !== 'string' || !RECOGNIZED_OUTBOX_CHANNELS.has(current.channel)) {
+          blockedReason = 'IDENTITY_MISMATCH';
+          return undefined;
+        }
+        if (expectedChannel && current.channel !== expectedChannel) {
+          blockedReason = 'IDENTITY_MISMATCH';
+          return undefined;
+        }
+      }
+
+      if (current.eventType !== undefined && current.eventType !== null && current.eventType !== '') {
+        if (typeof current.eventType !== 'string') {
+          blockedReason = 'IDENTITY_MISMATCH';
+          return undefined;
+        }
+        if (expectedEventType && current.eventType !== expectedEventType) {
+          blockedReason = 'IDENTITY_MISMATCH';
+          return undefined;
+        }
+      }
+
+      const effectiveOrderId =
+        targetOrderId || (typeof current.orderId === 'string' ? current.orderId.trim() : '');
+      const effectiveChannel =
+        expectedChannel || (typeof current.channel === 'string' ? current.channel.trim() : '');
+      const effectiveEventType =
+        (typeof current.eventType === 'string' && current.eventType.trim()) ||
+        expectedEventType ||
+        undefined;
+
+      if (
+        expectedChannel &&
+        effectiveOrderId &&
+        !isDeterministicOutboxIdForOrder(notificationId, effectiveOrderId, effectiveChannel, effectiveEventType)
+      ) {
+        blockedReason = 'IDENTITY_MISMATCH';
+        return undefined;
+      }
+
+      if (
+        !expectedChannel &&
+        effectiveOrderId &&
+        effectiveChannel &&
+        effectiveEventType &&
+        !isDeterministicOutboxIdForOrder(notificationId, effectiveOrderId, effectiveChannel, effectiveEventType)
+      ) {
+        blockedReason = 'IDENTITY_MISMATCH';
+        return undefined;
+      }
+
       if (rawSt !== undefined && rawSt !== null && rawSt !== '' && (typeof rawSt !== 'string' || !RECOGNIZED_OUTBOX_STATUSES.has(rawSt))) {
         blockedReason = 'AMBIGUOUS_UNKNOWN';
         return undefined;
@@ -776,10 +950,6 @@ export async function claimOutboxNotification(params: {
       }
       if (st === 'skipped_no_valid_email' && (!allowSkipIfNoValidEmail || !hasValidEmail)) {
         blockedReason = 'SKIPPED';
-        return undefined;
-      }
-      if (st === 'cancelled_order_deleted' || st === 'unknown_deleted_during_dispatch') {
-        blockedReason = 'ORDER_DELETED';
         return undefined;
       }
       if (st === 'failed' && !allowRetryFailed) {
@@ -1363,6 +1533,8 @@ export async function dispatchTelegramOutboxNotification(params: {
       adminDb,
       notificationId,
       orderId,
+      channel: 'telegram',
+      eventType: 'TELEGRAM_ORDER_NOTIFICATION',
       allowRetryFailed: false,
       nowMs,
       getNowMs,
@@ -1413,20 +1585,38 @@ export async function dispatchTelegramOutboxNotification(params: {
         })
       );
 
-      if (
-        !tgResult ||
-        tgResult.status === 'SUCCESS' ||
-        tgResult.allSuccessful === true ||
-        (tgResult.success === true && tgResult.status !== 'PARTIAL_SUCCESS' && tgResult.status !== 'FAILURE')
+      if (!tgResult || typeof tgResult !== 'object' || Array.isArray(tgResult)) {
+        finalStatus = 'unknown';
+        providerOutcome = 'ambiguous';
+        finalError = 'TELEGRAM_DISPATCH_FAILED';
+        finalMessage = 'Telegram provider returned no confirmation outcome';
+      } else if (
+        tgResult.skipped === true ||
+        tgResult.status === 'SKIPPED' ||
+        tgResult.status === 'SKIPPED_NOT_CONFIGURED'
       ) {
-        finalStatus = 'sent';
-        providerOutcome = 'accepted';
-        finalMessage = 'Telegram notification dispatched';
+        finalStatus = 'skipped_not_configured';
+        providerOutcome = 'skipped';
+        finalError = null;
+        finalMessage =
+          typeof tgResult.message === 'string' && tgResult.message.trim()
+            ? tgResult.message.trim()
+            : 'Telegram notification skipped (not configured)';
       } else if (tgResult.status === 'SIMULATED') {
         finalStatus = 'sent';
         providerOutcome = 'accepted';
         extra.simulated = true;
         finalMessage = 'Telegram notification simulated (not configured)';
+      } else if (
+        tgResult.status === 'SUCCESS' ||
+        tgResult.allSuccessful === true ||
+        (tgResult.success === true &&
+          tgResult.status !== 'PARTIAL_SUCCESS' &&
+          tgResult.status !== 'FAILURE')
+      ) {
+        finalStatus = 'sent';
+        providerOutcome = 'accepted';
+        finalMessage = 'Telegram notification dispatched';
       } else {
         const hasTimeout =
           Array.isArray(tgResult.results) &&
@@ -1436,7 +1626,7 @@ export async function dispatchTelegramOutboxNotification(params: {
           providerOutcome = hasTimeout ? 'timeout' : 'ambiguous';
           finalError = hasTimeout ? 'NETWORK_TIMEOUT' : 'TELEGRAM_DISPATCH_FAILED';
           finalMessage = 'Telegram delivery outcome is partial or ambiguous after timeout';
-        } else {
+        } else if (tgResult.status === 'FAILURE' || tgResult.success === false) {
           finalStatus = 'failed';
           providerOutcome = 'rejected';
           const firstErr = Array.isArray(tgResult.results)
@@ -1444,6 +1634,11 @@ export async function dispatchTelegramOutboxNotification(params: {
             : null;
           finalError = sanitizeOutboxErrorCode(firstErr?.code) || 'TELEGRAM_DISPATCH_FAILED';
           finalMessage = 'Telegram notification delivery failed';
+        } else {
+          finalStatus = 'unknown';
+          providerOutcome = 'ambiguous';
+          finalError = 'TELEGRAM_DISPATCH_FAILED';
+          finalMessage = 'Telegram provider returned unrecognized or ambiguous outcome';
         }
       }
     } catch (tgErr: any) {
@@ -1569,6 +1764,8 @@ export async function dispatchMakeWebhookOutboxNotification(params: {
       adminDb,
       notificationId,
       orderId,
+      channel: 'make',
+      eventType: 'MAKE_ORDER_WEBHOOK',
       allowRetryFailed: false,
       nowMs,
       getNowMs,

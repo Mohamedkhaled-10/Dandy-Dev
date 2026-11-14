@@ -6,6 +6,7 @@ import { getOrCreateInvoiceToken } from './invoice-token.ts';
 import {
   claimOutboxNotification,
   finalizeOutboxNotification,
+  isDeterministicOutboxIdForOrder,
   sanitizeOutboxErrorCode,
   type OutboxProviderOutcome,
   type OutboxPersistenceOutcome
@@ -1620,6 +1621,23 @@ export async function sendOrderNotification(params: {
       : `notif_order_${orderId}_status_${statusSlug}`
   );
 
+  if (
+    retryNotificationId &&
+    (!orderId ||
+      (!orderId.startsWith('diag_') &&
+        !isDeterministicOutboxIdForOrder(notificationId, orderId, 'email', eventType)))
+  ) {
+    return {
+      success: false,
+      status: 'failed',
+      notificationId,
+      providerOutcome: 'not_attempted',
+      outboxFinalized: false,
+      persistenceOutcome: 'identity_mismatch',
+      message: 'Invalid deterministic email notification identity'
+    };
+  }
+
   const adminDb = params.adminDb !== undefined ? params.adminDb : getAdminDb();
 
   // Fail-closed: NEVER dispatch external notification without an atomic Outbox store
@@ -1710,6 +1728,8 @@ export async function sendOrderNotification(params: {
     adminDb,
     notificationId,
     orderId,
+    channel: 'email',
+    eventType,
     initialRecord: outboxData,
     allowRetryFailed: effectiveAllowRetryFailed,
     allowSkipIfNoValidEmail: true,

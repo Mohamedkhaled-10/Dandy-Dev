@@ -17,7 +17,8 @@ import {
 import { getOrCreateInvoiceToken } from '../../utils/invoice-token.ts';
 import {
   reconcileStaleOutboxNotification,
-  sanitizeOutboxRecordForAdmin
+  sanitizeOutboxRecordForAdmin,
+  validateEmailOutboxRecordIdentity
 } from '../../utils/notifications-outbox.ts';
 
 const NO_STORE_HEADERS = {
@@ -102,6 +103,7 @@ export async function POST({ request, _deps = undefined }) {
   const { action = 'UPDATE_STATUS' } = body || {};
   const db = _deps?.adminDb || getAdminDb();
   const sendNotifFn = _deps?.sendOrderNotification || sendOrderNotification;
+  const resolveTokenFn = _deps?.getOrCreateInvoiceToken || getOrCreateInvoiceToken;
 
   try {
     // -------------------------------------------------------------------------
@@ -507,7 +509,7 @@ export async function POST({ request, _deps = undefined }) {
       const notifSnap = await notifRef.once('value');
       const notifData = notifSnap.val();
 
-      if (!notifData || !isPlainObject(notifData)) {
+      if (notifData === null || notifData === undefined) {
         return new Response(JSON.stringify({
           success: false,
           error: 'NOTIFICATION_NOT_FOUND',
@@ -515,19 +517,27 @@ export async function POST({ request, _deps = undefined }) {
         }), { status: 404, headers: NO_STORE_HEADERS });
       }
 
+      if (!isPlainObject(notifData)) {
+        return new Response(JSON.stringify({
+          success: false,
+          error: 'INVALID_NOTIFICATION_IDENTITY',
+          message: 'سجل الإشعار غير صالح أو غير متطابق مع التنسيق المطلوب.',
+          notificationId
+        }), { status: 409, headers: NO_STORE_HEADERS });
+      }
+
       if (
         notifData.orderId !== orderId ||
-        (typeof notifData.notificationId === 'string' &&
-          notifData.notificationId.trim() !== '' &&
-          notifData.notificationId.trim() !== notificationId) ||
-        (typeof notifData.channel === 'string' &&
-          notifData.channel !== '' &&
-          notifData.channel !== 'email')
+        (notifData.notificationId !== undefined &&
+          notifData.notificationId !== null &&
+          notifData.notificationId !== '' &&
+          (typeof notifData.notificationId !== 'string' ||
+            notifData.notificationId.trim() !== notificationId))
       ) {
         return new Response(JSON.stringify({
           success: false,
           error: 'INVALID_NOTIFICATION_IDENTITY',
-          message: 'سجل الإشعار غير متطابق مع معرف الطلب أو القناة المطلوبة.',
+          message: 'سجل الإشعار غير متطابق مع معرف الطلب أو معرف الإشعار المطلوب.',
           notificationId
         }), { status: 409, headers: NO_STORE_HEADERS });
       }
@@ -541,6 +551,20 @@ export async function POST({ request, _deps = undefined }) {
           error: 'ORDER_DELETED',
           status: notifData.status,
           message: 'تم حذف الطلب المرتبط بهذا الإشعار ولا يمكن إعادة إرساله',
+          notificationId
+        }), { status: 409, headers: NO_STORE_HEADERS });
+      }
+
+      const idValidation = validateEmailOutboxRecordIdentity({
+        notificationId,
+        orderId,
+        record: notifData
+      });
+      if (!idValidation.ok) {
+        return new Response(JSON.stringify({
+          success: false,
+          error: 'INVALID_NOTIFICATION_IDENTITY',
+          message: 'سجل الإشعار لا يطابق الهوية الحتمية المعتمدة لقناة البريد الإلكتروني.',
           notificationId
         }), { status: 409, headers: NO_STORE_HEADERS });
       }
@@ -647,7 +671,7 @@ export async function POST({ request, _deps = undefined }) {
       }
 
       // Fetch or generate secure private invoice access token
-      const invoiceAccessToken = await getOrCreateInvoiceToken(orderId, db);
+      const invoiceAccessToken = await resolveTokenFn(orderId, db);
 
       // Re-verify deletion state after async token lookup
       const preSendDel = await checkOrderDeletionState(db, orderId);
@@ -668,11 +692,26 @@ export async function POST({ request, _deps = undefined }) {
       }
 
       // Retry send using the SAME notification ID (enforces Apps Script idempotency)
+      const SLUG_TO_CANONICAL_STATUS = {
+        new: 'جديد',
+        processing: 'قيد التجهيز',
+        shipped: 'تم الشحن',
+        delivered: 'تم التوصيل',
+        cancelled: 'ملغي'
+      };
+      const statusKeyPrefix = `notif_order_${orderId}_status_`;
+      const derivedOrderStatus =
+        idValidation.eventType === 'ORDER_CONFIRMATION'
+          ? 'جديد'
+          : notificationId.startsWith(statusKeyPrefix)
+            ? SLUG_TO_CANONICAL_STATUS[notificationId.slice(statusKeyPrefix.length)] || orderData.status
+            : orderData.status;
+
       const retryArgs = {
         order: orderData,
         orderId,
-        eventType: notifData.eventType || 'ORDER_STATUS_CHANGED',
-        newStatus: notifData.orderStatus || orderData.status,
+        eventType: idValidation.eventType,
+        newStatus: notifData.orderStatus || derivedOrderStatus,
         retryNotificationId: notificationId,
         invoiceAccessToken,
         adminDb: db
@@ -801,13 +840,36 @@ export async function POST({ request, _deps = undefined }) {
       const notifSnap = await notifRef.once('value');
       const existingNotif = notifSnap.val();
 
-      if (existingNotif && isPlainObject(existingNotif) && existingNotif.orderId && existingNotif.orderId !== orderId) {
-        return new Response(JSON.stringify({
-          success: false,
-          error: 'INVALID_NOTIFICATION_IDENTITY',
+      if (existingNotif !== null && existingNotif !== undefined) {
+        if (
+          isPlainObject(existingNotif) &&
+          (existingNotif.status === 'cancelled_order_deleted' ||
+            existingNotif.status === 'unknown_deleted_during_dispatch') &&
+          (existingNotif.orderId === undefined || existingNotif.orderId === orderId)
+        ) {
+          return new Response(JSON.stringify({
+            success: false,
+            error: 'ORDER_DELETED',
+            status: existingNotif.status,
+            notificationId,
+            message: 'تم حذف الطلب المرتبط بهذا الإشعار ولا يمكن إرساله'
+          }), { status: 409, headers: NO_STORE_HEADERS });
+        }
+
+        const existingIdValidation = validateEmailOutboxRecordIdentity({
           notificationId,
-          message: 'سجل الإشعار غير متطابق مع معرف الطلب.'
-        }), { status: 409, headers: NO_STORE_HEADERS });
+          orderId,
+          record: existingNotif,
+          expectedEventType: eventType
+        });
+        if (!existingIdValidation.ok) {
+          return new Response(JSON.stringify({
+            success: false,
+            error: 'INVALID_NOTIFICATION_IDENTITY',
+            notificationId,
+            message: 'سجل الإشعار القائم غير متطابق مع الهوية الحتمية أو قناة البريد الإلكتروني.'
+          }), { status: 409, headers: NO_STORE_HEADERS });
+        }
       }
 
       if (existingNotif && BLOCKED_OUTBOX_RETRY_STATUSES.has(existingNotif.status)) {
@@ -883,7 +945,7 @@ export async function POST({ request, _deps = undefined }) {
       }
 
       // Generate or retrieve secure private invoice access token
-      const invoiceAccessToken = await getOrCreateInvoiceToken(orderId, db);
+      const invoiceAccessToken = await resolveTokenFn(orderId, db);
 
       // Re-verify deletion state after async token lookup
       const preSendDel = await checkOrderDeletionState(db, orderId);
