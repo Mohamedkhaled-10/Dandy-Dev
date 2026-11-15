@@ -49,6 +49,7 @@ import {
 } from '../../utils/server-variant-pricing.ts';
 import {
   validateCouponCode,
+  validateCouponDefinition,
   evaluateCouponEligibility,
   roundCurrency
 } from '../../utils/coupons.ts';
@@ -1131,29 +1132,49 @@ export async function POST(context) {
       const rawCouponsVal = couponsSnap && typeof couponsSnap.val === 'function' ? couponsSnap.val() : null;
       let matchedCoupon = null;
       let matchedCouponId = null;
+      let storedCouponConfigInvalid = false;
 
       if (rawCouponsVal && typeof rawCouponsVal === 'object' && !Array.isArray(rawCouponsVal)) {
         for (const [key, entry] of Object.entries(rawCouponsVal)) {
           if (!entry || typeof entry !== 'object' || Array.isArray(entry)) continue;
           const entryCodeCheck = validateCouponCode(entry.code);
           if (entryCodeCheck.valid && entryCodeCheck.normalizedCode === requestedCouponCode) {
+            const allowListedConfig = {
+              code: entry.code,
+              discountType: entry.discountType,
+              discountValue: entry.discountValue,
+              scope: entry.scope,
+              categorySlug: entry.categorySlug,
+              minimumSubtotal: entry.minimumSubtotal,
+              maximumDiscount: entry.maximumDiscount,
+              startsAt: entry.startsAt,
+              expiresAt: entry.expiresAt,
+              isActive: entry.isActive === undefined ? null : entry.isActive
+            };
+            const defValidation = validateCouponDefinition(allowListedConfig);
+            if (!defValidation.valid || !defValidation.value) {
+              storedCouponConfigInvalid = true;
+              matchedCoupon = null;
+              break;
+            }
             matchedCouponId =
               typeof entry.id === 'string' && entry.id.trim() ? entry.id.trim() : String(key).trim();
-            matchedCoupon = {
-              code: entryCodeCheck.normalizedCode,
-              discountType: entry.discountType === 'fixed' ? 'fixed' : 'percentage',
-              discountValue: Number(entry.discountValue) || 0,
-              scope: entry.scope === 'category' ? 'category' : 'all',
-              categorySlug: entry.scope === 'category' ? (entry.categorySlug || null) : null,
-              minimumSubtotal: entry.minimumSubtotal ?? null,
-              maximumDiscount: entry.discountType === 'percentage' ? (entry.maximumDiscount ?? null) : null,
-              startsAt: entry.startsAt ?? null,
-              expiresAt: entry.expiresAt ?? null,
-              isActive: entry.isActive === true
-            };
+            matchedCoupon = defValidation.value;
             break;
           }
         }
+      }
+
+      if (storedCouponConfigInvalid) {
+        return await failBusinessOrConfig(
+          {
+            success: false,
+            error: 'INVALID_COUPON_CONFIGURATION',
+            message: 'عذراً، كود الخصم غير صالح للاستخدام حالياً.'
+          },
+          400,
+          'INVALID_COUPON_CONFIGURATION'
+        );
       }
 
       const evaluation = evaluateCouponEligibility({

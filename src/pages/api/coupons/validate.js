@@ -23,6 +23,7 @@ import {
 } from '../../../utils/server-variant-pricing.ts';
 import {
   validateCouponCode,
+  validateCouponDefinition,
   normalizeCouponCode,
   evaluateCouponEligibility,
   roundCurrency
@@ -623,31 +624,62 @@ export async function POST(context) {
       );
     }
 
-    // Read settings/coupons (read-only) and resolve normalized matching coupon without leaking admin metadata
+    // Read settings/coupons (read-only) and strictly validate allow-listed definition fields
     const couponsSnap = await adminDb.ref(COUPONS_RTDB_PATH).once('value');
     const rawCoupons = couponsSnap && typeof couponsSnap.val === 'function' ? couponsSnap.val() : null;
 
     let matchedCoupon = null;
+    let storedCouponConfigInvalid = false;
     if (rawCoupons && typeof rawCoupons === 'object' && !Array.isArray(rawCoupons)) {
       for (const entry of Object.values(rawCoupons)) {
         if (!entry || typeof entry !== 'object' || Array.isArray(entry)) continue;
         const storedCode = normalizeCouponCode(entry.code);
         if (storedCode === normalizedCode) {
-          matchedCoupon = {
-            code: storedCode,
-            discountType: entry.discountType === 'fixed' ? 'fixed' : 'percentage',
-            discountValue: Number(entry.discountValue) || 0,
-            scope: entry.scope === 'category' ? 'category' : 'all',
-            categorySlug: entry.scope === 'category' ? (entry.categorySlug || null) : null,
-            minimumSubtotal: entry.minimumSubtotal ?? null,
-            maximumDiscount: entry.discountType === 'percentage' ? (entry.maximumDiscount ?? null) : null,
-            startsAt: entry.startsAt ?? null,
-            expiresAt: entry.expiresAt ?? null,
-            isActive: entry.isActive === true
+          const allowListedConfig = {
+            code: entry.code,
+            discountType: entry.discountType,
+            discountValue: entry.discountValue,
+            scope: entry.scope,
+            categorySlug: entry.categorySlug,
+            minimumSubtotal: entry.minimumSubtotal,
+            maximumDiscount: entry.maximumDiscount,
+            startsAt: entry.startsAt,
+            expiresAt: entry.expiresAt,
+            isActive: entry.isActive === undefined ? null : entry.isActive
           };
+          const defValidation = validateCouponDefinition(allowListedConfig);
+          if (!defValidation.valid || !defValidation.value) {
+            storedCouponConfigInvalid = true;
+            matchedCoupon = null;
+            break;
+          }
+          matchedCoupon = defValidation.value;
           break;
         }
       }
+    }
+
+    if (storedCouponConfigInvalid) {
+      return jsonResponse(
+        {
+          success: true,
+          eligible: false,
+          code: normalizedCode,
+          discountType: null,
+          discountValue: null,
+          scope: null,
+          categorySlug: null,
+          eligibleSubtotal: 0,
+          orderProductSubtotal: subtotal,
+          subtotal,
+          discountAmount: 0,
+          discountedSubtotal: subtotal,
+          discountedProductSubtotal: subtotal,
+          reason: 'INVALID_COUPON_CONFIGURATION',
+          message: 'عذراً، كود الخصم غير صالح للاستخدام حالياً.'
+        },
+        200
+      );
     }
 
     const evaluation = evaluateCouponEligibility({

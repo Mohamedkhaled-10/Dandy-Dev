@@ -1419,29 +1419,51 @@ test('E.59 & F.61–F.68 Dashboard page uses existing nav/auth, server-provided 
 // SECTION G: Regression & Scope Isolation Verification (Tests 69–74)
 // ============================================================================
 
-test('G.69–G.74 Scope isolation: no checkout integration, no coupon analytics counters, no inventory tracking', async () => {
-  const createOrderSrc = await fs.readFile(path.resolve('src/pages/api/create-order.js'), 'utf8');
-  const storePolicySrc = await fs.readFile(path.resolve('src/config/store-policy.ts'), 'utf8');
-  const couponsSrc = await fs.readFile(path.resolve('src/utils/coupons.ts'), 'utf8');
-  const apiSrc = await fs.readFile(path.resolve('src/pages/api/coupons/admin.js'), 'utf8');
-  const rulesSrc = await fs.readFile(path.resolve('firebase/database.rules.json'), 'utf8');
+test('G.69–G.74 Scope isolation: approved checkout coupon integration exists while analytics counters, redemption writes, and inventory tracking remain absent', async () => {
+  const [createOrderSrc, validateSrc, storePolicySrc, couponsSrc, apiSrc, dashCouponsSrc, rulesSrc] = await Promise.all([
+    fs.readFile(path.resolve('src/pages/api/create-order.js'), 'utf8'),
+    fs.readFile(path.resolve('src/pages/api/coupons/validate.js'), 'utf8'),
+    fs.readFile(path.resolve('src/config/store-policy.ts'), 'utf8'),
+    fs.readFile(path.resolve('src/utils/coupons.ts'), 'utf8'),
+    fs.readFile(path.resolve('src/pages/api/coupons/admin.js'), 'utf8'),
+    fs.readFile(path.resolve('src/pages/dashboard-coupons.astro'), 'utf8'),
+    fs.readFile(path.resolve('firebase/database.rules.json'), 'utf8')
+  ]);
 
-  // 71. Order flow remains untouched by coupon logic
-  assert.equal(/coupons/i.test(createOrderSrc), false);
+  // Coupon administration remains in src/pages/api/coupons/admin.js
+  assert.ok(apiSrc.includes("const COUPONS_RTDB_PATH = 'settings/coupons'"));
+  assert.ok(apiSrc.includes('verifyAdminRequest'));
+
+  // Approved GROUP 2A.6 checkout integration exists in create-order via server-side evaluateCouponEligibility() and orderData.coupon
+  assert.ok(createOrderSrc.includes('evaluateCouponEligibility('));
+  assert.ok(createOrderSrc.includes('validateCouponDefinition('));
+  assert.ok(createOrderSrc.includes('orderData.coupon = appliedCouponSnapshot'));
 
   // 70. Free shipping rule remains untouched
   assert.match(storePolicySrc, /FREE_SHIPPING_THRESHOLD_EGP\s*=\s*2000/);
 
-  // 72. No inventory logic or stockQuantity added in coupon files
+  // 72. No inventory logic or stockQuantity added in coupon files or coupon validate API
   assert.equal(/stockQuantity/i.test(couponsSrc), false);
   assert.equal(/stockQuantity/i.test(apiSrc), false);
+  assert.equal(/stockQuantity/i.test(validateSrc), false);
+  // Pre-existing product stock deduction in create-order does not interact with coupons
+  assert.equal(/coupon[^\n]{0,80}stock|stock[^\n]{0,80}coupon/i.test(createOrderSrc), false);
 
-  // No analytics/usage fields in coupon module or API
+  // No GROUP 2A.7 analytics/usage counters in coupon module, admin API, validate API, create-order, or coupon dashboard
   assert.equal(/usageCount|usedCount|usageLimit|lastUsedAt/i.test(couponsSrc), false);
   assert.equal(/usageCount|usedCount|usageLimit|lastUsedAt/i.test(apiSrc), false);
+  assert.equal(/usageCount|usedCount|usageLimit|lastUsedAt/i.test(validateSrc), false);
+  assert.equal(/usageCount|usedCount|usageLimit|lastUsedAt/i.test(createOrderSrc), false);
+  assert.equal(/usageCount|usedCount|usageLimit|lastUsedAt/i.test(dashCouponsSrc), false);
+
+  // No separate coupon redemption writes in checkout or preview APIs
+  assert.equal(/couponRedemptions|settings\/coupons[^\n]*\.(set|update|push|transaction)/i.test(createOrderSrc), false);
+  assert.equal(/couponRedemptions|settings\/coupons[^\n]*\.(set|update|push|transaction)/i.test(validateSrc), false);
+  assert.ok(dashCouponsSrc.includes('GROUP 2A.7'));
 
   // Firebase rules still deny client reads/writes on settings
   const parsedRules = JSON.parse(rulesSrc);
   assert.equal(parsedRules.rules.settings['.read'], false);
   assert.equal(parsedRules.rules.settings['.write'], false);
 });
+

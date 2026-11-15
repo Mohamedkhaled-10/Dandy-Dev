@@ -1382,3 +1382,339 @@ test('E.85-E.96 & G Integration Parity: preview == order == snapshot == public i
   assert.ok(dashCouponsSrc.includes('GROUP 2A.7'));
   assert.equal(/usageCount|usedCount|usageLimit|redemptions|revenueAttribution/i.test(dashCouponsSrc), false);
 });
+
+// ============================================================================
+// SECTION F: GROUP 2A.6.1 Strict Stored Coupon Validation & Fail-Closed Checks
+// ============================================================================
+
+test('F.1-F.16 Stored coupon validation rejects malformed/corrupted definitions fail-closed in preview & create-order', async () => {
+  const { nowMs, dbData } = buildFixtures();
+
+  // F.1 & F.2: Valid percentage & fixed stored coupons with admin metadata remain applicable
+  {
+    const { deps } = makeDeps(dbData, nowMs);
+    const pctPrev = await validateCouponPOST({
+      request: new Request('http://localhost:3000/api/coupons/validate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: 'WELCOME20', items: [{ productId: 'prod_hair', quantity: 1 }] })
+      }),
+      clientAddress: '41.41.30.1',
+      _deps: deps
+    });
+    assert.equal(pctPrev.status, 200);
+    const pctBody = await pctPrev.json();
+    assert.equal(pctBody.eligible, true);
+    assert.equal(pctBody.discountAmount, 100);
+
+    const fixedPrev = await validateCouponPOST({
+      request: new Request('http://localhost:3000/api/coupons/validate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: 'SAVE100', items: [{ productId: 'prod_hair', quantity: 1 }] })
+      }),
+      clientAddress: '41.41.30.2',
+      _deps: deps
+    });
+    assert.equal(fixedPrev.status, 200);
+    const fixedBody = await fixedPrev.json();
+    assert.equal(fixedBody.eligible, true);
+    assert.equal(fixedBody.discountAmount, 100);
+  }
+
+  // F.3-F.15: All malformed/corrupted stored coupon configurations must be rejected by both validate & create-order
+  const malformedCases = [
+    {
+      label: 'F.3 unknown scope must not default to all',
+      record: {
+        id: 'bad_scope',
+        code: 'BADSCOPE',
+        discountType: 'percentage',
+        discountValue: 20,
+        scope: 'unknown_scope',
+        categorySlug: null,
+        isActive: true,
+        createdBy: 'admin_secret'
+      }
+    },
+    {
+      label: 'F.4 unknown discountType must not default to percentage',
+      record: {
+        id: 'bad_type',
+        code: 'BADTYPE',
+        discountType: 'bogo',
+        discountValue: 20,
+        scope: 'all',
+        categorySlug: null,
+        isActive: true
+      }
+    },
+    {
+      label: 'F.5 percentage > 100 rejected',
+      record: {
+        id: 'bad_pct',
+        code: 'BADPCT',
+        discountType: 'percentage',
+        discountValue: 150,
+        scope: 'all',
+        isActive: true
+      }
+    },
+    {
+      label: 'F.6 invalid fixed discountValue <= 0 / NaN rejected',
+      record: {
+        id: 'bad_fixed',
+        code: 'BADFIXED',
+        discountType: 'fixed',
+        discountValue: -50,
+        scope: 'all',
+        isActive: true
+      }
+    },
+    {
+      label: 'F.7 invalid categorySlug rejected',
+      record: {
+        id: 'bad_cat',
+        code: 'BADCAT',
+        discountType: 'fixed',
+        discountValue: 50,
+        scope: 'category',
+        categorySlug: 'accessories-invalid',
+        isActive: true
+      }
+    },
+    {
+      label: 'F.8 invalid minimumSubtotal rejected',
+      record: {
+        id: 'bad_min',
+        code: 'BADMIN',
+        discountType: 'fixed',
+        discountValue: 50,
+        scope: 'all',
+        minimumSubtotal: -100,
+        isActive: true
+      }
+    },
+    {
+      label: 'F.9 invalid maximumDiscount on fixed coupon / negative on percentage rejected',
+      record: {
+        id: 'bad_max',
+        code: 'BADMAX',
+        discountType: 'fixed',
+        discountValue: 50,
+        scope: 'all',
+        maximumDiscount: 30,
+        isActive: true
+      }
+    },
+    {
+      label: 'F.9b negative maximumDiscount on percentage rejected',
+      record: {
+        id: 'bad_max_pct',
+        code: 'BADMAXP',
+        discountType: 'percentage',
+        discountValue: 20,
+        scope: 'all',
+        maximumDiscount: -10,
+        isActive: true
+      }
+    },
+    {
+      label: 'F.10 invalid startsAt timestamp rejected',
+      record: {
+        id: 'bad_start',
+        code: 'BADSTART',
+        discountType: 'percentage',
+        discountValue: 10,
+        scope: 'all',
+        startsAt: 'not-a-timestamp',
+        isActive: true
+      }
+    },
+    {
+      label: 'F.11 invalid expiresAt / expiresAt <= startsAt rejected',
+      record: {
+        id: 'bad_exp',
+        code: 'BADEXP',
+        discountType: 'percentage',
+        discountValue: 10,
+        scope: 'all',
+        startsAt: nowMs + 50_000,
+        expiresAt: nowMs + 10_000,
+        isActive: true
+      }
+    },
+    {
+      label: 'F.12a corrupted non-boolean isActive ("true") rejected',
+      record: {
+        id: 'bad_active_str',
+        code: 'BADACT1',
+        discountType: 'percentage',
+        discountValue: 10,
+        scope: 'all',
+        isActive: 'true'
+      }
+    },
+    {
+      label: 'F.12b missing isActive (undefined) rejected fail-closed',
+      record: {
+        id: 'bad_active_undef',
+        code: 'BADACT2',
+        discountType: 'percentage',
+        discountValue: 10,
+        scope: 'all'
+      }
+    },
+    {
+      label: 'F.13 corrupted category coupon with missing slug or invalid scope cannot apply to all-products',
+      record: {
+        id: 'bad_cat_missing',
+        code: 'BADCATM',
+        discountType: 'percentage',
+        discountValue: 25,
+        scope: 'category',
+        categorySlug: null,
+        isActive: true
+      }
+    }
+  ];
+
+  for (let i = 0; i < malformedCases.length; i++) {
+    const mc = malformedCases[i];
+    const clonedData = clone(dbData);
+    clonedData.settings.coupons[mc.record.id] = mc.record;
+    const { deps } = makeDeps(clonedData, nowMs);
+
+    // F.14: Preview API rejects cleanly without discount or leaking internal details
+    const prevRes = await validateCouponPOST({
+      request: new Request('http://localhost:3000/api/coupons/validate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          code: mc.record.code,
+          items: [{ productId: 'prod_hair', quantity: 2 }]
+        })
+      }),
+      clientAddress: `41.41.31.${i + 1}`,
+      _deps: deps
+    });
+    assert.equal(prevRes.status, 200, `${mc.label}: validate should return clean 200 envelope`);
+    const prevBody = await prevRes.json();
+    assert.equal(prevBody.eligible, false, `${mc.label}: preview must be ineligible`);
+    assert.equal(prevBody.discountAmount, 0, `${mc.label}: preview must produce 0 discount`);
+    assert.equal(prevBody.reason, 'INVALID_COUPON_CONFIGURATION', `${mc.label}: stable rejection reason`);
+    assert.equal(prevBody.discountType, null, `${mc.label}: must not leak discountType`);
+    assert.equal(prevBody.scope, null, `${mc.label}: must not leak scope`);
+    assert.equal(JSON.stringify(prevBody).includes('admin_secret'), false);
+
+    // F.15: Final create-order rejects cleanly without creating an order
+    const reqId = crypto.randomUUID();
+    const orderRes = await createOrderPOST({
+      request: new Request('http://localhost:3000/api/create-order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customer: {
+            name: 'سمر عادل',
+            phone: '01012345678',
+            email: 'samar@example.com',
+            governorate: 'Cairo',
+            city: 'المعادي',
+            address: 'شارع 9'
+          },
+          items: [{ productId: 'prod_hair', quantity: 2 }],
+          couponCode: mc.record.code,
+          turnstileToken: 'ok',
+          clientRequestId: reqId
+        })
+      }),
+      clientAddress: `41.41.32.${i + 1}`,
+      _deps: deps
+    });
+    assert.equal(orderRes.status, 400, `${mc.label}: create-order must reject with 400`);
+    const orderErr = await orderRes.json();
+    assert.equal(orderErr.success, false);
+    assert.equal(orderErr.error, 'INVALID_COUPON_CONFIGURATION');
+    assert.equal(Object.keys(deps.adminDb._data.orders || {}).length, 0, `${mc.label}: zero orders created`);
+  }
+
+  // F.16: Invalid stored coupon rejection reconciles pending idempotency lock safely to FAILED & allows retry with valid request
+  const reconData = clone(dbData);
+  reconData.settings.coupons.bad_scope = {
+    id: 'bad_scope',
+    code: 'BADSCOPE',
+    discountType: 'percentage',
+    discountValue: 20,
+    scope: 'invalid_scope',
+    isActive: true
+  };
+  const { deps: reconDeps } = makeDeps(reconData, nowMs);
+  const sharedClientReqId = crypto.randomUUID();
+
+  const failedOrderRes = await createOrderPOST({
+    request: new Request('http://localhost:3000/api/create-order', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        customer: {
+          name: 'دينا كريم',
+          phone: '01012345678',
+          email: 'dina@example.com',
+          governorate: 'Cairo',
+          city: 'الزمالك',
+          address: 'شارع 26 يوليو'
+        },
+        items: [{ productId: 'prod_hair', quantity: 2 }],
+        couponCode: 'BADSCOPE',
+        turnstileToken: 'ok',
+        clientRequestId: sharedClientReqId
+      })
+    }),
+    clientAddress: '41.41.33.1',
+    _deps: reconDeps
+  });
+  assert.equal(failedOrderRes.status, 400);
+  const idemRecords = Object.values(reconDeps.adminDb._data.privateOrderIdempotency || {});
+  assert.equal(idemRecords.length, 1);
+  assert.equal(idemRecords[0].status, 'FAILED');
+  assert.equal(idemRecords[0].lastErrorCode, 'INVALID_COUPON_CONFIGURATION');
+  assert.equal(Object.keys(reconDeps.adminDb._data.orders || {}).length, 0);
+
+  // Repair the stored coupon and retry with identical clientRequestId & payload -> reconciles from FAILED and succeeds!
+  reconDeps.adminDb._data.settings.coupons.bad_scope = {
+    id: 'bad_scope',
+    code: 'BADSCOPE',
+    discountType: 'percentage',
+    discountValue: 20,
+    scope: 'all',
+    isActive: true
+  };
+  const retryRes = await createOrderPOST({
+    request: new Request('http://localhost:3000/api/create-order', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        customer: {
+          name: 'دينا كريم',
+          phone: '01012345678',
+          email: 'dina@example.com',
+          governorate: 'Cairo',
+          city: 'الزمالك',
+          address: 'شارع 26 يوليو'
+        },
+        items: [{ productId: 'prod_hair', quantity: 2 }],
+        couponCode: 'BADSCOPE',
+        turnstileToken: 'ok',
+        clientRequestId: sharedClientReqId
+      })
+    }),
+    clientAddress: '41.41.33.2',
+    _deps: reconDeps
+  });
+  assert.equal(retryRes.status, 200);
+  const retryBody = await retryRes.json();
+  assert.equal(retryBody.couponCode, 'BADSCOPE');
+  assert.equal(retryBody.couponDiscountAmount, 200);
+  assert.equal(retryBody.totalAmount, 885); // 1000 - 200 + 85 Cairo shipping
+});
+

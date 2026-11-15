@@ -660,17 +660,33 @@ test('12. Server-side shipping & order calculation in create-order.js remains au
   assert.deepEqual(SHIPPING_FEE_RANGE_EGP, { min: 70, max: 120 });
 });
 
-test('13. No inventory/stock system, coupon system, or hardcoded threshold copy introduced', async () => {
+test('13. Shipping helper remains coupon-independent & threshold-dynamic, cart uses pre-coupon subtotal for shipping alongside coupon UI, and no inventory system exists', async () => {
   const [helperSrc, cartSrc] = await Promise.all([
     fs.readFile(cartShippingHelperPath, 'utf8'),
     fs.readFile(cartAstroPath, 'utf8')
   ]);
 
+  // Helper remains strictly independent of coupons, inventory, and hardcoded 2000 threshold
   assert.equal(/stockQuantity|inventory|decrement|reserveStock/i.test(helperSrc), false);
   assert.equal(/coupon|promoCode|discountCode/i.test(helperSrc), false);
   assert.equal(helperSrc.includes('2000'), false, 'cart-shipping-progress.js must read threshold from policy, never hardcode 2000');
 
+  // Cart has no inventory/stock management system
   assert.equal(/stockQuantity|inventory|reserveStock/i.test(cartSrc), false);
-  assert.equal(/coupon|promoCode|discountCode/i.test(cartSrc), false);
+
+  // Cart consumes centralized shipping policy and computes shipping progress from pre-coupon subtotal
   assert.ok(cartSrc.includes('getPublicStoreShippingPolicy()'));
+  assert.ok(cartSrc.includes('STORE_SHIPPING_POLICY'));
+  assert.match(cartSrc, /computeCheckoutSummaryState\(\{\s*subtotal:\s*subtotal,\s*policy:\s*STORE_SHIPPING_POLICY/);
+  assert.match(cartSrc, /isFreeShippingEligible\(subtotal\)/);
+
+  // GROUP 2A.6 Cart coupon UI and financial summary integration are present
+  assert.ok(cartSrc.includes('id="couponBoxCard"'));
+  assert.ok(cartSrc.includes('id="couponCodeInput"'));
+  assert.ok(cartSrc.includes('id="applyCouponBtn"'));
+  assert.ok(cartSrc.includes('id="couponSummaryRow1"'));
+  assert.ok(cartSrc.includes('id="couponSummaryRow2"'));
+  assert.ok(cartSrc.includes('id="couponSummaryRow3"'));
+  assert.ok(cartSrc.includes('/api/coupons/validate'));
 });
+
