@@ -43,7 +43,7 @@ function isPlainObject(val: unknown): val is Record<string, any> {
  * using exact semantics matching `public/assets/js/variants.js#getProductVariants`.
  */
 export function normalizeProductVariants(product: any): NormalizedProductVariant[] {
-  if (!product || typeof product !== 'object' || !product.variants) {
+  if (!isPlainObject(product) || !product.variants) {
     return [];
   }
 
@@ -105,7 +105,7 @@ export function normalizeProductVariants(product: any): NormalizedProductVariant
     }
   }
 
-  // Deduplicate by variant ID preserving first authoritative occurrence
+  // Deduplicate by variant ID preserving first valid normalized occurrence
   const seenIds = new Set<string>();
   const unique: NormalizedProductVariant[] = [];
   for (const variant of collected) {
@@ -117,14 +117,50 @@ export function normalizeProductVariants(product: any): NormalizedProductVariant
 }
 
 /**
- * Checks if a Firebase product record has selectable scent variants enabled.
+ * Checks whether the product's `variantType` is supported by customer-facing selector UIs.
+ * Currently only missing/empty or `'scent'` variant selectors are exposed across the storefront.
+ */
+export function isSupportedVariantType(product: any): boolean {
+  if (!isPlainObject(product)) return false;
+  const rawType = product.variantType;
+  if (rawType === undefined || rawType === null) return true;
+  const cleanType = typeof rawType === 'string' ? rawType.trim() : String(rawType).trim();
+  return !cleanType || cleanType === 'scent';
+}
+
+/**
+ * Unified eligibility contract across standard product page SSR, `variants.js`, Pink Friday,
+ * and checkout validation:
+ * - `hasVariants === true` or `hasVariants === 'true'`
+ * - Supported `variantType` (missing/empty or `'scent'`)
+ * - At least one valid normalized variant entry
  */
 export function hasSelectableProductVariants(product: any): boolean {
-  if (!product || typeof product !== 'object') return false;
+  if (!isPlainObject(product)) return false;
   const hasFlag = product.hasVariants === true || product.hasVariants === 'true';
   if (!hasFlag) return false;
-  if (product.variantType && product.variantType !== 'scent') return false;
+  if (!isSupportedVariantType(product)) return false;
   return normalizeProductVariants(product).length > 0;
+}
+
+/**
+ * Authoritative Pink Friday collection selector visibility rule:
+ * renders `<select>` only when the product satisfies the unified eligibility contract
+ * AND its `variants` field is an Array.
+ */
+export function hasExposedCollectionVariantSelector(product: any): boolean {
+  return hasSelectableProductVariants(product) && Array.isArray(product?.variants);
+}
+
+/**
+ * Returns authoritative selectable (available, deduplicated) variant options exposed in
+ * `src/pages/pink-friday.astro` collection modals under `hasExposedCollectionVariantSelector`.
+ */
+export function getExposedCollectionVariantOptions(product: any): ValidatedOrderVariant[] {
+  if (!hasExposedCollectionVariantSelector(product)) return [];
+  return normalizeProductVariants(product)
+    .filter((v) => v.isAvailable !== false)
+    .map((v) => ({ id: v.id, name: v.name }));
 }
 
 function extractSubmittedVariantIds(item: any): {
@@ -434,5 +470,275 @@ export function calculateAuthoritativeItemPricing(params: {
     variantMultiplier: multiplier,
     effectiveUnitPrice,
     lineTotal
+  };
+}
+
+export interface CollectionItemVariantValidationResult {
+  ok: boolean;
+  errorCode?: VariantValidationErrorCode;
+  message?: string;
+  variant: ValidatedOrderVariant | null;
+  variantName: string;
+}
+
+/**
+ * Validates the raw `selectedItems` / `items` container submitted on a Pink Friday collection order item.
+ */
+export function validateCollectionSelectedItemsInput(item: any): {
+  ok: boolean;
+  errorCode?: VariantValidationErrorCode;
+  message?: string;
+  selectedItems: any[];
+} {
+  if (!isPlainObject(item)) {
+    return {
+      ok: false,
+      errorCode: 'INVALID_VARIANT_SELECTION',
+      message: 'بيانات الكوليكشن المرسلة غير صالحة.',
+      selectedItems: []
+    };
+  }
+
+  let rawList: unknown = undefined;
+  if (item.selectedItems !== undefined && item.selectedItems !== null) {
+    if (!Array.isArray(item.selectedItems)) {
+      return {
+        ok: false,
+        errorCode: 'INVALID_VARIANT_SELECTION',
+        message: 'تنسيق اختيارات منتجات الكوليكشن غير صالح.',
+        selectedItems: []
+      };
+    }
+    rawList = item.selectedItems;
+  }
+
+  if (item.items !== undefined && item.items !== null) {
+    if (!Array.isArray(item.items)) {
+      return {
+        ok: false,
+        errorCode: 'INVALID_VARIANT_SELECTION',
+        message: 'تنسيق عناصر الكوليكشن غير صالح.',
+        selectedItems: []
+      };
+    }
+    if (rawList === undefined) {
+      rawList = item.items;
+    }
+  }
+
+  const list = Array.isArray(rawList) ? rawList : [];
+  for (const entry of list) {
+    if (!isPlainObject(entry)) {
+      return {
+        ok: false,
+        errorCode: 'INVALID_VARIANT_SELECTION',
+        message: 'أحد اختيارات منتجات الكوليكشن غير صالح.',
+        selectedItems: []
+      };
+    }
+  }
+
+  return { ok: true, selectedItems: list };
+}
+
+/**
+ * Matches a collection component (`cItem`) to the customer's submitted selection entry:
+ * 1. Primary match: exact `collectionItemId` (prevents duplicate-product collisions).
+ * 2. Compatibility fallback: match by `productId` ONLY when the client entry omits `collectionItemId`,
+ *    consuming each legacy entry at most once.
+ */
+export function matchCollectionClientChoice(
+  collectionItem: any,
+  clientSelectedItems: any[],
+  usedChoiceIndices: Set<number>
+): any | null {
+  if (!isPlainObject(collectionItem) || !Array.isArray(clientSelectedItems) || clientSelectedItems.length === 0) {
+    return null;
+  }
+
+  const rawColItemId =
+    collectionItem.collectionItemId !== undefined && collectionItem.collectionItemId !== null
+      ? String(collectionItem.collectionItemId).trim()
+      : '';
+
+  if (rawColItemId) {
+    for (let i = 0; i < clientSelectedItems.length; i++) {
+      if (usedChoiceIndices.has(i)) continue;
+      const csi = clientSelectedItems[i];
+      if (!isPlainObject(csi)) continue;
+      const csiColItemId =
+        csi.collectionItemId !== undefined && csi.collectionItemId !== null
+          ? String(csi.collectionItemId).trim()
+          : '';
+      if (csiColItemId && csiColItemId === rawColItemId) {
+        usedChoiceIndices.add(i);
+        return csi;
+      }
+    }
+  }
+
+  const targetProductId =
+    collectionItem.productId !== undefined && collectionItem.productId !== null
+      ? String(collectionItem.productId).trim()
+      : '';
+
+  if (targetProductId) {
+    for (let i = 0; i < clientSelectedItems.length; i++) {
+      if (usedChoiceIndices.has(i)) continue;
+      const csi = clientSelectedItems[i];
+      if (!isPlainObject(csi)) continue;
+      const csiColItemId =
+        csi.collectionItemId !== undefined && csi.collectionItemId !== null
+          ? String(csi.collectionItemId).trim()
+          : '';
+      // Never cross-match an entry that explicitly targets a different collectionItemId
+      if (csiColItemId) continue;
+
+      const csiProductId =
+        csi.productId !== undefined && csi.productId !== null ? String(csi.productId).trim() : '';
+      if (csiProductId && csiProductId === targetProductId) {
+        usedChoiceIndices.add(i);
+        return csi;
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Validates and resolves a Pink Friday collection component's submitted variant selection
+ * against the authoritative Firebase product record.
+ * - Rejects unknown, foreign, unavailable, malformed, or ID-less selections.
+ * - Ignores client-submitted variant display names and resolves authoritative ID + name from Firebase.
+ * - Requires a valid selection when the collection component exposes a selectable scent choice.
+ * - Preserves existing behavior when a component has no variants or does not expose a selection control.
+ */
+export function validateAndResolveCollectionItemVariant(
+  product: any,
+  clientChoice: any,
+  options?: { expectedProductId?: string }
+): CollectionItemVariantValidationResult {
+  const productName =
+    (product && typeof product.name === 'string' && product.name.trim()) || 'المنتج';
+
+  if (clientChoice !== undefined && clientChoice !== null) {
+    if (!isPlainObject(clientChoice)) {
+      return {
+        ok: false,
+        errorCode: 'INVALID_VARIANT_SELECTION',
+        message: `بيانات الرائحة المختارة للمنتج "${productName}" غير صالحة.`,
+        variant: null,
+        variantName: ''
+      };
+    }
+
+    if (clientChoice.productId !== undefined && clientChoice.productId !== null) {
+      if (typeof clientChoice.productId !== 'string' || !clientChoice.productId.trim()) {
+        return {
+          ok: false,
+          errorCode: 'INVALID_VARIANT_SELECTION',
+          message: `معرّف المنتج "${productName}" داخل الكوليكشن غير صالح.`,
+          variant: null,
+          variantName: ''
+        };
+      }
+      if (
+        options?.expectedProductId !== undefined &&
+        clientChoice.productId.trim() !== String(options.expectedProductId).trim()
+      ) {
+        return {
+          ok: false,
+          errorCode: 'INVALID_VARIANT_SELECTION',
+          message: `المنتج المحدد "${productName}" لا يطابق عنصر الكوليكشن المطلوب.`,
+          variant: null,
+          variantName: ''
+        };
+      }
+    }
+  }
+
+  // Normalize legacy `variant` property if supplied so malformed/ID-less entries are rejected
+  let normalizedChoice: Record<string, any> = clientChoice ? { ...clientChoice } : {};
+  if (normalizedChoice.variant !== undefined && normalizedChoice.variant !== null) {
+    if (
+      !isPlainObject(normalizedChoice.variant) ||
+      typeof normalizedChoice.variant.id !== 'string' ||
+      !normalizedChoice.variant.id.trim() ||
+      (normalizedChoice.variant.name !== undefined &&
+        normalizedChoice.variant.name !== null &&
+        typeof normalizedChoice.variant.name !== 'string')
+    ) {
+      return {
+        ok: false,
+        errorCode: 'INVALID_VARIANT_SELECTION',
+        message: `تنسيق الرائحة المختارة للمنتج "${productName}" غير صالح.`,
+        variant: null,
+        variantName: ''
+      };
+    }
+    if (normalizedChoice.selectedVariant === undefined || normalizedChoice.selectedVariant === null) {
+      normalizedChoice.selectedVariant = normalizedChoice.variant;
+    }
+  }
+
+  if (
+    Array.isArray(normalizedChoice.selectedVariants) &&
+    normalizedChoice.selectedVariants.length > 1
+  ) {
+    return {
+      ok: false,
+      errorCode: 'INVALID_VARIANT_SELECTION',
+      message: `يمكن اختيار رائحة واحدة فقط للمنتج "${productName}" داخل الكوليكشن.`,
+      variant: null,
+      variantName: ''
+    };
+  }
+
+  const extraction = extractSubmittedVariantIds({
+    ...normalizedChoice,
+    name: productName
+  });
+
+  if (!extraction.ok) {
+    return {
+      ok: false,
+      errorCode: extraction.errorCode,
+      message: extraction.message,
+      variant: null,
+      variantName: ''
+    };
+  }
+
+  // If no variant selection was submitted and this component does not expose a selector in UI,
+  // preserve existing behavior without inventing a new required selection.
+  if (extraction.ids.length === 0 && !hasExposedCollectionVariantSelector(product)) {
+    return {
+      ok: true,
+      variant: null,
+      variantName: ''
+    };
+  }
+
+  const resolvedResult = validateAndResolveOrderItemVariants(product, {
+    ...normalizedChoice,
+    name: productName
+  });
+
+  if (!resolvedResult.ok) {
+    return {
+      ok: false,
+      errorCode: resolvedResult.errorCode,
+      message: resolvedResult.message,
+      variant: null,
+      variantName: ''
+    };
+  }
+
+  const chosenVariant = resolvedResult.variants[0] || null;
+  return {
+    ok: true,
+    variant: chosenVariant,
+    variantName: chosenVariant ? chosenVariant.name : ''
   };
 }

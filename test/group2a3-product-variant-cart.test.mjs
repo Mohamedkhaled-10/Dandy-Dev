@@ -247,30 +247,10 @@ async function createProductPageHarness(product, options = {}) {
   variantSection.appendChild(variantValidation);
   body.appendChild(variantSection);
 
-  // Build variant buttons matching SSR normalization logic
-  const rawVariants = product?.variants;
-  const variantsList = Array.isArray(rawVariants)
-    ? rawVariants
-        .filter(v => v && typeof v === 'object' && v.name && String(v.name).trim() !== '')
-        .map(v => ({
-          ...v,
-          id: (v.id !== undefined && v.id !== null && String(v.id).trim() !== '') ? String(v.id).trim() : String(v.name).trim(),
-          name: String(v.name).trim()
-        }))
-    : (rawVariants && typeof rawVariants === 'object'
-        ? Object.entries(rawVariants)
-            .filter(([, v]) => v !== null && v !== undefined)
-            .map(([k, v]) => (typeof v === 'object'
-              ? { ...v, id: (v.id !== undefined && v.id !== null && String(v.id).trim() !== '') ? String(v.id).trim() : String(k).trim(), name: String(v.name || '').trim() }
-              : { id: String(k).trim(), name: String(v).trim(), isAvailable: true }))
-            .filter(v => v.id && v.name)
-        : []);
-
-  const hasVarsSSR = Boolean(
-    (product?.hasVariants === true || product?.hasVariants === 'true') &&
-    (!product?.variantType || product.variantType === 'scent') &&
-    variantsList.length > 0
-  );
+  // Build variant buttons matching shared normalizeProductVariants / hasSelectableProductVariants contract
+  const { normalizeProductVariants, hasSelectableProductVariants } = await import('../src/utils/server-variant-pricing.ts');
+  const variantsList = normalizeProductVariants(product);
+  const hasVarsSSR = hasSelectableProductVariants(product);
   variantSection.style.display = hasVarsSSR ? 'block' : 'none';
 
   for (const v of variantsList) {
@@ -898,4 +878,55 @@ test('15. Zero inventory system introduced: stockQuantity is never read, decreme
   assert.equal(cart.length, 1);
   assert.equal(cart[0].quantity, 10);
   assert.equal(JSON.stringify(h.sandbox.serverProduct), snapshotBefore, 'Product stockQuantity must remain untouched');
+});
+
+test('16. Unsupported variantType hides selector and adds cleanly at 1x price; duplicate variant IDs render deduplicated pills', async () => {
+  // 1. Unsupported variantType (`flavor`) must NOT show variant selector and must add to cart cleanly
+  const flavorProduct = {
+    id: 'p-flavor',
+    name: 'مرطب شفاه',
+    price: 120,
+    hasVariants: true,
+    variantType: 'flavor',
+    variants: [{ id: 'berry', name: 'توت', isAvailable: true }]
+  };
+  const hFlavor = await createProductPageHarness(flavorProduct);
+  assert.equal(hFlavor.variantSection.style.display, 'none');
+  hFlavor.addToCartBtn.click();
+  assert.equal(hFlavor.variantValidation.style.display, 'none');
+  const flavorCart = hFlavor.getCart();
+  assert.equal(flavorCart.length, 1);
+  assert.equal(flavorCart[0].id, 'p-flavor');
+  assert.equal(flavorCart[0].price, 120);
+  assert.equal(flavorCart[0].selectedVariants, undefined);
+
+  // 2. Duplicate variant IDs render only one button per unique normalized ID
+  const dupProduct = {
+    id: 'p-dup',
+    name: 'مسك مكرر',
+    price: 300,
+    hasVariants: true,
+    variantType: 'scent',
+    variants: [
+      null,
+      { id: 'rose', name: '' },
+      { id: ' rose ', name: ' الورد الأول ', isAvailable: true },
+      { id: 'rose', name: 'الورد الثاني', isAvailable: false },
+      { name: ' المسك ' },
+      { id: 'المسك', name: 'المسك المكرر' }
+    ]
+  };
+  const hDup = await createProductPageHarness(dupProduct);
+  assert.equal(hDup.variantSection.style.display, 'block');
+  const buttons = hDup.getVariantButtons();
+  assert.equal(buttons.length, 2);
+  assert.equal(buttons[0].getAttribute('data-id'), 'rose');
+  assert.equal(buttons[0].getAttribute('data-name'), 'الورد الأول');
+  assert.equal(buttons[1].getAttribute('data-id'), 'المسك');
+
+  buttons[0].click();
+  hDup.addToCartBtn.click();
+  const dupCart = hDup.getCart();
+  assert.equal(dupCart.length, 1);
+  assert.deepEqual(dupCart[0].selectedVariants, [{ id: 'rose', name: 'الورد الأول' }]);
 });

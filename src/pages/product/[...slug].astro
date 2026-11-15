@@ -11,13 +11,16 @@ import {
   generateProductJsonLd,
   optimizeCloudinaryUrl,
   SITE_URL,
-  type Product,
-  type VariantItem
+  type Product
 } from '../../utils/products';
 import {
   getPublishedPinkFridayCampaign,
   calculatePinkFridayPricing
 } from '../../utils/pink-friday-server';
+import {
+  normalizeProductVariants,
+  hasSelectableProductVariants
+} from '../../utils/server-variant-pricing';
 
 const livePfCampaign = await getPublishedPinkFridayCampaign();
 
@@ -89,39 +92,9 @@ const isPfEligible = pfPricing.isEligible;
 const isSoldOut = Boolean(product?.isSoldOut);
 const isAvailable = Boolean(product && !product.isSoldOut && product.inStock !== false);
 
-// Pre-render variants if applicable (preserve RTDB object keys as fallback IDs)
-const rawVariants = product?.variants;
-const variantsList: VariantItem[] = Array.isArray(rawVariants)
-  ? rawVariants
-      .filter((v): v is VariantItem => Boolean(v && typeof v === 'object' && v.name && String(v.name).trim() !== ''))
-      .map((v) => {
-        const cleanName = String(v.name).trim();
-        const cleanId = (v.id !== undefined && v.id !== null && String(v.id).trim() !== '')
-          ? String(v.id).trim()
-          : cleanName;
-        return { ...v, id: cleanId, name: cleanName };
-      })
-  : (rawVariants && typeof rawVariants === 'object'
-      ? Object.entries(rawVariants)
-          .filter(([, v]) => v !== null && v !== undefined)
-          .map(([key, v]) => {
-            if (typeof v === 'object') {
-              const obj = v as VariantItem;
-              const cleanName = obj.name ? String(obj.name).trim() : '';
-              const cleanId = (obj.id !== undefined && obj.id !== null && String(obj.id).trim() !== '')
-                ? String(obj.id).trim()
-                : String(key).trim();
-              return { ...obj, id: cleanId, name: cleanName };
-            }
-            return { id: String(key).trim(), name: String(v).trim(), isAvailable: true };
-          })
-          .filter((v): v is VariantItem => Boolean(v && v.id && v.name))
-      : []);
-const hasVariants = Boolean(
-  (product?.hasVariants === true || (product?.hasVariants as unknown) === 'true') &&
-  (!product?.variantType || product.variantType === 'scent') &&
-  variantsList.length > 0
-);
+// Pre-render variants using unified frontend/backend normalization & eligibility contract
+const variantsList = product ? normalizeProductVariants(product) : [];
+const hasVariants = Boolean(product && hasSelectableProductVariants(product));
 
 // Pre-render WhatsApp link
 const waPhone = '201038941005';
@@ -2103,7 +2076,7 @@ const productArticle = (product && !product.isHidden && product.resolvedSlug)
 
               const hasVars = typeof hasSelectableVariants === 'function'
                 ? hasSelectableVariants(prod)
-                : (prod.hasVariants === true || prod.hasVariants === 'true');
+                : ((prod.hasVariants === true || prod.hasVariants === 'true') && (!prod.variantType || String(prod.variantType).trim() === 'scent'));
 
               const isFav = window.userWishlistSet && window.userWishlistSet.has(prod.id);
               const heartActive = isFav ? 'active' : '';

@@ -42,7 +42,10 @@ import { sendTelegramNotification } from '../../utils/telegram.js';
 import { calculateShippingFee } from '../../config/store-policy.ts';
 import {
   validateAndResolveOrderItemVariants,
-  calculateAuthoritativeItemPricing
+  calculateAuthoritativeItemPricing,
+  validateCollectionSelectedItemsInput,
+  matchCollectionClientChoice,
+  validateAndResolveCollectionItemVariant
 } from '../../utils/server-variant-pricing.ts';
 
 const SECURITY_HEADERS = {
@@ -721,10 +724,37 @@ export async function POST(context) {
           }
         }
 
+        const selectedItemsInput = validateCollectionSelectedItemsInput(item);
+        if (!selectedItemsInput.ok) {
+          return await failBusinessOrConfig(
+            {
+              success: false,
+              error: selectedItemsInput.errorCode || 'INVALID_VARIANT_SELECTION',
+              message: selectedItemsInput.message || 'اختيارات منتجات الكوليكشن غير صالحة.'
+            },
+            400,
+            selectedItemsInput.errorCode || 'INVALID_VARIANT_SELECTION'
+          );
+        }
+        const clientSelectedItems = selectedItemsInput.selectedItems;
+        const usedChoiceIndices = new Set();
+
         let totalBasePrice = 0;
         const resolvedCollectionItems = [];
 
         for (const cItem of collectionItemsList) {
+          if (!cItem || typeof cItem !== 'object' || !cItem.productId || /[.#$\[\]/]/.test(String(cItem.productId))) {
+            return await failBusinessOrConfig(
+              {
+                success: false,
+                error: 'INVALID_COLLECTION',
+                message: `عذراً، بيانات مكونات كوليكشن "${collection.name}" غير صالحة.`
+              },
+              400,
+              'INVALID_COLLECTION'
+            );
+          }
+
           const pSnap = await adminDb.ref(`products/${cItem.productId}`).once('value');
           if (!pSnap.exists()) {
             return await failBusinessOrConfig(
@@ -739,12 +769,12 @@ export async function POST(context) {
           }
 
           const pData = pSnap.val();
-          if (pData.isHidden || pData.isSoldOut) {
+          if (!pData || typeof pData !== 'object' || pData.isHidden || pData.isSoldOut) {
             return await failBusinessOrConfig(
               {
                 success: false,
                 error: 'PRODUCT_UNAVAILABLE',
-                message: `عذراً، المنتج "${pData.name || ''}" داخل كوليكشن "${collection.name}" غير متاح حالياً.`
+                message: `عذراً، المنتج "${pData?.name || ''}" داخل كوليكشن "${collection.name}" غير متاح حالياً.`
               },
               400,
               'PRODUCT_UNAVAILABLE'
@@ -754,38 +784,59 @@ export async function POST(context) {
           const itemBasePrice = parseFloat(String(pData.price).replace(/[^0-9.-]+/g, '')) || 0;
           totalBasePrice += itemBasePrice;
 
-          const clientSelectedItems = Array.isArray(item.selectedItems)
-            ? item.selectedItems
-            : (Array.isArray(item.items) ? item.items : []);
-          const clientChoice = clientSelectedItems.find(
-            (csi) =>
-              (csi.collectionItemId && String(csi.collectionItemId) === String(cItem.collectionItemId)) ||
-              (csi.productId && String(csi.productId) === String(cItem.productId))
-          );
+          const clientChoice = matchCollectionClientChoice(cItem, clientSelectedItems, usedChoiceIndices);
+          const colVariantCheck = validateAndResolveCollectionItemVariant(pData, clientChoice, {
+            expectedProductId: String(cItem.productId)
+          });
 
-          let variantText = '';
-          if (clientChoice) {
-            if (clientChoice.selectedVariant?.name) variantText = clientChoice.selectedVariant.name;
-            else if (clientChoice.variantName) variantText = clientChoice.variantName;
-            else if (clientChoice.variant) {
-              variantText = typeof clientChoice.variant === 'object' ? clientChoice.variant.name : String(clientChoice.variant);
-            }
+          if (!colVariantCheck.ok) {
+            return await failBusinessOrConfig(
+              {
+                success: false,
+                error: colVariantCheck.errorCode || 'INVALID_VARIANT_SELECTION',
+                message: colVariantCheck.message || `اختيار الرائحة للمنتج "${pData.name || ''}" داخل الكوليكشن غير صالح.`
+              },
+              400,
+              colVariantCheck.errorCode || 'INVALID_VARIANT_SELECTION'
+            );
           }
 
-          resolvedCollectionItems.push({
+          const resolvedEntry = {
             collectionItemId: cItem.collectionItemId,
             productId: cItem.productId,
             productName: pData.name || '',
             image: pData.image || '',
             price: itemBasePrice,
-            variantName: variantText
-          });
+            variantName: colVariantCheck.variantName
+          };
+
+          if (colVariantCheck.variant) {
+            resolvedEntry.variantId = colVariantCheck.variant.id;
+            resolvedEntry.selectedVariant = {
+              id: colVariantCheck.variant.id,
+              name: colVariantCheck.variant.name
+            };
+          }
+
+          resolvedCollectionItems.push(resolvedEntry);
 
           const currentQtyNeeded = stockDeductionMap.get(cItem.productId)?.quantityNeeded || 0;
           stockDeductionMap.set(cItem.productId, {
             name: pData.name || '',
             quantityNeeded: currentQtyNeeded + quantity
           });
+        }
+
+        if (usedChoiceIndices.size !== clientSelectedItems.length) {
+          return await failBusinessOrConfig(
+            {
+              success: false,
+              error: 'INVALID_VARIANT_SELECTION',
+              message: `بعض اختيارات المنتجات المرسلة داخل كوليكشن "${collection.name}" غير صالحة أو لا تطابق مكونات الكوليكشن.`
+            },
+            400,
+            'INVALID_VARIANT_SELECTION'
+          );
         }
 
         let effectiveUnitPrice = totalBasePrice;

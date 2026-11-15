@@ -7,10 +7,16 @@ import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
+import fsSync from 'node:fs';
+import vm from 'node:vm';
 import {
   normalizeProductVariants,
+  isSupportedVariantType,
   hasSelectableProductVariants,
+  hasExposedCollectionVariantSelector,
+  getExposedCollectionVariantOptions,
   validateAndResolveOrderItemVariants,
+  validateAndResolveCollectionItemVariant,
   calculateAuthoritativeItemPricing
 } from '../src/utils/server-variant-pricing.ts';
 import {
@@ -20,6 +26,21 @@ import {
 import { calculateOrderFinancials } from '../src/utils/email-service.ts';
 import { formatOrderMessage } from '../src/utils/telegram.js';
 import { POST as createOrderPOST } from '../src/pages/api/create-order.js';
+
+function loadFrontendVariants() {
+  const source = fsSync.readFileSync(path.resolve('public/assets/js/variants.js'), 'utf8');
+  const sandbox = {
+    window: null,
+    globalThis: null,
+    module: { exports: {} },
+    exports: {}
+  };
+  sandbox.window = sandbox;
+  sandbox.globalThis = sandbox;
+  vm.runInNewContext(source, sandbox);
+  return sandbox.DandyVariants;
+}
+const frontendVariants = loadFrontendVariants();
 
 function createMockAdminDb(initialData = {}, options = {}) {
   const data = JSON.parse(JSON.stringify(initialData));
@@ -1060,3 +1081,1015 @@ test('16. Zero inventory system introduced: products without stockQuantity stay 
   assert.equal(res.status, 200);
   assert.equal(db.data.products.prod_scent.stockQuantity, undefined);
 });
+
+// ===========================================================================
+// C. GROUP 2A.3.1.1 — Frontend/Backend Eligibility Parity & Pink Friday Collections
+// ===========================================================================
+
+test('17. GROUP 2A.3.1.2 Unified Eligibility Parity: product page, variants.js, and backend agree on supported vs unsupported variantType', async () => {
+  const fixtures = [
+    // 1. hasVariants: true with missing variantType (supported scent selector)
+    {
+      name: 'مسك بدون نوع',
+      hasVariants: true,
+      variants: [
+        { id: 'rose', name: 'الورد', isAvailable: true },
+        { id: 'oud', name: 'العود', isAvailable: false }
+      ]
+    },
+    // 2. hasVariants: "true" with variantType: "scent" (supported scent selector)
+    {
+      name: 'بادي سبلاش',
+      hasVariants: 'true',
+      variantType: 'scent',
+      variants: {
+        musk: { name: 'المسك', isAvailable: true },
+        amber: 'العنبر'
+      }
+    },
+    // 3. Unsupported non-scent variantType values (`flavor`, `size`, `color`) -> MUST NOT require hidden selection
+    {
+      name: 'بلسم الشفاه',
+      hasVariants: true,
+      variantType: 'flavor',
+      variants: [
+        { id: 'strawberry', name: 'Strawberry', isAvailable: true },
+        { id: 'توت بري', name: 'توت بري', isAvailable: true }
+      ]
+    },
+    {
+      name: 'زيت الشعر',
+      hasVariants: true,
+      variantType: 'size',
+      variants: [{ name: '100ml' }, { id: '250ml', name: '250ml', isAvailable: false }]
+    },
+    // 4. Whitespace-only variantType treated cleanly as omitted/supported
+    {
+      name: 'معطر بمسافة فارغة في النوع',
+      hasVariants: true,
+      variantType: '   ',
+      variants: [{ id: 'musk', name: 'المسك', isAvailable: true }]
+    },
+    // 5. Product without hasVariants / hasVariants: false / 'false'
+    {
+      name: 'غسول بسيط',
+      variants: [{ id: 'v1', name: 'خيار' }]
+    },
+    {
+      name: 'كريم يدين',
+      hasVariants: false,
+      variantType: 'scent',
+      variants: [{ id: 'v1', name: 'لافندر' }]
+    },
+    {
+      name: 'كريم يدين نصي',
+      hasVariants: 'false',
+      variantType: 'scent',
+      variants: [{ id: 'v1', name: 'لافندر' }]
+    },
+    // 6. Malformed or empty variants
+    { name: 'فارغ 1', hasVariants: true, variants: [] },
+    { name: 'فارغ 2', hasVariants: true, variants: {} },
+    { name: 'فارغ 3', hasVariants: true, variants: [null, undefined, {}, { name: '   ' }] },
+    { name: 'فارغ 4', hasVariants: true, variants: 'not-an-object' },
+    // 7. Arabic + English names, missing IDs, sparse arrays
+    {
+      name: 'عطر مختلط',
+      hasVariants: true,
+      variants: [
+        null,
+        { name: ' White Musk ' },
+        { id: 'ar-oud', name: ' العود الملكي ', isAvailable: true },
+        { id: 'vanilla-en', name: 'Warm Vanilla', isAvailable: false }
+      ]
+    }
+  ];
+
+  for (const prod of fixtures) {
+    assert.equal(
+      isSupportedVariantType(prod),
+      frontendVariants.isSupportedVariantType(prod),
+      `Parity mismatch on isSupportedVariantType for ${prod.name}`
+    );
+
+    const feSelectable = frontendVariants.hasSelectableVariants(prod);
+    const beSelectable = hasSelectableProductVariants(prod);
+    assert.equal(beSelectable, feSelectable, `Parity mismatch on hasSelectableVariants for ${prod.name}`);
+
+    const feList = JSON.parse(
+      JSON.stringify(
+        frontendVariants.getProductVariants(prod).map((v) => ({
+          id: String(v.id),
+          name: String(v.name),
+          isAvailable: v.isAvailable !== false
+        }))
+      )
+    );
+    const beList = normalizeProductVariants(prod);
+    assert.deepEqual(beList, feList, `Parity mismatch on normalizeProductVariants for ${prod.name}`);
+  }
+
+  // Unsupported variantType products allow checkout WITHOUT selecting hidden options,
+  // while missing/scent products still require valid selection and reject forged unsupported selections.
+  const db = createMockAdminDb({
+    products: {
+      prod_no_type: {
+        name: 'منتج بدون variantType',
+        price: 350,
+        hasVariants: true,
+        variants: [{ id: 'jasmin', name: 'الياسمين', isAvailable: true }]
+      },
+      prod_custom_type: {
+        name: 'مرطب شفاه بنكهات',
+        price: 150,
+        hasVariants: true,
+        variantType: 'flavor',
+        variants: [{ id: 'berry', name: 'Berry', isAvailable: true }]
+      },
+      prod_size_type: {
+        name: 'زيت بأحجام',
+        price: 200,
+        hasVariants: true,
+        variantType: 'size',
+        variants: [{ id: '100ml', name: '100ml', isAvailable: true }]
+      }
+    }
+  });
+  const { deps } = createOrderDeps(db);
+
+  const validRes = await createOrderPOST({
+    request: makeOrderRequest({
+      clientRequestId: crypto.randomUUID(),
+      items: [
+        { productId: 'prod_no_type', quantity: 1, selectedVariants: [{ id: 'jasmin', name: 'الياسمين' }] },
+        { productId: 'prod_custom_type', quantity: 2, selectedVariants: [] },
+        { productId: 'prod_size_type', quantity: 1 }
+      ]
+    }),
+    clientAddress: '41.41.12.1',
+    _deps: deps
+  });
+  assert.equal(validRes.status, 200);
+  const validBody = await validRes.json();
+  assert.equal(validBody.subtotal, 350 + 150 * 2 + 200); // 850 (1x pricing for unsupported variantType)
+  assert.equal(db.data.orders[validBody.orderId].products[0].variantName, 'الياسمين');
+  assert.equal(db.data.orders[validBody.orderId].products[1].variantName, undefined);
+  assert.equal(db.data.orders[validBody.orderId].products[2].variantName, undefined);
+
+  // Submitting forged variant selection on unsupported variantType is rejected cleanly
+  const forgedRes = await createOrderPOST({
+    request: makeOrderRequest({
+      clientRequestId: crypto.randomUUID(),
+      items: [
+        { productId: 'prod_custom_type', quantity: 1, selectedVariants: [{ id: 'berry', name: 'Berry' }] }
+      ]
+    }),
+    clientAddress: '41.41.12.2',
+    _deps: deps
+  });
+  assert.equal(forgedRes.status, 400);
+  assert.equal((await forgedRes.json()).error, 'INVALID_VARIANT_SELECTION');
+});
+
+test('18. GROUP 2A.3.1.1 Collection Validation: validates scents, overwrites forged names, preserves pricing & stores authoritative metadata', async () => {
+  const now = Date.now();
+  const campaign = {
+    enabled: true,
+    startAt: new Date(now - 3600_000).toISOString(),
+    endAt: new Date(now + 3600_000).toISOString(),
+    collections: [
+      {
+        id: 'col_pkg',
+        name: 'بكج التوفير',
+        active: true,
+        allowDuplicates: false,
+        pricingType: 'package',
+        packagePrice: 600,
+        badgeText: 'عرض البكج',
+        items: [
+          { collectionItemId: 'ci_simple', productId: 'prod_simple' },
+          { collectionItemId: 'ci_scent', productId: 'prod_scent' }
+        ]
+      },
+      {
+        id: 'col_pct',
+        name: 'بكج الخصم النسبي',
+        active: true,
+        allowDuplicates: false,
+        pricingType: 'percentage',
+        discountPercentage: 20,
+        items: [
+          { collectionItemId: 'ci_p1', productId: 'prod_simple' },
+          { collectionItemId: 'ci_p2', productId: 'prod_scent' }
+        ]
+      }
+    ]
+  };
+
+  const db = createMockAdminDb({
+    products: createBaseProductsFixture(),
+    settings: { pinkFriday: { publishedActiveCampaign: campaign } }
+  });
+  const { deps, sentTelegrams } = createOrderDeps(db);
+
+  // Order both package collection (600) and percentage collection (Math.round((250+500)*0.8) = 600)
+  // Submit forged variant name + forged price -> server must resolve Firebase 'الورد' and keep collection pricing
+  const res = await createOrderPOST({
+    request: makeOrderRequest({
+      clientRequestId: crypto.randomUUID(),
+      items: [
+        {
+          type: 'collection',
+          isCollection: true,
+          collectionId: 'col_pkg',
+          quantity: 1,
+          price: 1,
+          selectedItems: [
+            { collectionItemId: 'ci_simple', productId: 'prod_simple', selectedVariant: null },
+            {
+              collectionItemId: 'ci_scent',
+              productId: 'prod_scent',
+              selectedVariant: { id: 'rose', name: '<script>اسم مزور</script>' }
+            }
+          ]
+        },
+        {
+          type: 'collection',
+          isCollection: true,
+          collectionId: 'col_pct',
+          quantity: 2,
+          selectedItems: [
+            {
+              collectionItemId: 'ci_p2',
+              productId: 'prod_scent',
+              selectedVariant: { id: 'amber', name: 'Forged Amber Name' }
+            }
+          ]
+        }
+      ]
+    }),
+    clientAddress: '41.41.13.1',
+    _deps: deps
+  });
+
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  // Package: 600 * 1 = 600; Percentage: 600 * 2 = 1200 -> subtotal = 1800 (shipping 85)
+  assert.equal(body.subtotal, 1800);
+  assert.equal(body.shippingFee, 85);
+  assert.equal(body.totalAmount, 1885);
+
+  const savedOrder = db.data.orders[body.orderId];
+  const pkgOrderItem = savedOrder.products[0];
+  assert.equal(pkgOrderItem.effectiveUnitPrice, 600);
+  assert.equal(pkgOrderItem.lineTotal, 600);
+  assert.equal(pkgOrderItem.items[0].variantName, '');
+  assert.equal(pkgOrderItem.items[0].variantId, undefined);
+  assert.equal(pkgOrderItem.items[1].variantId, 'rose');
+  assert.deepEqual(pkgOrderItem.items[1].selectedVariant, { id: 'rose', name: 'الورد' });
+  assert.equal(pkgOrderItem.items[1].variantName, 'الورد');
+
+  const pctOrderItem = savedOrder.products[1];
+  assert.equal(pctOrderItem.effectiveUnitPrice, 600);
+  assert.equal(pctOrderItem.lineTotal, 1200);
+  assert.equal(pctOrderItem.items[1].variantId, 'amber');
+  assert.equal(pctOrderItem.items[1].variantName, 'العنبر');
+
+  // Telegram displays authoritative resolved variant names (not forged XSS)
+  assert.equal(sentTelegrams.length, 1);
+  const tgHtml = formatOrderMessage(sentTelegrams[0].order, body.orderId);
+  assert.ok(tgHtml.includes('الورد'));
+  assert.ok(tgHtml.includes('العنبر'));
+  assert.ok(!tgHtml.includes('اسم مزور'));
+  assert.ok(!tgHtml.includes('Forged Amber Name'));
+});
+
+test('19. GROUP 2A.3.1.1 Collection Rejection: rejects unknown, unavailable, foreign, malformed, ID-less, and missing required collection selections', async () => {
+  const now = Date.now();
+  const campaign = {
+    enabled: true,
+    startAt: new Date(now - 3600_000).toISOString(),
+    endAt: new Date(now + 3600_000).toISOString(),
+    collections: [
+      {
+        id: 'col_strict',
+        name: 'بكج التحقق',
+        active: true,
+        allowDuplicates: false,
+        pricingType: 'package',
+        packagePrice: 600,
+        items: [
+          { collectionItemId: 'ci_simple', productId: 'prod_simple' },
+          { collectionItemId: 'ci_scent', productId: 'prod_scent' }
+        ]
+      }
+    ]
+  };
+
+  const db = createMockAdminDb({
+    products: createBaseProductsFixture(),
+    settings: { pinkFriday: { publishedActiveCampaign: campaign } }
+  });
+  const { deps } = createOrderDeps(db);
+
+  const invalidCollectionItems = [
+    // Unknown variant ID
+    {
+      selectedItems: [
+        { collectionItemId: 'ci_scent', productId: 'prod_scent', selectedVariant: { id: 'does_not_exist', name: 'وهمي' } }
+      ]
+    },
+    // Unavailable variant (`oud` has isAvailable: false)
+    {
+      selectedItems: [
+        { collectionItemId: 'ci_scent', productId: 'prod_scent', selectedVariant: { id: 'oud', name: 'العود' } }
+      ]
+    },
+    // Foreign variant belonging to another product (`vanilla` belongs to prod_other, not prod_scent)
+    {
+      selectedItems: [
+        { collectionItemId: 'ci_scent', productId: 'prod_scent', selectedVariant: { id: 'vanilla', name: 'فانيليا' } }
+      ]
+    },
+    // Bare variantName without ID
+    {
+      selectedItems: [
+        { collectionItemId: 'ci_scent', productId: 'prod_scent', variantName: 'الورد' }
+      ]
+    },
+    // Bare legacy `variant` string without ID
+    {
+      selectedItems: [
+        { collectionItemId: 'ci_scent', productId: 'prod_scent', variant: 'الورد' }
+      ]
+    },
+    // selectedVariant missing required id
+    {
+      selectedItems: [
+        { collectionItemId: 'ci_scent', productId: 'prod_scent', selectedVariant: { name: 'الورد' } }
+      ]
+    },
+    // Malformed selectedVariant string
+    {
+      selectedItems: [
+        { collectionItemId: 'ci_scent', productId: 'prod_scent', selectedVariant: 'rose' }
+      ]
+    },
+    // Malformed selectedItems container
+    {
+      selectedItems: 'not-an-array'
+    },
+    // Malformed selectedItems entry
+    {
+      selectedItems: ['bad-entry']
+    },
+    // Missing required selection on collection component that exposes a scent selector
+    {
+      selectedItems: [
+        { collectionItemId: 'ci_simple', productId: 'prod_simple', selectedVariant: null },
+        { collectionItemId: 'ci_scent', productId: 'prod_scent', selectedVariant: null }
+      ]
+    },
+    // Attempting to inject variant on non-variant product inside collection
+    {
+      selectedItems: [
+        { collectionItemId: 'ci_simple', productId: 'prod_simple', selectedVariant: { id: 'rose', name: 'الورد' } },
+        { collectionItemId: 'ci_scent', productId: 'prod_scent', selectedVariant: { id: 'rose', name: 'الورد' } }
+      ]
+    },
+    // Attempting multi-variant array on single collection slot
+    {
+      selectedItems: [
+        {
+          collectionItemId: 'ci_scent',
+          productId: 'prod_scent',
+          selectedVariants: [
+            { id: 'rose', name: 'الورد' },
+            { id: 'amber', name: 'العنبر' }
+          ]
+        }
+      ]
+    },
+    // Mismatched productId on collectionItemId
+    {
+      selectedItems: [
+        {
+          collectionItemId: 'ci_scent',
+          productId: 'prod_other',
+          selectedVariant: { id: 'vanilla', name: 'فانيليا' }
+        }
+      ]
+    },
+    // Unknown extra collectionItemId
+    {
+      selectedItems: [
+        { collectionItemId: 'ci_scent', productId: 'prod_scent', selectedVariant: { id: 'rose', name: 'الورد' } },
+        { collectionItemId: 'ci_unknown', productId: 'prod_simple', selectedVariant: null }
+      ]
+    }
+  ];
+
+  for (let i = 0; i < invalidCollectionItems.length; i++) {
+    const res = await createOrderPOST({
+      request: makeOrderRequest({
+        clientRequestId: crypto.randomUUID(),
+        items: [
+          {
+            type: 'collection',
+            isCollection: true,
+            collectionId: 'col_strict',
+            quantity: 1,
+            ...invalidCollectionItems[i]
+          }
+        ]
+      }),
+      clientAddress: `41.41.14.${i + 1}`,
+      _deps: deps
+    });
+    assert.equal(res.status, 400, `Expected HTTP 400 for invalid collection payload #${i}`);
+    const body = await res.json();
+    assert.equal(body.success, false);
+    assert.ok(
+      [
+        'INVALID_VARIANT_SELECTION',
+        'VARIANT_REQUIRED',
+        'VARIANT_NOT_FOUND',
+        'VARIANT_UNAVAILABLE',
+        'NO_AVAILABLE_VARIANTS'
+      ].includes(body.error),
+      `Unexpected error code for invalid collection payload #${i}: ${body.error}`
+    );
+  }
+  assert.equal(db.data.orders, undefined);
+});
+
+test('20. GROUP 2A.3.1.1 Duplicate Products & Legacy/Unexposed Selectors: matches by exact collectionItemId and preserves unexposed collection UX', async () => {
+  const now = Date.now();
+  const campaign = {
+    enabled: true,
+    startAt: new Date(now - 3600_000).toISOString(),
+    endAt: new Date(now + 3600_000).toISOString(),
+    collections: [
+      {
+        id: 'col_dups',
+        name: 'بكج ثنائي المسك',
+        active: true,
+        allowDuplicates: true,
+        pricingType: 'package',
+        packagePrice: 800,
+        items: [
+          { collectionItemId: 'slot_a', productId: 'prod_scent' },
+          { collectionItemId: 'slot_b', productId: 'prod_scent' }
+        ]
+      },
+      {
+        id: 'col_unexposed',
+        name: 'بكج بدون أداة اختيار ظاهرة',
+        active: true,
+        allowDuplicates: false,
+        pricingType: 'package',
+        packagePrice: 550,
+        items: [
+          { collectionItemId: 'slot_simple', productId: 'prod_simple' },
+          // prod_other has object-map variants -> pink-friday.astro does NOT render a <select>
+          { collectionItemId: 'slot_obj_map', productId: 'prod_other' }
+        ]
+      }
+    ]
+  };
+
+  const db = createMockAdminDb({
+    products: createBaseProductsFixture(),
+    settings: { pinkFriday: { publishedActiveCampaign: campaign } }
+  });
+  const { deps } = createOrderDeps(db);
+
+  // Confirm pink-friday.astro selector parity helper
+  assert.equal(hasExposedCollectionVariantSelector(db.data.products.prod_scent), true);
+  assert.equal(hasExposedCollectionVariantSelector(db.data.products.prod_other), false);
+  assert.equal(hasExposedCollectionVariantSelector(db.data.products.prod_simple), false);
+
+  // 1. Duplicate product matched by exact collectionItemId even when submitted in reverse order
+  const dupRes = await createOrderPOST({
+    request: makeOrderRequest({
+      clientRequestId: crypto.randomUUID(),
+      items: [
+        {
+          type: 'collection',
+          isCollection: true,
+          collectionId: 'col_dups',
+          quantity: 1,
+          selectedItems: [
+            { collectionItemId: 'slot_b', productId: 'prod_scent', selectedVariant: { id: 'amber', name: 'Wrong B' } },
+            { collectionItemId: 'slot_a', productId: 'prod_scent', selectedVariant: { id: 'rose', name: 'Wrong A' } }
+          ]
+        }
+      ]
+    }),
+    clientAddress: '41.41.15.1',
+    _deps: deps
+  });
+  assert.equal(dupRes.status, 200);
+  const dupBody = await dupRes.json();
+  assert.equal(dupBody.subtotal, 800); // Package price fixed, NOT multiplied by 2 scents
+  const dupOrderItems = db.data.orders[dupBody.orderId].products[0].items;
+  assert.equal(dupOrderItems[0].collectionItemId, 'slot_a');
+  assert.equal(dupOrderItems[0].variantId, 'rose');
+  assert.equal(dupOrderItems[0].variantName, 'الورد');
+  assert.equal(dupOrderItems[1].collectionItemId, 'slot_b');
+  assert.equal(dupOrderItems[1].variantId, 'amber');
+  assert.equal(dupOrderItems[1].variantName, 'العنبر');
+
+  // 2. Legacy compatibility fallback: entries without collectionItemId match by productId 1-to-1
+  const legacyRes = await createOrderPOST({
+    request: makeOrderRequest({
+      clientRequestId: crypto.randomUUID(),
+      items: [
+        {
+          type: 'collection',
+          isCollection: true,
+          collectionId: 'col_dups',
+          quantity: 1,
+          selectedItems: [
+            { productId: 'prod_scent', selectedVariant: { id: 'musk', name: 'المسك' } },
+            { productId: 'prod_scent', selectedVariant: { id: 'rose', name: 'الورد' } }
+          ]
+        }
+      ]
+    }),
+    clientAddress: '41.41.15.2',
+    _deps: deps
+  });
+  assert.equal(legacyRes.status, 200);
+  const legacyBody = await legacyRes.json();
+  const legacyItems = db.data.orders[legacyBody.orderId].products[0].items;
+  assert.equal(legacyItems[0].variantId, 'musk');
+  assert.equal(legacyItems[1].variantId, 'rose');
+
+  // 3. Collection items without an exposed selection control (prod_simple + object-map prod_other) succeed when selectedVariant is null
+  const unexposedRes = await createOrderPOST({
+    request: makeOrderRequest({
+      clientRequestId: crypto.randomUUID(),
+      items: [
+        {
+          type: 'collection',
+          isCollection: true,
+          collectionId: 'col_unexposed',
+          quantity: 1,
+          selectedItems: [
+            { collectionItemId: 'slot_simple', productId: 'prod_simple', selectedVariant: null },
+            { collectionItemId: 'slot_obj_map', productId: 'prod_other', selectedVariant: null }
+          ]
+        }
+      ]
+    }),
+    clientAddress: '41.41.15.3',
+    _deps: deps
+  });
+  assert.equal(unexposedRes.status, 200);
+  const unexposedBody = await unexposedRes.json();
+  assert.equal(unexposedBody.subtotal, 550);
+  assert.equal(db.data.orders[unexposedBody.orderId].products[0].items[0].variantName, '');
+  assert.equal(db.data.orders[unexposedBody.orderId].products[0].items[1].variantName, '');
+
+  // 4. Even on unexposed object-map product, if a variant ID IS submitted, it is still validated against Firebase
+  const explicitValidObjMap = validateAndResolveCollectionItemVariant(
+    db.data.products.prod_other,
+    { collectionItemId: 'slot_obj_map', productId: 'prod_other', selectedVariant: { id: 'vanilla', name: 'Tampered' } },
+    { expectedProductId: 'prod_other' }
+  );
+  assert.equal(explicitValidObjMap.ok, true);
+  assert.deepEqual(explicitValidObjMap.variant, { id: 'vanilla', name: 'فانيليا' });
+
+  const explicitInvalidObjMap = validateAndResolveCollectionItemVariant(
+    db.data.products.prod_other,
+    { collectionItemId: 'slot_obj_map', productId: 'prod_other', selectedVariant: { id: 'bogus', name: 'X' } },
+    { expectedProductId: 'prod_other' }
+  );
+  assert.equal(explicitInvalidObjMap.ok, false);
+  assert.equal(explicitInvalidObjMap.errorCode, 'VARIANT_NOT_FOUND');
+
+  // 5. Idempotency replay & conflict for collection orders remain intact
+  const colReqId = crypto.randomUUID();
+  const colOrderPayload = {
+    clientRequestId: colReqId,
+    items: [
+      {
+        type: 'collection',
+        isCollection: true,
+        collectionId: 'col_dups',
+        quantity: 1,
+        selectedItems: [
+          { collectionItemId: 'slot_a', productId: 'prod_scent', selectedVariant: { id: 'rose', name: 'الورد' } },
+          { collectionItemId: 'slot_b', productId: 'prod_scent', selectedVariant: { id: 'amber', name: 'العنبر' } }
+        ]
+      }
+    ]
+  };
+  const replayFirst = await createOrderPOST({
+    request: makeOrderRequest(colOrderPayload),
+    clientAddress: '41.41.15.4',
+    _deps: deps
+  });
+  assert.equal(replayFirst.status, 200);
+  const replayFirstBody = await replayFirst.json();
+
+  const replaySecond = await createOrderPOST({
+    request: makeOrderRequest(colOrderPayload),
+    clientAddress: '41.41.15.4',
+    _deps: deps
+  });
+  assert.equal(replaySecond.status, 200);
+  assert.equal((await replaySecond.json()).orderId, replayFirstBody.orderId);
+
+  const replayConflict = await createOrderPOST({
+    request: makeOrderRequest({
+      clientRequestId: colReqId,
+      items: [
+        {
+          type: 'collection',
+          isCollection: true,
+          collectionId: 'col_dups',
+          quantity: 1,
+          selectedItems: [
+            { collectionItemId: 'slot_a', productId: 'prod_scent', selectedVariant: { id: 'musk', name: 'المسك' } },
+            { collectionItemId: 'slot_b', productId: 'prod_scent', selectedVariant: { id: 'amber', name: 'العنبر' } }
+          ]
+        }
+      ]
+    }),
+    clientAddress: '41.41.15.4',
+    _deps: deps
+  });
+  assert.equal(replayConflict.status, 409);
+  assert.equal((await replayConflict.json()).error, 'IDEMPOTENCY_CONFLICT');
+
+  // 6. Shipping threshold with collection + single item: 800 * 2 + 400 = 2000 (85 EGP shipping); +250 = 2250 (0 EGP free)
+  const colAt2000 = await createOrderPOST({
+    request: makeOrderRequest({
+      clientRequestId: crypto.randomUUID(),
+      items: [
+        {
+          type: 'collection',
+          isCollection: true,
+          collectionId: 'col_dups',
+          quantity: 2,
+          selectedItems: [
+            { collectionItemId: 'slot_a', productId: 'prod_scent', selectedVariant: { id: 'rose', name: 'الورد' } },
+            { collectionItemId: 'slot_b', productId: 'prod_scent', selectedVariant: { id: 'amber', name: 'العنبر' } }
+          ]
+        },
+        { productId: 'prod_other', quantity: 1, selectedVariants: [{ id: 'vanilla', name: 'فانيليا' }] }
+      ]
+    }),
+    clientAddress: '41.41.15.5',
+    _deps: deps
+  });
+  assert.equal(colAt2000.status, 200);
+  const colAt2000Body = await colAt2000.json();
+  assert.equal(colAt2000Body.subtotal, 2000);
+  assert.equal(colAt2000Body.shippingFee, 85);
+  assert.equal(colAt2000Body.totalAmount, 2085);
+
+  const colAbove2000 = await createOrderPOST({
+    request: makeOrderRequest({
+      clientRequestId: crypto.randomUUID(),
+      items: [
+        {
+          type: 'collection',
+          isCollection: true,
+          collectionId: 'col_dups',
+          quantity: 2,
+          selectedItems: [
+            { collectionItemId: 'slot_a', productId: 'prod_scent', selectedVariant: { id: 'rose', name: 'الورد' } },
+            { collectionItemId: 'slot_b', productId: 'prod_scent', selectedVariant: { id: 'amber', name: 'العنبر' } }
+          ]
+        },
+        { productId: 'prod_other', quantity: 1, selectedVariants: [{ id: 'vanilla', name: 'فانيليا' }] },
+        { productId: 'prod_simple', quantity: 1 }
+      ]
+    }),
+    clientAddress: '41.41.15.6',
+    _deps: deps
+  });
+  assert.equal(colAbove2000.status, 200);
+  const colAbove2000Body = await colAbove2000.json();
+  assert.equal(colAbove2000Body.subtotal, 2250);
+  assert.equal(colAbove2000Body.shippingFee, 0);
+  assert.equal(colAbove2000Body.totalAmount, 2250);
+
+  // 7. Expired collection claim fails with 409 CAMPAIGN_COLLECTION_CONFLICT
+  const expiredColDb = createMockAdminDb({
+    products: createBaseProductsFixture(),
+    settings: {
+      pinkFriday: {
+        publishedActiveCampaign: {
+          ...campaign,
+          endAt: new Date(now - 60_000).toISOString()
+        }
+      }
+    }
+  });
+  const expiredColRes = await createOrderPOST({
+    request: makeOrderRequest({
+      clientRequestId: crypto.randomUUID(),
+      items: colOrderPayload.items
+    }),
+    clientAddress: '41.41.15.7',
+    _deps: createOrderDeps(expiredColDb).deps
+  });
+  assert.equal(expiredColRes.status, 409);
+  assert.equal((await expiredColRes.json()).error, 'CAMPAIGN_COLLECTION_CONFLICT');
+});
+
+// ===========================================================================
+// D. GROUP 2A.3.1.2 — Duplicate ID Normalization & Pink Friday Selector Parity
+// ===========================================================================
+
+test('21. GROUP 2A.3.1.2 Duplicate Variant ID Normalization: frontend variants.js & backend server-variant-pricing match identically', () => {
+  const duplicateFixtures = [
+    {
+      label: 'Array duplicates with identical names',
+      product: {
+        hasVariants: true,
+        variants: [
+          { id: 'rose', name: 'الورد', isAvailable: true },
+          { id: 'rose', name: 'الورد', isAvailable: false },
+          { id: 'musk', name: 'المسك', isAvailable: true }
+        ]
+      },
+      expected: [
+        { id: 'rose', name: 'الورد', isAvailable: true },
+        { id: 'musk', name: 'المسك', isAvailable: true }
+      ]
+    },
+    {
+      label: 'Array duplicates with conflicting names (first valid occurrence wins)',
+      product: {
+        hasVariants: true,
+        variants: [
+          { id: 'amber', name: 'العنبر الملكي', isAvailable: true },
+          { id: 'amber', name: 'اسم لاحق متعارض', isAvailable: true }
+        ]
+      },
+      expected: [{ id: 'amber', name: 'العنبر الملكي', isAvailable: true }]
+    },
+    {
+      label: 'Duplicate IDs differing only by whitespace are trimmed & deduplicated',
+      product: {
+        hasVariants: true,
+        variants: [
+          { id: ' rose ', name: ' الورد الأحمر ', isAvailable: true },
+          { id: 'rose', name: 'الورد المكرر', isAvailable: true }
+        ]
+      },
+      expected: [{ id: 'rose', name: 'الورد الأحمر', isAvailable: true }]
+    },
+    {
+      label: 'Missing-ID fallback deduplicates against explicit matching ID',
+      product: {
+        hasVariants: true,
+        variants: [
+          { name: ' مسك أبيض ', isAvailable: true },
+          { id: 'مسك أبيض', name: 'اسم بديل مكرر', isAvailable: true }
+        ]
+      },
+      expected: [{ id: 'مسك أبيض', name: 'مسك أبيض', isAvailable: true }]
+    },
+    {
+      label: 'Invalid/empty entry preceding valid entry sharing ID is skipped before seenIds tracking',
+      product: {
+        hasVariants: true,
+        variants: [
+          null,
+          { id: 'rose', name: '   ' },
+          { id: 'rose', name: '' },
+          { id: 'rose', name: ' الورد الصالح ', isAvailable: true }
+        ]
+      },
+      expected: [{ id: 'rose', name: 'الورد الصالح', isAvailable: true }]
+    },
+    {
+      label: 'Object-map duplicate explicit/key IDs keep first valid normalized entry',
+      product: {
+        hasVariants: true,
+        variants: {
+          k1: { id: 'vanilla', name: '' }, // invalid name -> skipped before seenIds
+          k2: { id: 'vanilla', name: ' فانيليا مدغشقر ', isAvailable: true },
+          k3: { id: ' vanilla ', name: 'فانيليا مكررة', isAvailable: true },
+          coconut: 'جوز الهند'
+        }
+      },
+      expected: [
+        { id: 'vanilla', name: 'فانيليا مدغشقر', isAvailable: true },
+        { id: 'coconut', name: 'جوز الهند', isAvailable: true }
+      ]
+    }
+  ];
+
+  for (const fx of duplicateFixtures) {
+    const feNormalized = JSON.parse(
+      JSON.stringify(
+        frontendVariants.getProductVariants(fx.product).map((v) => ({
+          id: String(v.id),
+          name: String(v.name),
+          isAvailable: v.isAvailable !== false
+        }))
+      )
+    );
+    const beNormalized = normalizeProductVariants(fx.product);
+
+    assert.deepEqual(beNormalized, fx.expected, `Backend failed on ${fx.label}`);
+    assert.deepEqual(feNormalized, beNormalized, `Frontend/backend mismatch on ${fx.label}`);
+  }
+});
+
+test('22. GROUP 2A.3.1.2 Pink Friday Collection Selector Parity & SSR Contract Verification', async () => {
+  // A. Pure selector exposure & options matrix
+  const scProd = {
+    name: 'عطر مجموعات',
+    hasVariants: true,
+    variantType: 'scent',
+    variants: [
+      { id: 'rose', name: ' الورد ', isAvailable: true },
+      { id: 'rose', name: 'الورد المكرر', isAvailable: true },
+      { id: 'oud', name: 'العود', isAvailable: false },
+      { name: ' مسك أبيض ' }
+    ]
+  };
+  assert.equal(hasExposedCollectionVariantSelector(scProd), true);
+  assert.deepEqual(getExposedCollectionVariantOptions(scProd), [
+    { id: 'rose', name: 'الورد' },
+    { id: 'مسك أبيض', name: 'مسك أبيض' }
+  ]);
+
+  const noTypeArrProd = {
+    name: 'عطر بدون نوع',
+    hasVariants: 'true',
+    variants: [{ id: 'amber', name: 'العنبر' }]
+  };
+  assert.equal(hasExposedCollectionVariantSelector(noTypeArrProd), true);
+  assert.deepEqual(getExposedCollectionVariantOptions(noTypeArrProd), [{ id: 'amber', name: 'العنبر' }]);
+
+  const nonVariantWithArray = {
+    name: 'منتج بدون روائح رغم وجود مصفوفة',
+    hasVariants: false,
+    variants: [{ id: 'v1', name: 'خيار غير ظاهر' }]
+  };
+  assert.equal(hasExposedCollectionVariantSelector(nonVariantWithArray), false);
+  assert.deepEqual(getExposedCollectionVariantOptions(nonVariantWithArray), []);
+
+  const missingFlagWithArray = {
+    name: 'منتج بدون hasVariants رغم وجود مصفوفة',
+    variants: [{ id: 'v1', name: 'خيار غير ظاهر' }]
+  };
+  assert.equal(hasExposedCollectionVariantSelector(missingFlagWithArray), false);
+  assert.deepEqual(getExposedCollectionVariantOptions(missingFlagWithArray), []);
+
+  const flavorArrayProd = {
+    name: 'منتج نكهات',
+    hasVariants: true,
+    variantType: 'flavor',
+    variants: [{ id: 'mint', name: 'نعناع' }]
+  };
+  assert.equal(hasExposedCollectionVariantSelector(flavorArrayProd), false);
+  assert.deepEqual(getExposedCollectionVariantOptions(flavorArrayProd), []);
+
+  const objMapProd = {
+    name: 'منتج بخريطة كائنات',
+    hasVariants: true,
+    variantType: 'scent',
+    variants: { vanilla: 'فانيليا' }
+  };
+  assert.equal(hasExposedCollectionVariantSelector(objMapProd), false);
+  assert.deepEqual(getExposedCollectionVariantOptions(objMapProd), []);
+
+  // B. Verify SSR files use unified contract directly
+  const productDetailSrc = await fs.readFile(path.resolve('src/pages/product/[...slug].astro'), 'utf8');
+  assert.ok(productDetailSrc.includes('normalizeProductVariants(product)'));
+  assert.ok(productDetailSrc.includes('hasSelectableProductVariants(product)'));
+
+  const pinkFridaySrc = await fs.readFile(path.resolve('src/pages/pink-friday.astro'), 'utf8');
+  assert.ok(pinkFridaySrc.includes('hasExposedCollectionVariantSelector'));
+  assert.ok(pinkFridaySrc.includes('getExposedCollectionVariantOptions(prod)'));
+  assert.equal(/\(prod\s+as\s+any\)\.scents|prod\.scents\b/.test(pinkFridaySrc), false, 'pink-friday.astro must not read nonexistent prod.scents field');
+
+  // C. End-to-end collection checkout: non-exposed components succeed with selectedVariant: null & reject forged variants
+  const now = Date.now();
+  const db = createMockAdminDb({
+    products: {
+      prod_hidden_variants: {
+        name: 'غسول بمصفوفة معطلة',
+        price: 200,
+        hasVariants: false,
+        variants: [{ id: 'x1', name: 'غير مفعّل' }]
+      },
+      prod_missing_flag: {
+        name: 'كريم بدون تفعيل',
+        price: 250,
+        variants: [{ id: 'x2', name: 'غير مفعّل' }]
+      },
+      prod_flavor_arr: {
+        name: 'مرطب نكهات',
+        price: 180,
+        hasVariants: true,
+        variantType: 'flavor',
+        variants: [{ id: 'mint', name: 'نعناع' }]
+      },
+      prod_scent_dup: {
+        name: 'معطر مكرر المعرف',
+        price: 300,
+        hasVariants: true,
+        variantType: 'scent',
+        variants: [
+          { id: 'rose', name: 'الورد الأصلي', isAvailable: true },
+          { id: 'rose', name: 'الورد المزاحم', isAvailable: false }
+        ]
+      }
+    },
+    settings: {
+      pinkFriday: {
+        publishedActiveCampaign: {
+          enabled: true,
+          startAt: new Date(now - 3600_000).toISOString(),
+          endAt: new Date(now + 3600_000).toISOString(),
+          collections: [
+            {
+              id: 'col_parity',
+              name: 'كوليكشن التطابق الكامل',
+              active: true,
+              pricingType: 'package',
+              packagePrice: 700,
+              items: [
+                { collectionItemId: 's_hidden', productId: 'prod_hidden_variants' },
+                { collectionItemId: 's_missing', productId: 'prod_missing_flag' },
+                { collectionItemId: 's_flavor', productId: 'prod_flavor_arr' },
+                { collectionItemId: 's_scent', productId: 'prod_scent_dup' }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  });
+  const { deps } = createOrderDeps(db);
+
+  const okRes = await createOrderPOST({
+    request: makeOrderRequest({
+      clientRequestId: crypto.randomUUID(),
+      items: [
+        {
+          type: 'collection',
+          isCollection: true,
+          collectionId: 'col_parity',
+          quantity: 1,
+          selectedItems: [
+            { collectionItemId: 's_hidden', productId: 'prod_hidden_variants', selectedVariant: null },
+            { collectionItemId: 's_missing', productId: 'prod_missing_flag', selectedVariant: null },
+            { collectionItemId: 's_flavor', productId: 'prod_flavor_arr', selectedVariant: null },
+            { collectionItemId: 's_scent', productId: 'prod_scent_dup', selectedVariant: { id: 'rose', name: 'مزور' } }
+          ]
+        }
+      ]
+    }),
+    clientAddress: '41.41.16.1',
+    _deps: deps
+  });
+  assert.equal(okRes.status, 200);
+  const okBody = await okRes.json();
+  assert.equal(okBody.subtotal, 700);
+  const resolved = db.data.orders[okBody.orderId].products[0].items;
+  assert.equal(resolved[0].variantName, '');
+  assert.equal(resolved[1].variantName, '');
+  assert.equal(resolved[2].variantName, '');
+  assert.deepEqual(resolved[3].selectedVariant, { id: 'rose', name: 'الورد الأصلي' });
+
+  // Forged variant injection on hasVariants: false or variantType: 'flavor' MUST be rejected
+  for (const [idx, forgedEntry] of [
+    { collectionItemId: 's_hidden', productId: 'prod_hidden_variants', selectedVariant: { id: 'x1', name: 'X' } },
+    { collectionItemId: 's_flavor', productId: 'prod_flavor_arr', selectedVariant: { id: 'mint', name: 'نعناع' } }
+  ].entries()) {
+    const forgedColRes = await createOrderPOST({
+      request: makeOrderRequest({
+        clientRequestId: crypto.randomUUID(),
+        items: [
+          {
+            type: 'collection',
+            isCollection: true,
+            collectionId: 'col_parity',
+            quantity: 1,
+            selectedItems: [
+              forgedEntry,
+              { collectionItemId: 's_scent', productId: 'prod_scent_dup', selectedVariant: { id: 'rose', name: 'الورد الأصلي' } }
+            ]
+          }
+        ]
+      }),
+      clientAddress: `41.41.16.${idx + 2}`,
+      _deps: deps
+    });
+    assert.equal(forgedColRes.status, 400);
+    assert.equal((await forgedColRes.json()).error, 'INVALID_VARIANT_SELECTION');
+  }
+});
+

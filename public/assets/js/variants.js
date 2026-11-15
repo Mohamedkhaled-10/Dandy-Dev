@@ -8,63 +8,130 @@
 
   /**
    * Normalizes and returns the array of variants for a product.
-   * @param {Object} product 
-   * @returns {Array<{id: string, name: string, isAvailable?: boolean}>}
+   * Preserves explicit IDs, missing-ID fallback to trimmed name, Arabic/English names,
+   * array/object-map/primitive/sparse schemas, and deduplicates by variant ID keeping
+   * the first valid normalized variant entry.
+   * @param {Object} product
+   * @returns {Array<{id: string, name: string, isAvailable: boolean}>}
    */
   function getProductVariants(product) {
-    if (!product || !product.variants) return [];
+    if (!product || typeof product !== 'object' || Array.isArray(product) || !product.variants) {
+      return [];
+    }
+
+    const collected = [];
     if (Array.isArray(product.variants)) {
-      return product.variants
-        .filter(v => v && typeof v === 'object' && v.name && String(v.name).trim() !== '')
-        .map(v => {
-          const cleanName = String(v.name).trim();
-          const cleanId = (v.id !== undefined && v.id !== null && String(v.id).trim() !== '')
-            ? String(v.id).trim()
-            : cleanName;
-          return { ...v, id: cleanId, name: cleanName };
+      for (let i = 0; i < product.variants.length; i++) {
+        const v = product.variants[i];
+        if (!v || typeof v !== 'object' || Array.isArray(v)) continue;
+        if (typeof v.name !== 'string' && typeof v.name !== 'number') continue;
+        const cleanName = String(v.name).trim();
+        if (!cleanName) continue;
+
+        const hasExplicitId =
+          v.id !== undefined &&
+          v.id !== null &&
+          (typeof v.id === 'string' || typeof v.id === 'number') &&
+          String(v.id).trim() !== '';
+        const cleanId = hasExplicitId ? String(v.id).trim() : cleanName;
+
+        collected.push({
+          ...v,
+          id: cleanId,
+          name: cleanName,
+          isAvailable: v.isAvailable !== false
         });
+      }
+    } else if (typeof product.variants === 'object') {
+      const entries = Object.entries(product.variants);
+      for (let i = 0; i < entries.length; i++) {
+        const key = entries[i][0];
+        const v = entries[i][1];
+        if (v === null || v === undefined) continue;
+        if (typeof v === 'object' && !Array.isArray(v)) {
+          const hasExplicitId =
+            v.id !== undefined &&
+            v.id !== null &&
+            (typeof v.id === 'string' || typeof v.id === 'number') &&
+            String(v.id).trim() !== '';
+          const cleanId = hasExplicitId ? String(v.id).trim() : String(key).trim();
+          const cleanName =
+            typeof v.name === 'string' || typeof v.name === 'number'
+              ? String(v.name).trim()
+              : '';
+          if (!cleanId || !cleanName) continue;
+
+          collected.push({
+            ...v,
+            id: cleanId,
+            name: cleanName,
+            isAvailable: v.isAvailable !== false
+          });
+        } else if (typeof v === 'string' || typeof v === 'number') {
+          const cleanId = String(key).trim();
+          const cleanName = String(v).trim();
+          if (!cleanId || !cleanName) continue;
+
+          collected.push({
+            id: cleanId,
+            name: cleanName,
+            isAvailable: true
+          });
+        }
+      }
     }
-    if (typeof product.variants === 'object') {
-      return Object.entries(product.variants)
-        .filter(([, v]) => v !== null && v !== undefined)
-        .map(([id, v]) => {
-          if (typeof v === 'object') {
-            const cleanId = (v.id !== undefined && v.id !== null && String(v.id).trim() !== '')
-              ? String(v.id).trim()
-              : String(id).trim();
-            const cleanName = v.name ? String(v.name).trim() : '';
-            return { ...v, id: cleanId, name: cleanName };
-          }
-          return { id: String(id).trim(), name: String(v).trim(), isAvailable: true };
-        })
-        .filter(v => v && v.id && v.name);
+
+    const seenIds = new Set();
+    const unique = [];
+    for (let i = 0; i < collected.length; i++) {
+      const item = collected[i];
+      if (seenIds.has(item.id)) continue;
+      seenIds.add(item.id);
+      unique.push(item);
     }
-    return [];
+    return unique;
   }
 
   /**
-   * Checks if a product has active, selectable variants enabled.
-   * @param {Object} product 
+   * Checks whether the product's variantType is supported by the storefront selector UI.
+   * Currently the storefront exposes scent selection only (`!variantType || variantType === 'scent'`).
+   * @param {Object} product
+   * @returns {boolean}
+   */
+  function isSupportedVariantType(product) {
+    if (!product || typeof product !== 'object' || Array.isArray(product)) return false;
+    const rawType = product.variantType;
+    if (rawType === undefined || rawType === null) return true;
+    const cleanType = typeof rawType === 'string' ? rawType.trim() : String(rawType).trim();
+    return !cleanType || cleanType === 'scent';
+  }
+
+  /**
+   * Checks if a product has active, selectable variants enabled under the unified storefront contract.
+   * @param {Object} product
    * @returns {boolean}
    */
   function hasSelectableVariants(product) {
-    if (!product) return false;
+    if (!product || typeof product !== 'object' || Array.isArray(product)) return false;
     const hasFlag = product.hasVariants === true || product.hasVariants === 'true';
     if (!hasFlag) return false;
+    if (!isSupportedVariantType(product)) return false;
     const variants = getProductVariants(product);
     return variants.length > 0;
   }
 
   /**
    * Checks if a specific variant in a product is available.
-   * @param {Object} product 
-   * @param {string} variantId 
+   * @param {Object} product
+   * @param {string} variantId
    * @returns {boolean}
    */
   function isVariantAvailable(product, variantId) {
-    if (!product || variantId === undefined || variantId === null || String(variantId).trim() === '') return false;
+    if (!product || variantId === undefined || variantId === null) return false;
+    const cleanTargetId = String(variantId).trim();
+    if (!cleanTargetId) return false;
     const variants = getProductVariants(product);
-    const variant = variants.find(v => String(v.id) === String(variantId));
+    const variant = variants.find(v => String(v.id) === cleanTargetId);
     if (!variant) return false;
     return variant.isAvailable !== false;
   }
@@ -443,6 +510,7 @@
   // Export to global window object
   const DandyVariants = {
     getProductVariants,
+    isSupportedVariantType,
     hasSelectableVariants,
     isVariantAvailable,
     getCartItemKey,
@@ -458,6 +526,7 @@
 
   window.DandyVariants = DandyVariants;
   window.getProductVariants = getProductVariants;
+  window.isSupportedVariantType = isSupportedVariantType;
   window.hasSelectableVariants = hasSelectableVariants;
   window.isVariantAvailable = isVariantAvailable;
   window.getCartItemKey = getCartItemKey;
