@@ -40,6 +40,10 @@ import {
 } from '../../utils/notifications-outbox.ts';
 import { sendTelegramNotification } from '../../utils/telegram.js';
 import { calculateShippingFee } from '../../config/store-policy.ts';
+import {
+  validateAndResolveOrderItemVariants,
+  calculateAuthoritativeItemPricing
+} from '../../utils/server-variant-pricing.ts';
 
 const SECURITY_HEADERS = {
   'Content-Type': 'application/json',
@@ -812,9 +816,42 @@ export async function POST(context) {
       }
 
       // Standard Individual Product Handling
-      const rawId = item.productId || (item.id ? String(item.id).split('::')[0] : '');
-      const quantity = parseInt(item.quantity) || 1;
-      if (!rawId || quantity <= 0) continue;
+      const rawId = String(
+        item.productId || (item.id ? String(item.id).split('::')[0] : '') || ''
+      ).trim();
+      if (!rawId || /[.#$\[\]/]/.test(rawId)) {
+        return await failBusinessOrConfig(
+          {
+            success: false,
+            error: 'INVALID_PRODUCT',
+            message: 'عذراً، معرّف المنتج المرسل غير صالح.'
+          },
+          400,
+          'INVALID_PRODUCT'
+        );
+      }
+
+      let quantity = 1;
+      if (item.quantity !== undefined) {
+        const parsedQty =
+          typeof item.quantity === 'number'
+            ? item.quantity
+            : typeof item.quantity === 'string' && /^\d+$/.test(item.quantity.trim())
+              ? Number(item.quantity.trim())
+              : NaN;
+        if (!Number.isSafeInteger(parsedQty) || parsedQty <= 0) {
+          return await failBusinessOrConfig(
+            {
+              success: false,
+              error: 'INVALID_QUANTITY',
+              message: 'كمية المنتج المرسلة غير صالحة.'
+            },
+            400,
+            'INVALID_QUANTITY'
+          );
+        }
+        quantity = parsedQty;
+      }
 
       const productSnap = await adminDb.ref(`products/${rawId}`).once('value');
       if (!productSnap.exists()) {
@@ -830,15 +867,28 @@ export async function POST(context) {
       }
 
       const pData = productSnap.val();
-      if (pData.isHidden || pData.isSoldOut) {
+      if (!pData || typeof pData !== 'object' || pData.isHidden || pData.isSoldOut) {
         return await failBusinessOrConfig(
           {
             success: false,
             error: 'PRODUCT_UNAVAILABLE',
-            message: `عذراً، المنتج "${pData.name || item.name || ''}" غير متاح حالياً.`
+            message: `عذراً، المنتج "${pData?.name || item.name || ''}" غير متاح حالياً.`
           },
           400,
           'PRODUCT_UNAVAILABLE'
+        );
+      }
+
+      const variantCheck = validateAndResolveOrderItemVariants(pData, item);
+      if (!variantCheck.ok) {
+        return await failBusinessOrConfig(
+          {
+            success: false,
+            error: variantCheck.errorCode || 'INVALID_VARIANT_SELECTION',
+            message: variantCheck.message || 'اختيار الروائح للمنتج غير صالح.'
+          },
+          400,
+          variantCheck.errorCode || 'INVALID_VARIANT_SELECTION'
         );
       }
 
@@ -869,8 +919,16 @@ export async function POST(context) {
         );
       }
 
-      const effectiveUnitPrice = pfPricing.isEligible ? pfPricing.campaignPrice : priceVal;
-      const lineTotal = effectiveUnitPrice * quantity;
+      const itemPricing = calculateAuthoritativeItemPricing({
+        basePrice: priceVal,
+        campaignPrice: pfPricing.isEligible ? pfPricing.campaignPrice : null,
+        isPinkFridayEligible: pfPricing.isEligible,
+        variantMultiplier: variantCheck.multiplier,
+        quantity
+      });
+
+      const effectiveUnitPrice = itemPricing.effectiveUnitPrice;
+      const lineTotal = itemPricing.lineTotal;
       subtotal += lineTotal;
 
       const snap = {
@@ -893,25 +951,18 @@ export async function POST(context) {
       if (pData.discount && !pfPricing.isEligible) snap.discount = pData.discount;
       if (pData.onSale) snap.onSale = pData.onSale;
 
-      const rawVariants =
-        Array.isArray(item.selectedVariants) && item.selectedVariants.length > 0
-          ? item.selectedVariants
-          : (item.selectedVariant
-              ? [item.selectedVariant]
-              : (item.variantName ? [{ id: item.variantId || 'scent-variant', name: item.variantName }] : []));
-
-      if (rawVariants.length > 0) {
-        const cleanVariants = rawVariants.map((v) => ({
-          id: v.id || 'scent-variant',
-          name: v.name || String(v)
+      if (variantCheck.variants.length > 0) {
+        snap.selectedVariants = variantCheck.variants.map((v) => ({
+          id: v.id,
+          name: v.name
         }));
-        snap.selectedVariants = cleanVariants;
+        snap.variantName = variantCheck.variantName;
 
-        if (cleanVariants.length === 1) {
-          snap.selectedVariant = cleanVariants[0];
-          snap.variantName = cleanVariants[0].name;
-        } else {
-          snap.variantName = cleanVariants.map((v) => v.name).join('، ');
+        if (variantCheck.variants.length === 1) {
+          snap.selectedVariant = {
+            id: variantCheck.variants[0].id,
+            name: variantCheck.variants[0].name
+          };
         }
       }
 

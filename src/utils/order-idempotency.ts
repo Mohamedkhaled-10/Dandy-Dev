@@ -151,6 +151,30 @@ export function canonicalizeJsonValue(val: unknown): any {
   return val;
 }
 
+function canonicalizeSelectedVariantsForFingerprint(raw: unknown[]): any[] {
+  const canonicalEntries = raw.map((entry) => canonicalizeJsonValue(entry));
+  canonicalEntries.sort((a, b) => {
+    const aKey =
+      isPlainObject(a) && typeof a.id === 'string' && a.id.trim()
+        ? a.id.trim()
+        : isPlainObject(a) && typeof a.name === 'string' && a.name.trim()
+          ? a.name.trim()
+          : JSON.stringify(a);
+    const bKey =
+      isPlainObject(b) && typeof b.id === 'string' && b.id.trim()
+        ? b.id.trim()
+        : isPlainObject(b) && typeof b.name === 'string' && b.name.trim()
+          ? b.name.trim()
+          : JSON.stringify(b);
+    if (aKey < bKey) return -1;
+    if (aKey > bKey) return 1;
+    const aJson = JSON.stringify(a);
+    const bJson = JSON.stringify(b);
+    return aJson < bJson ? -1 : aJson > bJson ? 1 : 0;
+  });
+  return canonicalEntries;
+}
+
 function canonicalizeItemForFingerprint(item: any): Record<string, any> {
   if (!isPlainObject(item)) return {};
   const {
@@ -158,7 +182,13 @@ function canonicalizeItemForFingerprint(item: any): Record<string, any> {
     turnstileToken: _tt,
     ...rest
   } = item;
-  return canonicalizeJsonValue(rest);
+  const canonicalized = canonicalizeJsonValue(rest);
+  if (Array.isArray(rest.selectedVariants)) {
+    canonicalized.selectedVariants = canonicalizeSelectedVariantsForFingerprint(
+      rest.selectedVariants
+    );
+  }
+  return canonicalized;
 }
 
 /**
