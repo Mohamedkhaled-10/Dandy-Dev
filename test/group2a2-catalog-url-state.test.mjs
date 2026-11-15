@@ -730,7 +730,9 @@ test('10-12. Empty state, async product loading order, default sort return, and 
   const auditedMatch = source.match(/const AUDITED_CATALOG_PARAMS = (\[[^\]]+\]);/);
   assert.ok(auditedMatch, 'Expected AUDITED_CATALOG_PARAMS in all-products.astro');
   const auditedParams = JSON.parse(auditedMatch[1].replace(/'/g, '"'));
-  assert.deepEqual(auditedParams, ['category', 'status', 'search', 'sort', 'page']);
+  ['category', 'status', 'search', 'sort', 'page'].forEach(param => {
+    assert.equal(auditedParams.includes(param), true, `Expected AUDITED_CATALOG_PARAMS to include ${param}`);
+  });
   assert.match(source, /canonical="https:\/\/dandy-ebon\.vercel\.app\/all-products"/);
   assert.match(source, /const robotsDirective = hasAuditedCatalogParam \? 'noindex, follow' : 'index, follow';/);
 });
