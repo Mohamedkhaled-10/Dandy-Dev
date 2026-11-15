@@ -599,7 +599,11 @@ import BaseLayout from '../layouts/BaseLayout.astro';
         <p>إنشاء وتعديل وتفعيل كوبونات الخصم العامة والمخصصة لأقسام المتجر المعتمدة.</p>
       </div>
 
-      <div>
+      <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+        <a href="/dashboard-coupon-analytics" class="cp-btn-secondary" style="text-decoration: none;">
+          <i class="fas fa-chart-pie"></i>
+          <span>تحليلات الكوبونات</span>
+        </a>
         <button type="button" class="cp-btn-primary" id="btnOpenCreateCoupon">
           <i class="fas fa-plus"></i>
           <span>إنشاء كوبون جديد</span>
@@ -612,7 +616,7 @@ import BaseLayout from '../layouts/BaseLayout.astro';
       <i class="fas fa-info-circle"></i>
       <div>
         <strong>نطاق المرحلة الحالية:</strong>
-        يمكن للعملاء الآن تطبيق الكوبونات المؤهلة في سلة التسوق، ويتم التحقق النهائي وحساب الخصم بأمان على السيرفر أثناء إنشاء الطلب. إحصائيات وتحليلات الاستخدام غير متاحة حالياً وسيتم إضافتها في المرحلة التالية (GROUP 2A.7).
+        يمكن للعملاء تطبيق الكوبونات المؤهلة في سلة التسوق، ويتم التحقق النهائي وحساب الخصم بأمان على السيرفر أثناء إنشاء الطلب. لمتابعة تقارير الاستخدام والخصومات والمبيعات المؤهلة (GROUP 2A.7) انتقلي إلى <a href="/dashboard-coupon-analytics" style="color: #7c3aed; font-weight: 700; text-decoration: underline;">لوحة تحليلات أداء الكوبونات</a>.
       </div>
     </div>
 

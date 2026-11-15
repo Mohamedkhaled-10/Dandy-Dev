@@ -1,0 +1,1783 @@
+# DANDY — PHASE 2 / GROUP 2A.7
+## Coupon Analytics & Performance Dashboard
+### Historical Usage, Customer Insights, Financial Performance & Category Analytics
+
+Repository: `Mohamedkhaled-10/Dandy-Dev`
+
+Target branch: `main`
+
+Expected baseline commit:
+`2ed38becb32bb76c70285af6b9fe9629fb342559`
+
+IMPORTANT:
+Verify the latest main commit before implementation. If newer commits exist, use the latest repository state. Never overwrite newer work or restore an older repository snapshot.
+
+---
+
+# 1. OBJECTIVE
+
+Implement the final coupon analytics phase for DANDY.
+
+GROUP 2A.5 established coupon definitions and administration.
+
+GROUP 2A.6 integrated coupons into cart, checkout, order creation, idempotency, invoices, email, and Telegram.
+
+GROUP 2A.7 must now provide accurate administrative analytics based on successfully persisted coupon snapshots inside existing Firebase orders.
+
+The objective is to give the store administrator a complete view of:
+
+1. How many orders used each coupon.
+2. How many unique customers used each coupon.
+3. Total coupon discounts granted.
+4. Eligible product sales before and after discount.
+5. Final order value associated with coupon use.
+6. Delivered, active, cancelled, and unknown-status coupon orders.
+7. Performance by coupon.
+8. Performance by canonical product category.
+9. Performance by product.
+10. Historical coupon-code versions.
+11. Daily, weekly, and monthly performance.
+12. Repeat coupon customers.
+13. CSV exports.
+
+Create a dedicated dashboard:
+
+`/dashboard-coupon-analytics`
+
+Create its protected API:
+
+`GET /api/coupons/analytics`
+
+Create pure aggregation helpers:
+
+`src/utils/coupon-analytics.ts`
+
+Add tests:
+
+`test/group2a7-coupon-analytics.test.mjs`
+
+This phase is analytics and reporting only.
+
+Do not redesign the coupon management system or customer checkout.
+
+---
+
+# 2. MANDATORY INITIAL INSPECTION
+
+Inspect the current active workspace before changing anything.
+
+### Coupon schema and checkout snapshots
+
+- `src/utils/coupons.ts`
+- `src/utils/categories.ts`
+- `src/pages/api/coupons/admin.js`
+- `src/pages/api/coupons/validate.js`
+- `src/pages/api/create-order.js`
+- `src/pages/dashboard-coupons.astro`
+
+### Orders and order status
+
+- `src/utils/order-idempotency.ts`
+- `src/utils/email-service.ts`
+- `src/utils/phone.ts`
+- `src/pages/api/order-status.js`
+- `src/pages/api/track-order.js`
+- `src/pages/api/admin/delete-order.js`
+- `src/pages/api/admin/recover-order-notifications.js`
+- `src/pages/api/public-invoice.js`
+
+### Existing analytics and admin UI
+
+- `src/pages/statues.astro`
+- `src/pages/dashboard.astro`
+- `src/pages/dashboard-coupons.astro`
+- `src/components/DashboardNav.astro`
+- `ANALYTICS_AUDIT.md`
+- `ANALYTICS_UPGRADE_REPORT.md`
+
+### Security and infrastructure
+
+- `firebase/database.rules.json`
+- `firebase/firestore.rules`
+- `src/utils/admin-auth.js`
+- `src/utils/firebase-admin.ts`
+- `src/utils/notifications-outbox.ts`
+- `package.json`
+
+Read the actual current coupon snapshot implementation and exact RTDB order shape before implementing aggregation.
+
+The active workspace is the source of truth.
+
+Do not assume any earlier description of the schema is more accurate than the current implementation.
+
+---
+
+# 3. DATA SOURCES — STRICT SINGLE SOURCE OF TRUTH
+
+Coupon analytics must be derived from two existing Firebase Realtime Database paths:
+
+### A. Successful order records
+
+`orders/{orderId}`
+
+Use the immutable `order.coupon` snapshot written by GROUP 2A.6.
+
+The current coupon snapshot contains information such as:
+
+- `id`
+- `code`
+- `discountType`
+- `discountValue`
+- `scope`
+- `categorySlug`
+- `minimumSubtotal`
+- `maximumDiscount`
+- `eligibleSubtotal`
+- `discountAmount`
+- `appliedAt`
+- `eligibleProductLines`
+
+Each eligible product line contains:
+
+- `productId`
+- `categorySlug`
+- `quantity`
+- `lineSubtotal`
+
+The order also contains:
+
+- `timestamp`
+- `status`
+- `phone`
+- `customerId` when available
+- `subtotal`
+- `shippingFee`
+- `totalAmount`
+- `invoiceCode`
+- `products`
+
+The order-level coupon snapshot is the historical financial source of truth.
+
+Never recalculate a historical coupon discount using the current coupon definition.
+
+### B. Current coupon definitions
+
+`settings/coupons`
+
+Use this only to display current coupon configuration and current activation/validity status.
+
+Reuse:
+
+- `validateCouponDefinition()`
+- `getCouponStatus()`
+- `normalizeCouponCode()`
+- `getCouponCategoryOptions()`
+
+Validate current stored definitions with the existing strict allow-listed configuration behavior.
+
+Do not trust malformed current coupon records.
+
+Do not expose:
+
+- `createdBy`
+- `updatedBy`
+- Internal administration metadata.
+- Raw Firebase records.
+
+### C. Historical versus current definition
+
+A coupon's stable `id` remains its identity even when its code or configuration is edited.
+
+Group historical usage primarily by:
+
+`order.coupon.id`
+
+Do not group solely by coupon code.
+
+A single coupon ID may have historical snapshots using different codes or discount settings.
+
+Preserve those historical versions in the analytics response.
+
+For legacy snapshot records with no usable coupon ID, use a deterministic fallback grouping key based on the normalized historical coupon code.
+
+Do not merge distinct stable coupon IDs merely because their current codes appear similar.
+
+### D. Orders without coupon snapshots
+
+Orders without a valid `order.coupon` snapshot must never count as coupon usage.
+
+Do not infer coupon usage from:
+
+- Legacy `order.discount`.
+- Promotional badges.
+- Client browser storage.
+- Coupon preview attempts.
+- Email text.
+- Telegram message contents.
+- Current coupon configuration.
+
+---
+
+# 4. NO SEPARATE REDEMPTION LEDGER OR USAGE COUNTERS
+
+This is a critical architectural rule.
+
+Do not introduce:
+
+- `usageCount`
+- `usedCount`
+- `usageLimit`
+- `lastUsedAt`
+- `couponRedemptions`
+- `settings/couponUsage`
+- Separate redemption records.
+- Per-customer coupon history paths.
+- Coupon analytics counters stored in Firebase.
+
+A successfully created order containing a valid immutable `order.coupon` snapshot is the authoritative historical coupon-use record.
+
+Analytics must be calculated by reading existing orders and aggregating their coupon snapshots.
+
+This preserves consistency with:
+
+- Order Commit Fencing.
+- Idempotency replay.
+- Notifications Outbox.
+- Existing order persistence.
+
+Repeated API calls, completed request replay, and COMMITTING recovery must never create duplicate analytics usage records because GROUP 2A.7 does not write any usage records at all.
+
+Cancelled orders remain historical coupon applications and must be displayed in a separate cancellation status bucket.
+
+Only existing orders under `/orders` are available to analytics.
+
+Important limitation:
+
+The existing admin delete-order workflow removes `orders/{orderId}` and preserves a private deletion tombstone without retaining the complete financial coupon snapshot.
+
+Therefore, permanently deleted orders cannot be reconstructed in coupon analytics. Do not invent their missing usage or financial data.
+
+Do not change the delete-order workflow.
+
+---
+
+# 5. ANALYTICS DEFINITIONS — APPROVED METRICS
+
+All financial calculations must use the historical order snapshots.
+
+Use consistent two-decimal EGP rounding.
+
+## 5.1 Coupon applications
+
+`Coupon Orders Count`
+
+The number of distinct existing order records containing a valid persisted coupon snapshot.
+
+Count each order exactly once, regardless of how many eligible product lines it contains.
+
+This measures orders successfully created with a coupon, not attempts to enter or preview coupon codes.
+
+## 5.2 Unique customers
+
+Calculate unique customers inside the server-side aggregation.
+
+Identity strategy:
+
+1. Prefer `normalizeEgyptianPhone(order.phone)` from the existing `src/utils/phone.ts`.
+2. If no valid normalized phone exists, use `customerId` as a fallback identity.
+3. If neither identifier is available, mark the customer identity as unavailable and do not include it in the unique customer count.
+
+Use internal ephemeral aggregation keys only.
+
+Never return or log:
+
+- Raw phone numbers.
+- Normalized phone numbers.
+- Customer IDs.
+- Names.
+- Emails.
+- Addresses.
+
+Do not persist hashes or customer identifiers for analytics.
+
+The UI should display aggregate counts only.
+
+Expose a data-quality count for orders whose customer identity could not be determined.
+
+A customer using different phone numbers may be counted as multiple customers; shared phone numbers may be counted as one. Label this as unique identifiable customers, not verified real-world identities.
+
+Calculate:
+
+- Unique customers per coupon.
+- Unique customers across all selected coupon orders.
+- Repeat coupon customers.
+- Repeat coupon customer rate.
+- Average coupon orders per identifiable customer.
+
+A repeat coupon customer is an identifiable customer with more than one persisted coupon order in the selected reporting scope.
+
+## 5.3 Financial metrics
+
+Calculate these independently:
+
+### A. Eligible product subtotal before discount
+
+`Eligible Subtotal`
+
+Sum `coupon.eligibleSubtotal` across valid coupon orders.
+
+This is the value of product lines the coupon actually qualified for before discount.
+
+### B. Coupon discount amount
+
+`Coupon Discount Total`
+
+Sum `coupon.discountAmount` across valid coupon orders.
+
+This is the total discount granted on eligible products.
+
+### C. Eligible product sales after coupon
+
+`Eligible Net Sales`
+
+Formula:
+
+`eligibleSubtotal - couponDiscountAmount`
+
+Never include shipping in this metric.
+
+### D. Full order value associated with coupon usage
+
+`Associated Final Order Value`
+
+Sum `order.totalAmount` for coupon orders.
+
+IMPORTANT:
+
+This includes the whole order, possibly including non-eligible products and shipping. Label it as the final value of orders that used a coupon, not sales directly caused by that coupon.
+
+### E. Delivered order value associated with coupons
+
+Sum `order.totalAmount` only for orders classified as delivered.
+
+Label it:
+
+`قيمة الطلبات المُسلّمة التي استخدمت كوبوناً`
+
+Do not describe it as verified cash collected or settled revenue.
+
+DANDY currently uses Cash on Delivery and does not have an independent settlement ledger.
+
+### F. Active pipeline value
+
+Sum `order.totalAmount` for orders in the recognized active pipeline statuses.
+
+### G. Cancelled order value
+
+Sum `order.totalAmount` for orders whose recognized canonical status is cancelled.
+
+Do not subtract cancelled order value silently from historical coupon usage counts.
+
+### H. Additional metrics
+
+- Average discount per coupon order.
+- Average eligible subtotal per coupon order.
+- Average final order value per coupon order.
+- Discount percentage relative to eligible subtotal.
+- Delivered coupon order rate.
+- Cancelled coupon order rate.
+- Repeat customer rate.
+
+Protect every division against zero denominators.
+
+For a denominator of zero, return a neutral zero/null result, not NaN or Infinity.
+
+## 5.4 Important revenue labeling
+
+Do not use these misleading terms:
+
+- Net Profit.
+- Gross Margin.
+- Marketing ROI.
+- ROAS.
+- Actual collected revenue.
+- Coupon conversion rate.
+
+The current database does not contain all required COGS, ad-spend, payment-settlement, or coupon-preview conversion records.
+
+Use precise labels based on available order data.
+
+Do not fabricate unavailable metrics.
+
+---
+
+# 6. ORDER STATUS CLASSIFICATION
+
+Inspect the exact existing status conventions.
+
+The current system recognizes statuses equivalent to:
+
+- New / جديد.
+- Processing / قيد التجهيز / تم التواصل.
+- Shipped / تم الشحن / جاري الشحن.
+- Delivered / تم التوصيل / مكتمل.
+- Cancelled / ملغي.
+
+Create or reuse a pure analytics-specific normalizer that recognizes the actual supported raw values.
+
+IMPORTANT:
+
+`normalizeOrderStatus()` from the existing email service defaults unknown values to `جديد`.
+
+Do not blindly use that behavior for analytics, because malformed or unknown statuses must not inflate new-order counts.
+
+For analytics:
+
+- New: `جديد`, `New`, `new`.
+- Processing: `قيد التجهيز`, `تم التواصل`, `processing`.
+- Shipped: `تم الشحن`, `جاري الشحن`, `shipped`.
+- Delivered: `تم التوصيل`, `مكتمل`, `delivered`, `completed`.
+- Cancelled: `ملغي`, `cancelled`, `canceled`.
+- Unknown: any unrecognized status.
+
+Unknown statuses go into a separate `other/unknown` bucket.
+
+Do not assume they are new or delivered.
+
+There is no established dedicated returned/refunded status and no refund ledger in the current order schema.
+
+Do not invent refund metrics.
+
+If an unexpected return-like status exists in stored records, classify it as unknown unless a real approved return-state contract exists.
+
+---
+
+# 7. CATEGORY AND PRODUCT ANALYTICS
+
+Use the historical coupon snapshot's:
+
+`eligibleProductLines`
+
+This is the authoritative record of which products actually received the coupon benefit.
+
+## 7.1 Category breakdown
+
+Aggregate eligible line values using stored `categorySlug`.
+
+Support the existing four canonical categories:
+
+- `hair-care`
+- `body-care`
+- `fragrance`
+- `skin-care`
+
+Also provide a separate unknown/unclassified bucket for historical lines where categorySlug is null or invalid.
+
+Do not reclassify historical eligible lines using today's product category.
+
+The historical snapshot must be preserved as-is.
+
+For each category report:
+
+- Eligible product quantity.
+- Eligible product subtotal before discount.
+- Number of coupon orders containing that category.
+- Number of distinct identifiable customers.
+- Share of eligible product subtotal.
+
+## 7.2 Product breakdown
+
+Build product names from the corresponding historical `order.products` snapshot.
+
+The usual standard product order snapshot includes fields such as:
+
+- `id`
+- `name`
+- `quantity`
+- `price`
+- `effectiveUnitPrice`
+- `lineTotal`
+
+Match eligible coupon lines to the historical order product snapshot using product ID.
+
+If a product name is unavailable, use its product ID as a fallback label.
+
+Do not fetch current product records to rewrite historical product names.
+
+For each eligible product report:
+
+- Product ID.
+- Historical product name.
+- Category.
+- Eligible quantity.
+- Eligible subtotal.
+- Number of coupon orders containing the product.
+- Number of identifiable customers.
+
+Aggregate repeated occurrences of the same product correctly.
+
+Do not multiply or add order totals again when aggregating product lines.
+
+Do not introduce inventory fields or stock-related analytics.
+
+---
+
+# 8. TIME FILTERS & PERIOD COMPARISON
+
+Support:
+
+- Today.
+- Last 7 days.
+- Last 30 days.
+- Last 90 days.
+- This month.
+- Previous month.
+- All time.
+- Custom start/end dates.
+
+Use:
+
+`Africa/Cairo`
+
+The order registration timestamp `order.timestamp` is the primary reporting date.
+
+If it is missing or invalid, use the order coupon snapshot's `appliedAt` as a fallback.
+
+Track the number of records requiring this fallback.
+
+If both dates are invalid:
+
+- Include the record in all-time totals where appropriate.
+- Exclude it from bounded date-range reports.
+- Track it in data-quality reporting.
+
+Do not use naïve UTC date truncation that shifts Cairo midnight orders into the wrong reporting day.
+
+Implement tested Cairo-local date-key and calendar-boundary helpers using standard platform date/Intl APIs.
+
+Do not add date or timezone dependencies.
+
+## 8.1 Previous-period comparison
+
+For predefined or custom bounded periods, calculate an equivalent immediately preceding period.
+
+For example:
+
+- Last 7 days versus the previous 7 days.
+- Last 30 days versus the previous 30 days.
+- Custom range versus the preceding range of equal calendar-day length.
+
+For all-time, comparison may be unavailable.
+
+Compare:
+
+- Coupon orders.
+- Unique customers.
+- Eligible subtotal.
+- Coupon discounts.
+- Eligible net sales.
+- Delivered order count.
+
+When previous-period denominator is zero, avoid misleading percentage growth.
+
+Return a clear null/zero comparison state.
+
+## 8.2 Time series
+
+Generate a trend dataset according to reporting span:
+
+- Short ranges: daily.
+- Medium ranges: weekly or daily where practical.
+- Long/all-time ranges: monthly.
+
+Each time bucket may contain:
+
+- Coupon orders count.
+- Unique customer count if derivable without exposing identity.
+- Eligible subtotal.
+- Discount total.
+- Eligible net sales.
+
+Return chart-ready arrays with consistent Cairo-local labels.
+
+---
+
+# 9. COUPON IDENTITY & HISTORICAL CONFIGURATION VERSIONS
+
+A coupon retains a stable ID across edits.
+
+The same coupon ID may have multiple historical:
+
+- Coupon codes.
+- Discount types.
+- Discount values.
+- Scopes.
+- Category selections.
+
+Analytics must not rewrite history using the current definition.
+
+For each coupon group:
+
+1. Group by stable historical `coupon.id`.
+2. Preserve all historical codes observed in order snapshots.
+3. Preserve distinct historical configuration variants that were actually applied.
+4. Join the current definition, if present, for current status display only.
+5. Clearly distinguish current configuration from historical applied configuration.
+
+The dashboard should be able to show:
+
+- Current code.
+- Historical codes used.
+- Current activation/validity state.
+- Historical discount configurations.
+- Total historical usage for that stable coupon ID.
+- Usage and performance within selected filters.
+
+Include current coupon definitions with zero usage in the coupon summary table.
+
+If a historical snapshot references a coupon ID that is not found in current `settings/coupons`, display it as a historical record whose current definition is unavailable.
+
+Do not discard historical use records merely because the current definition is missing.
+
+---
+
+# 10. DATA QUALITY & INVALID SNAPSHOTS
+
+Analytics must be robust to malformed historical order records.
+
+Create strict snapshot validation in the pure aggregation utility.
+
+Validate at minimum:
+
+- Coupon code.
+- Coupon ID or valid fallback code.
+- Discount type.
+- Scope.
+- Discount value.
+- Eligible subtotal.
+- Discount amount.
+- Eligible product line structure.
+- Product IDs.
+- Quantities.
+- Line subtotals.
+
+Reject malformed coupon snapshots from financial calculations.
+
+Do not use:
+
+- Negative values.
+- NaN.
+- Infinity.
+- Invalid types.
+- Non-positive quantities.
+- Discount amounts greater than eligible subtotal.
+
+Where possible, retain a data-quality count describing the issue without leaking raw order details.
+
+Check whether:
+
+`sum(eligibleProductLines.lineSubtotal)`
+
+matches:
+
+`coupon.eligibleSubtotal`
+
+within a reasonable two-decimal rounding tolerance.
+
+If line totals do not reconcile:
+
+- Preserve valid coupon-level summary totals if the top-level snapshot is otherwise valid.
+- Mark product/category allocation for that record as incomplete.
+- Do not force the line values to match by fabricating adjustments.
+- Increase the data-quality warning count.
+
+The response may include:
+
+- Orders scanned.
+- Coupon orders included.
+- Invalid coupon snapshots.
+- Missing customer identities.
+- Missing timestamps.
+- Snapshot line mismatches.
+- Unknown order statuses.
+- Product lines without historical names.
+
+Do not expose raw malformed records or sensitive details.
+
+---
+
+# 11. PROTECTED ADMIN ANALYTICS API
+
+Create:
+
+`src/pages/api/coupons/analytics.js`
+
+This is an admin-only read API.
+
+Export:
+
+`prerender = false`
+
+Use the existing security architecture:
+
+- `verifyAdminRequest()`
+- `adminUnauthorizedResponse()`
+- `getAdminDb()`
+
+Do not invent new authentication.
+
+Require:
+
+`Authorization: Bearer <Firebase ID Token>`
+
+The existing verified admin account and verified email requirements remain mandatory.
+
+Only GET is supported.
+
+Reject other methods with 405.
+
+## 11.1 Data retrieval
+
+Use Firebase Admin only.
+
+Read:
+
+- `orders`
+- `settings/coupons`
+
+Use one bounded `once('value')` read for each required root per API request, preferably in parallel.
+
+Do not:
+
+- Read orders in a loop per coupon.
+- Re-read the same root for each filter.
+- Use browser Firebase SDK.
+- Subscribe to live RTDB `.on('value')`.
+- Write any analytics result to Firebase.
+- Write usage counters.
+
+The API computes all required aggregations in memory on the server and returns sanitized analytics results.
+
+Do not return raw order objects.
+
+## 11.2 Query filters
+
+Support validated query parameters:
+
+- `period`
+- `from`
+- `to`
+- `couponId`
+- `categorySlug`
+- `status`
+- `scope`
+- `discountType`
+
+Reject malformed date ranges and unsupported filter values safely.
+
+Custom `from` and `to` must use strict `YYYY-MM-DD` validation and `from <= to`.
+
+The API should return the exact applied filters and `Africa/Cairo` timezone.
+
+## 11.3 JSON response
+
+Return a structured response similar to:
+
+{
+  "success": true,
+  "timezone": "Africa/Cairo",
+  "generatedAt": 1794750000000,
+  "filters": {},
+  "summary": {
+    "couponOrders": 0,
+    "uniqueCustomers": 0,
+    "repeatCustomers": 0,
+    "eligibleSubtotal": 0,
+    "discountAmount": 0,
+    "eligibleNetSales": 0,
+    "associatedFinalOrderValue": 0,
+    "deliveredOrders": 0,
+    "deliveredOrderValue": 0,
+    "pipelineOrders": 0,
+    "pipelineValue": 0,
+    "cancelledOrders": 0,
+    "cancelledOrderValue": 0,
+    "unknownStatusOrders": 0
+  },
+  "comparison": {},
+  "coupons": [],
+  "categoryBreakdown": [],
+  "productBreakdown": [],
+  "trend": [],
+  "statusBreakdown": [],
+  "recentUses": [],
+  "dataQuality": {}
+}
+
+This is illustrative; use clear TypeScript/JSDoc-compatible structures matching the actual implementation.
+
+## 11.4 Current definitions
+
+Return only safe, necessary current coupon configuration fields.
+
+Do not return:
+
+- createdBy.
+- updatedBy.
+- Email addresses.
+- Internal audit metadata.
+- Raw Firebase records.
+
+Use existing strict coupon validation.
+
+## 11.5 Recent coupon use records
+
+Provide a bounded recent-use list, for example the latest 50 matching coupon orders.
+
+Display only:
+
+- Invoice code.
+- Order timestamp in Cairo.
+- Historical coupon code.
+- Coupon scope/category.
+- Eligible subtotal.
+- Discount amount.
+- Final order total.
+- Order status.
+
+Do not return:
+
+- order.customerId.
+- Phone.
+- Name.
+- Email.
+- Address.
+- Complete order payload.
+
+Do not return private invoice tokens or private order access data.
+
+Use invoiceCode only as an administrative order reference.
+
+## 11.6 Security headers
+
+Use no-store/private response headers consistent with existing protected admin APIs.
+
+Avoid caching financial or customer-derived analytics.
+
+Never expose stack traces, raw records, service account data, or filesystem details.
+
+---
+
+# 12. CSV EXPORTS
+
+Implement admin-only CSV exports using the same validated filters and aggregation logic.
+
+Possible query form:
+
+`GET /api/coupons/analytics?format=csv&dataset=coupons`
+
+Supported datasets:
+
+- `coupons`: Per-coupon aggregated performance.
+- `uses`: Individual coupon application/order reference rows.
+- `products`: Eligible product performance.
+- `categories`: Eligible category performance.
+
+Use:
+
+- UTF-8 BOM.
+- Correct CSV quoting and escaping.
+- Stable Arabic column headings.
+- Safe numeric formatting.
+- Clear filenames including Cairo date.
+
+Prevent CSV formula injection:
+
+Values beginning with `=`, `+`, `-`, `@`, tab, or carriage return must be escaped or prefixed safely before export.
+
+Never include customer names, phones, email addresses, addresses, UID values, or hashed customer identifiers.
+
+Exports must respect the same server-side admin authentication and filters as the dashboard.
+
+Do not build CSV from raw client-side order records.
+
+---
+
+# 13. DEDICATED COUPON ANALYTICS DASHBOARD
+
+Create:
+
+`src/pages/dashboard-coupon-analytics.astro`
+
+Use the current DANDY dashboard structure:
+
+- `BaseLayout`
+- `showDashboardNav={true}`
+- Existing Arabic RTL styling conventions.
+- Existing Cairo font and DANDY visual identity.
+- Responsive dashboard patterns.
+
+Set:
+
+`robots="noindex, nofollow"`
+
+The dashboard must use the protected API exclusively.
+
+## 13.1 Authentication
+
+Reuse the existing dashboard authentication pattern:
+
+- Existing `window.auth` / Firebase Auth instance.
+- Existing admin email verification check.
+- `currentUser.getIdToken()`.
+- Authorization Bearer header.
+
+Do not read `orders` directly through Firebase client SDK.
+
+Do not read `settings/coupons` from the browser.
+
+The page must fetch analytics from:
+
+`/api/coupons/analytics`
+
+## 13.2 Header
+
+Display:
+
+Title:
+
+`تحليلات أداء الكوبونات`
+
+Description:
+
+`متابعة استخدام أكواد الخصم، العملاء، الخصومات، والمبيعات المؤهلة داخل متجر داندي.`
+
+Display:
+
+- Last updated time in Cairo.
+- Refresh button.
+- Export dropdown.
+
+## 13.3 Filters toolbar
+
+Provide:
+
+- Period selector.
+- Custom start date.
+- Custom end date.
+- Coupon selector.
+- Category selector.
+- Coupon scope selector.
+- Discount type selector.
+- Order status selector.
+- Apply filters button.
+- Clear filters button.
+
+Do not trigger a full orders aggregation request on every keystroke.
+
+Use an explicit apply action or a safe debounce.
+
+All filters must be server-validated.
+
+## 13.4 Overview KPI cards
+
+Create professional cards for:
+
+1. عدد طلبات استخدام الكوبونات.
+2. عدد العملاء الفريدين.
+3. إجمالي قيمة الخصومات.
+4. قيمة المنتجات المؤهلة قبل الخصم.
+5. صافي قيمة المنتجات المؤهلة بعد الخصم.
+6. متوسط الخصم لكل طلب.
+7. عدد الكوبونات المستخدمة.
+8. معدل العملاء المتكررين.
+
+Display percentage comparison to the previous equivalent period where available.
+
+Do not display invented metrics.
+
+Use clear descriptions and definitions for financial figures.
+
+## 13.5 Coupon performance table
+
+Create a searchable and sortable table containing:
+
+- Current coupon code.
+- Historical codes used.
+- Current activation/validity state.
+- Discount type.
+- Discount configuration.
+- Current scope/category.
+- Number of coupon orders.
+- Unique identifiable customers.
+- Eligible product subtotal.
+- Total coupon discounts.
+- Eligible net sales.
+- Average discount.
+- Delivered orders.
+- Pipeline orders.
+- Cancelled orders.
+
+Coupons currently defined but never used must still appear with zero usage.
+
+Historical coupons without a current definition must also remain visible.
+
+Clicking a coupon row should open its detailed analytics view without exposing customer PII.
+
+## 13.6 Per-coupon details
+
+When a coupon is selected, provide:
+
+- Historical codes associated with the stable coupon ID.
+- Historical discount configurations.
+- Current definition status separately.
+- Total coupon applications.
+- Unique customers.
+- Repeat customer count and rate.
+- Eligible subtotal.
+- Coupon discounts.
+- Eligible net sales.
+- Associated final order value.
+- Delivered, pipeline, cancelled, and unknown order counts.
+- Category breakdown.
+- Product breakdown.
+- Time-series trend.
+- Recent coupon order references.
+
+Clearly distinguish historical application data from the current editable coupon definition.
+
+## 13.7 Charts
+
+Use the existing Chart.js 4.4.0 CDN version already used by `/statues.astro`.
+
+Do not install additional chart libraries.
+
+Recommended charts:
+
+1. Coupon usage over time.
+2. Coupon discounts over time.
+3. Top coupons by usage count.
+4. Top coupons by discount total.
+5. Eligible sales by canonical category.
+6. Order status distribution.
+7. Eligible product performance.
+
+Charts must update based on active filters.
+
+Destroy/reuse Chart.js instances correctly to avoid duplicate canvas instances and memory leaks.
+
+Provide empty states when no data is available.
+
+## 13.8 Recent use table
+
+Display recent coupon orders with:
+
+- Invoice reference.
+- Date/time.
+- Coupon code.
+- Category/scope.
+- Eligible subtotal.
+- Discount amount.
+- Final order value.
+- Current order status.
+
+No customer-identifying information.
+
+If clicking an invoice reference, link only to the existing authorized admin order details route when its current route contract supports it.
+
+Do not invent order detail URLs.
+
+## 13.9 Empty and error states
+
+Handle:
+
+- No coupon definitions.
+- Coupons exist but have no usage.
+- No matches for selected filters.
+- Invalid date range.
+- API unauthorized.
+- Network failure.
+- Firebase unavailable.
+- Corrupted order/coupon records.
+- Partial data quality issues.
+
+Do not substitute sample data or simulated revenue.
+
+Show meaningful Arabic feedback.
+
+## 13.10 Mobile and RTL
+
+Ensure:
+
+- Arabic RTL.
+- No horizontal overflow.
+- Responsive cards and charts.
+- Readable tables with controlled horizontal scrolling.
+- Clear filter layout on mobile.
+- Accessible loading and status indicators.
+- Visible keyboard focus.
+- Safe chart resizing.
+
+---
+
+# 14. ADMIN NAVIGATION INTEGRATION
+
+Modify:
+
+`src/components/DashboardNav.astro`
+
+Add a single navigation item near the existing coupon management entry:
+
+Label:
+
+`تحليلات الكوبونات`
+
+Route:
+
+`/dashboard-coupon-analytics`
+
+Use an appropriate existing Font Awesome chart icon.
+
+Preserve all existing navigation entries and active-route logic.
+
+Also add a small convenient link from the existing coupon management page:
+
+`src/pages/dashboard-coupons.astro`
+
+The link should navigate to the new analytics dashboard.
+
+Do not redesign the existing coupon admin page.
+
+Do not add usage counters to the existing coupon management table.
+
+Do not modify the general BI page `/statues`.
+
+---
+
+# 15. PURE AGGREGATION UTILITY
+
+Create:
+
+`src/utils/coupon-analytics.ts`
+
+The utility should be pure and testable without Firebase.
+
+Suggested responsibilities:
+
+- Validate historical coupon snapshots.
+- Build stable coupon identity keys.
+- Normalize analytics order status without defaulting unknown values to New.
+- Normalize customer identity for in-memory deduplication.
+- Parse and validate financial amounts.
+- Validate eligible product line snapshots.
+- Join eligible product lines to historical order products.
+- Apply Cairo date filters.
+- Aggregate per-coupon usage.
+- Aggregate unique customers.
+- Aggregate repeat users.
+- Aggregate financial metrics.
+- Aggregate categories.
+- Aggregate products.
+- Aggregate statuses.
+- Aggregate trend buckets.
+- Build previous-period comparison.
+- Calculate data-quality statistics.
+- Build sanitized recent-use rows.
+- Generate sanitized CSV datasets if appropriate.
+
+Do not add business writes.
+
+Do not modify `src/utils/coupons.ts` unless an actual missing reusable export is proven. Prefer an additive analytics-specific utility.
+
+Keep all computations deterministic with an injectable `nowMs` for tests.
+
+---
+
+# 16. PERFORMANCE & FIREBASE COST PROTECTION
+
+The new dashboard must not create unnecessary Firebase reads.
+
+Required architecture:
+
+1. One admin-authorized API request.
+2. One `orders` one-time snapshot read.
+3. One `settings/coupons` one-time snapshot read where needed.
+4. One in-memory aggregation pass.
+5. Return only aggregate/sanitized output.
+
+Do not:
+
+- Open real-time `.on('value')` listeners.
+- Fetch individual orders in a loop.
+- Query every coupon independently.
+- Repeat the full orders read for each table row.
+- Re-read `orders` for every KPI.
+- Create a polling loop.
+- Auto-refresh every few seconds.
+- Load all raw orders into the browser.
+- Send full order snapshots to the UI.
+
+Use manual Refresh and explicit filter Apply controls.
+
+The initial version may scan the entire current `/orders` node once per report request, consistent with the existing BI approach, but the aggregation must remain linear and must not perform nested database reads.
+
+If current order volume or RTDB limitations indicate a real performance problem, report measured evidence before introducing a caching or summary-storage architecture.
+
+Do not add new Firebase aggregation counters in this phase.
+
+---
+
+# 17. SECURITY & PRIVACY REQUIREMENTS
+
+This phase exposes business analytics and must be strictly admin-only.
+
+Mandatory:
+
+- `verifyAdminRequest()` on every analytics API request.
+- Firebase Admin reads only.
+- No browser direct read of `orders`.
+- No browser direct read of `settings/coupons`.
+- No public analytics endpoint.
+- No raw order records returned.
+- No customer PII returned.
+- No customer IDs or phone hashes returned.
+- No invoice access tokens.
+- No private order access data.
+- No service account data.
+- No complete coupon audit metadata.
+- No raw error stacks.
+- Private no-cache headers.
+
+Customer identifiers may be used temporarily inside server memory solely to deduplicate unique-customer counts.
+
+Never persist them or return them.
+
+Do not weaken existing authorization.
+
+Do not modify Firebase Rules.
+
+If a security weakness is discovered, report it separately.
+
+---
+
+# 18. DATA INTERPRETATION LIMITATIONS
+
+Display these principles accurately in the dashboard's methodology/help section:
+
+1. A coupon use means a persisted coupon snapshot in an existing order record, not a preview attempt.
+2. Cancelled orders remain historical coupon applications but are separated from delivered and pipeline orders.
+3. Unique customers are based on normalized phone numbers, with customerId fallback.
+4. Orders permanently deleted from `/orders` cannot be reconstructed from current financial records.
+5. Delivered order value is based on current order status, not proof of a separate payment settlement.
+6. No dedicated return/refund ledger exists in the current schema.
+7. Profit, COGS, CAC, ROAS, and coupon conversion rate cannot be derived reliably from current data.
+
+Do not present unavailable figures as zeros when they are actually unknown.
+
+Use a distinct `غير متاح` or explanatory note where appropriate.
+
+---
+
+# 19. STRICTLY PROTECTED SYSTEMS
+
+Do not modify:
+
+- `src/pages/api/create-order.js`
+- `src/pages/api/coupons/admin.js`
+- `src/pages/api/coupons/validate.js`
+- `src/utils/coupons.ts`
+- `src/utils/categories.ts`
+- `src/utils/order-idempotency.ts`
+- `src/utils/notifications-outbox.ts`
+- `src/utils/admin-auth.js`
+- `src/utils/firebase-admin.ts`
+- `src/utils/email-service.ts`
+- `src/utils/telegram.js`
+- `src/utils/invoice-token.ts`
+- `src/utils/server-rate-limit.ts`
+- `src/utils/turnstile.js`
+- `src/config/store-policy.ts`
+- `src/pages/api/order-status.js`
+- `src/pages/api/admin/delete-order.js`
+- `src/pages/api/admin/recover-order-notifications.js`
+- `src/pages/statues.astro`
+- `ANALYTICS_AUDIT.md`
+- `ANALYTICS_UPGRADE_REPORT.md`
+
+Do not modify:
+
+- Coupon checkout behavior.
+- Coupon financial calculations.
+- Order schema.
+- Order lifecycle.
+- Idempotency.
+- Commit Fencing.
+- Outbox.
+- Notification delivery.
+- Shipping.
+- Pink Friday.
+- Invoice tokens.
+- Inventory.
+
+Authorized source changes should normally be limited to:
+
+- `src/utils/coupon-analytics.ts` (new).
+- `src/pages/api/coupons/analytics.js` (new).
+- `src/pages/dashboard-coupon-analytics.astro` (new).
+- `src/components/DashboardNav.astro` (one navigation entry).
+- `src/pages/dashboard-coupons.astro` (small analytics link only).
+- `test/group2a7-coupon-analytics.test.mjs` (new).
+
+Modify additional files only when a direct necessity is demonstrated and report the reason.
+
+---
+
+# 20. NO INVENTORY SYSTEM — STRICT BUSINESS RULE
+
+DANDY intentionally does not operate a real inventory management system.
+
+Do not add:
+
+- `stockQuantity` reads/writes.
+- Stock reservations.
+- Stock decrements.
+- Stock transactions.
+- Variant stock tracking.
+- Inventory fields.
+- Inventory dashboard features.
+- Inventory analytics.
+- New Firebase stock paths.
+
+Do not use stock as a coupon analytics dimension.
+
+Do not change the existing optional legacy stock deduction path.
+
+---
+
+# 21. PROTECTED BUILD, RUNTIME & VERCEL CONFIGURATION
+
+The existing runtime and deployment configuration must remain byte-for-byte unchanged.
+
+### Package management
+
+Strictly protected:
+
+- `package.json`
+- `package-lock.json` if present.
+- `bun.lock`
+- `bun.lockb` if present.
+- `.npmrc` if present.
+
+Do not:
+
+- Install dependencies.
+- Upgrade dependencies.
+- Change dependency versions.
+- Change package scripts.
+- Switch package manager.
+- Regenerate lockfiles.
+
+### Astro and runtime
+
+Strictly protected:
+
+- `astro.config.mjs`
+- `astro.config.js` if present.
+- `vite.config.js` if present.
+- `vite.config.ts` if present.
+- `tsconfig.json`
+- `patch-env.cjs`
+- `server.js`
+
+Do not change Astro adapter, SSR, prerender, build, output, runtime, aliases, or integrations.
+
+### Vercel and deployment
+
+Strictly protected:
+
+- `vercel.json`
+- `.vercel/`
+- Existing deployment workflows.
+
+Do not change deployment commands, runtime, output, routes, or rewrites.
+
+### Firebase and environment
+
+Strictly protected:
+
+- `firebase.json`
+- `.firebaserc`
+- `.env`
+- `.env.*`
+- `.env.example`
+- Firebase project IDs and database URLs.
+
+Do not change initialization, services, secrets, or database rules.
+
+### Generated artifacts
+
+Do not manually modify or commit generated:
+
+- `dist/`
+- `.vercel/output/`
+- Astro generated files.
+- Generated type files.
+
+## 21.1 Before/after verification
+
+Before implementation:
+
+1. Record current Git status if available.
+2. Record SHA-256 hashes of all protected files.
+3. Record existing user changes.
+4. Do not reset or overwrite any existing modifications.
+
+After implementation:
+
+1. Compare all protected hashes.
+2. Inspect changed-file lists and Git diff.
+3. Verify package scripts and dependency versions remain unchanged.
+4. Report exact hash comparisons.
+
+Every SHA-256 digest must contain exactly 64 hexadecimal characters.
+
+If Git metadata is unavailable, use direct before/after SHA-256 comparisons.
+
+If a protected file changes unexpectedly, stop immediately.
+
+Do not automatically restore or rewrite protected configuration.
+
+If the requested implementation appears to require a protected configuration change, report the reason and wait for explicit authorization.
+
+---
+
+# 22. REQUIRED AUTOMATED TESTS
+
+Create:
+
+`test/group2a7-coupon-analytics.test.mjs`
+
+Use deterministic order snapshots, current coupon definitions, and mocked Firebase Admin dependencies.
+
+Do not write to production Firebase.
+
+## A. Coupon snapshot recognition
+
+1. Valid percentage coupon snapshot included.
+2. Valid fixed coupon snapshot included.
+3. Order without coupon ignored.
+4. Invalid coupon code snapshot rejected.
+5. Invalid discount type rejected.
+6. Invalid scope rejected.
+7. Negative eligible subtotal rejected.
+8. Negative discount rejected.
+9. Discount greater than eligible subtotal rejected.
+10. Invalid eligibleProductLines handled without crashing.
+11. Product line/category subtotal mismatch flagged.
+12. One order with multiple eligible lines counted as one coupon application.
+
+## B. Coupon identity/history
+
+13. Orders grouped by stable coupon ID.
+14. Different coupon IDs remain separate even when similar code data exists.
+15. Historical old and new codes under the same stable ID remain associated.
+16. Current coupon definition is joined separately from historical snapshots.
+17. Current coupon with zero uses appears with zero metrics.
+18. Historical coupon without a current definition remains reportable.
+19. Legacy snapshot without ID falls back to normalized coupon code.
+20. Current definition editing does not rewrite historical discount amounts.
+
+## C. Unique customers
+
+21. Repeated same normalized Egyptian phone counted once.
+22. Different formatting of the same phone counted once.
+23. Arabic-Indic digits normalize correctly.
+24. Invalid/missing phone falls back to customerId.
+25. Same customerId across multiple orders counted once.
+26. Unidentifiable customers are excluded from unique count and tracked in data quality.
+27. Customer PII never appears in the API response.
+28. Repeat customers and repeat rate are accurate.
+
+## D. Financial aggregation
+
+29. Eligible subtotal summed from coupon snapshots.
+30. Coupon discount total summed correctly.
+31. Eligible net sales equals eligibleSubtotal minus discounts.
+32. Associated final order value uses order.totalAmount.
+33. Shipping is not added to eligible subtotal.
+34. Delivered order value uses delivered statuses only.
+35. Pipeline value uses active statuses only.
+36. Cancelled value is separated.
+37. Average discount protects against zero count.
+38. Fixed/percentage definitions do not alter historical snapshot totals.
+
+## E. Status classification
+
+39. `New` maps to new.
+40. `processing` maps to processing.
+41. `shipped` maps to shipped.
+42. `delivered` maps to delivered.
+43. `completed` maps to delivered.
+44. `cancelled` and `canceled` map to cancelled.
+45. Arabic canonical statuses map correctly.
+46. `تم التواصل` maps to processing.
+47. `جاري الشحن` maps to shipped.
+48. Unknown status maps to other/unknown, never New.
+49. Cancelled orders remain counted as historical coupon uses.
+50. Unknown return-like values are not falsely counted as refunds.
+
+## F. Category and product aggregation
+
+51. Category totals use stored eligibleProductLines.categorySlug.
+52. Null category goes into unknown category bucket.
+53. Historical category is not replaced using the current catalog.
+54. Product names come from historical order product snapshots.
+55. Missing product name falls back to product ID.
+56. Duplicate product lines aggregate correctly.
+57. Eligible quantities sum correctly.
+58. Product-level subtotal reconciles with eligible lines.
+
+## G. Cairo dates and periods
+
+59. Order timestamp uses Africa/Cairo local date.
+60. appliedAt is used only as fallback when timestamp is invalid/missing.
+61. Orders near Cairo midnight are classified correctly.
+62. Today filter works.
+63. Last 7 days works.
+64. Last 30 days works.
+65. Last 90 days works.
+66. This month works.
+67. Previous month works.
+68. All-time works.
+69. Custom range works.
+70. Invalid date range rejected.
+71. Previous-period comparison boundaries are correct.
+72. Unknown-date records are handled and counted in data quality.
+
+## H. API security and behavior
+
+73. Unauthenticated API request returns existing unauthorized behavior.
+74. Unverified admin rejected.
+75. Non-admin user rejected.
+76. Valid admin can retrieve analytics.
+77. Missing Firebase Admin DB returns safe 503.
+78. Malformed query parameters rejected safely.
+79. API reads orders through Firebase Admin only.
+80. API reads settings/coupons through Firebase Admin only.
+81. API performs no database writes.
+82. API does not return raw orders.
+83. API does not return customer PII.
+84. API sends private no-cache headers.
+85. Unsupported HTTP methods return 405.
+86. Response contains only sanitized analytics fields.
+
+## I. CSV export
+
+87. Coupon summary CSV exports correctly.
+88. Usage CSV exports correctly.
+89. Product CSV exports correctly.
+90. Category CSV exports correctly.
+91. UTF-8 BOM exists.
+92. Arabic fields remain valid UTF-8.
+93. Quotes, commas, and newlines are escaped.
+94. Formula injection prefixes are neutralized.
+95. Customer PII is absent from every export.
+96. Export respects current server-side filters.
+
+## J. Dashboard UI
+
+97. Page uses existing admin dashboard authentication pattern.
+98. Page retrieves analytics only through protected API.
+99. Page does not call Firebase client RTDB directly.
+100. Filters update the displayed metrics.
+101. Selecting a coupon opens the correct detail view.
+102. Current zero-use coupons remain visible.
+103. Empty state renders correctly.
+104. Loading and API failure states render correctly.
+105. Charts update without duplicate Chart.js instances.
+106. CSV export uses the correct current filters.
+107. Mobile layout has no horizontal overflow.
+108. Arabic RTL remains correct.
+
+## K. Architecture protection
+
+109. No usage counters introduced.
+110. No separate redemption path introduced.
+111. No analytics writes introduced.
+112. No inventory functionality introduced.
+113. No changes to create-order or order lifecycle.
+114. No changes to notification Outbox.
+115. No changes to Firebase Rules.
+116. No changes to package/build/Vercel configuration.
+117. No changes to the existing general BI page `/statues`.
+
+---
+
+# 23. TEST EXECUTION
+
+Run:
+
+- `node --test test/group2a7-coupon-analytics.test.mjs`
+- `node --test test/group2a5-coupon-admin.test.mjs`
+- `node --test test/group2a6-coupon-checkout.test.mjs`
+- `node --test test/group2a4-cart-shipping-progress.test.mjs`
+- `node --test test/order-idempotency-encryption.test.mjs`
+- Relevant security and Firebase static-rules tests.
+- Full non-emulator regression suite.
+
+Previously documented baseline failures:
+
+- `test/group2b11-final-notification-identity-outcome.test.mjs`
+- `test/group2b111-final-outbox-identity-simulation.test.mjs`
+
+Run them before and after implementation.
+
+Do not modify protected files or tests to hide historical failures.
+
+Do not claim the full regression suite is clean if baseline failures remain.
+
+Also run:
+
+- `npm run build`.
+- The actual configured lint command.
+
+The project's `npm run lint` currently runs Astro sync rather than ESLint. Describe it correctly.
+
+Firebase Emulator tests may be excluded if unavailable, but state this explicitly.
+
+Do not modify package scripts to make tests pass.
+
+---
+
+# 24. REQUIRED BROWSER VERIFICATION
+
+Use mocked/test data or a local test environment.
+
+Do not use production Firebase data for testing.
+
+## Desktop
+
+Verify:
+
+- Analytics dashboard loads after admin authentication.
+- All-time overview metrics.
+- Last 7/30/90 days filters.
+- Custom date range.
+- Individual coupon selection.
+- Historical code versions.
+- Unique customer calculations.
+- Category/product tables.
+- Status distribution.
+- Per-coupon detail view.
+- CSV exports.
+- Refresh behavior.
+
+## Mobile
+
+Verify:
+
+- RTL header and filters.
+- KPI card stacking.
+- Responsive charts.
+- Table readability.
+- Coupon detail navigation.
+- No horizontal overflow.
+- No browser console errors.
+
+---
+
+# 25. EXPECTED FILE SCOPE
+
+New:
+
+- `src/utils/coupon-analytics.ts`
+- `src/pages/api/coupons/analytics.js`
+- `src/pages/dashboard-coupon-analytics.astro`
+- `test/group2a7-coupon-analytics.test.mjs`
+
+Modified:
+
+- `src/components/DashboardNav.astro`
+- `src/pages/dashboard-coupons.astro` (analytics navigation link only)
+
+Do not modify:
+
+- `src/pages/statues.astro`
+- `ANALYTICS_AUDIT.md`
+- `ANALYTICS_UPGRADE_REPORT.md`
+- Existing BI calculations.
+- Coupon creation or checkout logic.
+
+Additional changes require a direct technical justification and must be reported.
+
+No new dependencies.
+
+No new Firebase database paths.
+
+No schema migration.
+
+---
+
+# 26. FINAL REPORT FORMAT
+
+Return a detailed report:
+
+1. Initial latest repository commit and inspection findings.
+2. Exact historical order coupon snapshot schema used.
+3. How order records are aggregated.
+4. Unique customer identity methodology.
+5. How stable coupon IDs and historical code changes are handled.
+6. Financial metrics and formulas.
+7. Order status classification.
+8. Cairo timezone and date filter behavior.
+9. Category and product aggregation.
+10. API route, authentication, and response structure.
+11. CSV export datasets and privacy protections.
+12. Dashboard sections and navigation integration.
+13. Empty/error/data-quality states.
+14. Exact changed files and reasons.
+15. Firebase read pattern and performance behavior.
+16. Confirmation no analytics writes or counters were added.
+17. Confirmation no order/customer PII is returned.
+18. Confirmation no inventory system was introduced.
+19. Protected backend/configuration inspection.
+20. SHA-256 integrity results.
+21. Targeted test commands and results.
+22. Full regression test results.
+23. Historical baseline test comparison.
+24. Build and lint results.
+25. Desktop/mobile browser verification.
+26. Remaining limitations.
+27. Confirmation no deployment or production Firebase writes occurred.
+28. Git branch and commit information if available.
+
+---
+
+# 27. COMPLETION CRITERIA
+
+GROUP 2A.7 is complete only when:
+
+- Analytics derive from persisted successful order coupon snapshots.
+- Coupon usage counts do not rely on independent counters.
+- Unique customer counts are calculated securely without exposing identifiers.
+- Historical coupon definitions and code changes remain accurately represented.
+- Financial metrics are correctly separated and labeled.
+- Order status breakdown is accurate.
+- Category and product performance use historical eligible lines.
+- Cairo reporting periods are accurate.
+- Admin-only API is protected.
+- API responses and CSV exports contain no customer PII.
+- Dashboard supports filtering, details, charts, and exports.
+- No inventory, payment, checkout, or order lifecycle functionality is introduced.
+- Existing general analytics page remains unchanged.
+- Protected Firebase/security/build/Vercel systems remain unchanged.
+- No new regression failures are introduced.
+- Build and required tests succeed.
+
+**STOP AFTER GROUP 2A.7.**
+
+Do not add coupon limits, customer loyalty features, automatic campaign optimization, or unrelated marketing integrations.
+
+Do not deploy or push automatically.
+
+Return the full final report for review and approval.

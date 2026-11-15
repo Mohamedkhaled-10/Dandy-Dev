@@ -1,0 +1,1038 @@
+# DANDY — PHASE 2 / GROUP 2A.5
+## Coupon Backend Foundation & Admin Management
+### Category-Targeted Coupons Support
+
+Repository: `Mohamedkhaled-10/Dandy-Dev`
+
+Target branch: `main`
+
+Expected baseline commit: `a599f2018e1835611a228ba0ec6de82d6a8c2c83` (verify latest state before starting; do not overwrite newer commits).
+
+---
+
+# 1. OBJECTIVE
+
+Build the first functional foundation of DANDY's coupon system.
+
+This group must implement:
+
+1. A centralized coupon data model and pure business-rule helpers.
+2. Secure server-side coupon administration APIs.
+3. A dedicated coupon management page inside the existing admin dashboard.
+4. Coupon creation, editing, activation, and deactivation.
+5. Support for general coupons and category-targeted coupons.
+6. Reliable coupon-code uniqueness and configuration validation.
+
+The next group, GROUP 2A.6, will integrate coupons into cart, checkout, order creation, invoices, and notifications.
+
+GROUP 2A.7 will implement coupon usage analytics and reporting.
+
+**Do not implement checkout coupon application in this group.**
+
+This is an additive feature. Do not redesign DANDY's backend, Firebase architecture, or deployment structure.
+
+# 2. MANDATORY INITIAL INSPECTION
+
+Before modifying anything, inspect the active workspace and verify the current implementation of:
+
+- `src/utils/admin-auth.js`
+- `src/utils/firebase-admin.ts`
+- `firebase/database.rules.json`
+- `src/utils/categories.ts`
+- `src/utils/products.ts`
+- `src/components/DashboardNav.astro`
+- `src/pages/dashboard-pink-friday.astro`
+- `src/pages/api/pink-friday/admin.js`
+- `src/config/store-policy.ts`
+- `src/utils/pink-friday-server.ts`
+- `src/pages/api/create-order.js`
+- `src/utils/order-idempotency.ts`
+- `src/utils/notifications-outbox.ts`
+- `package.json`
+- Existing admin and API test patterns.
+
+Also inspect the latest GROUP 2A.3.1.2 and GROUP 2A.4 implementation.
+
+Confirm the current RTDB `settings` path security rules.
+
+Do not assume that a file or function has the same implementation as an older conversation or GitHub snapshot.
+
+The active workspace is the source of truth.
+
+If the active workspace already contains part of the coupon implementation, preserve it and add only what is missing.
+
+# 3. APPROVED BUSINESS RULES
+
+Implement these exact initial coupon rules.
+
+## 3.1 Discount types
+
+Support two types:
+
+- `percentage`: Percentage discount.
+- `fixed`: Fixed EGP discount.
+
+Validation:
+
+- Percentage must be greater than 0 and no more than 100.
+- Fixed discount must be a positive finite EGP amount.
+- Monetary values must be handled consistently to two decimal places.
+- Never trust discount values submitted by the customer browser.
+
+## 3.2 Coupon scope
+
+Support exactly two scope types:
+
+### A. All products
+
+`scope: "all"`
+
+The coupon can apply to every eligible product in the order.
+
+### B. One selected category
+
+`scope: "category"`
+
+The coupon applies ONLY to products belonging to one selected canonical DANDY category.
+
+The administrator must select exactly one category.
+
+Do not implement multi-category selection in this first version.
+
+A mixed cart must be supported later by applying the discount only to matching eligible product lines.
+
+## 3.3 Existing canonical categories
+
+Use the existing centralized taxonomy in `src/utils/categories.ts`.
+
+The currently approved categories are:
+
+| Arabic name | Canonical slug |
+|---|---|
+| العناية بالشعر | `hair-care` |
+| العناية بالجسم | `body-care` |
+| العطور والمعطرات | `fragrance` |
+| العناية بالبشرة | `skin-care` |
+
+The admin UI should display Arabic names.
+
+Use canonical slugs as stored identifiers.
+
+Do not create a separate coupon category taxonomy.
+
+## 3.4 Category classification — IMPORTANT
+
+Products already have existing category aliases and application-level category overrides.
+
+Inspect:
+
+- `CATEGORY_TAXONOMY`
+- `PRODUCT_CATEGORY_OVERRIDES`
+- `sourceFirebaseCategories`
+- `normalizeCategory()`
+- `getCategorySlugForProduct()`
+
+For coupon targeting, implement a strict, non-fallback category resolver.
+
+It must:
+
+1. Apply `PRODUCT_CATEGORY_OVERRIDES` first.
+2. Match recognized source Firebase category aliases against `CATEGORY_TAXONOMY`.
+3. Respect recognized legacy aliases already normalized by the existing product service.
+4. Return a canonical category slug only when classification is supported.
+5. Return `null` for unknown, empty, or unsupported categories.
+
+CRITICAL:
+
+`getCategorySlugForProduct()` currently falls back to `skin-care` for unknown products.
+
+Do NOT blindly use that fallback for coupon eligibility, because an unknown product must never receive a skin-care coupon by default.
+
+The safest approach is an additive helper in `src/utils/categories.ts`, such as:
+
+`getStrictCategorySlugForProduct(product)`
+
+Keep the existing `getCategorySlugForProduct()` behavior unchanged. Its SEO and storefront behavior is outside this task.
+
+Test the existing manual product category overrides.
+
+## 3.5 Minimum order amount
+
+Optional:
+
+`minimumSubtotal`
+
+This means the minimum qualifying product subtotal required for the coupon.
+
+For category-targeted coupons, the threshold is calculated from eligible products in that category only.
+
+For all-products coupons, it is calculated from all eligible product lines.
+
+## 3.6 Maximum discount
+
+Optional:
+
+`maximumDiscount`
+
+This is an optional maximum EGP discount cap for percentage coupons.
+
+Do not allow maximumDiscount on fixed-amount coupons.
+
+## 3.7 Validity dates
+
+Support optional:
+
+- `startsAt`
+- `expiresAt`
+
+Store unambiguous numeric timestamps in milliseconds.
+
+The administrator interface may use local date/time inputs, but it must convert them safely before sending them to the server.
+
+Validate:
+
+- Valid timestamps.
+- `startsAt < expiresAt` when both exist.
+- Start and expiry boundaries consistently.
+- Expired coupons cannot be considered active.
+
+Use `Africa/Cairo` when displaying stored coupon dates in the admin dashboard.
+
+## 3.8 Activation state
+
+Support:
+
+`isActive: true | false`
+
+Do not permanently delete coupons.
+
+The administrator must be able to:
+
+- Activate a coupon.
+- Deactivate a coupon.
+- Edit an existing coupon.
+
+A derived display status should distinguish:
+
+- Active.
+- Scheduled.
+- Expired.
+- Deactivated.
+
+Do not store a duplicated time-dependent status field.
+
+## 3.9 Coupon stacking
+
+Approved rules:
+
+- One coupon per order.
+- Coupons cannot combine with Pink Friday.
+- This restriction applies to the entire order: if an order contains any applicable Pink Friday promotional item or collection, the coupon must not be combinable with another item in that order.
+- Coupons do not discount shipping.
+- Ordinary product selling prices must continue using existing trusted product pricing and sale calculations.
+
+Do not change the Pink Friday engine.
+
+## 3.10 Shipping policy compatibility
+
+The existing free-shipping rule remains:
+
+`productSubtotal > 2000`
+
+The qualifying shipping subtotal is calculated BEFORE coupon deduction, using the existing authoritative product and campaign pricing.
+
+A coupon must never cause an order to lose free-shipping eligibility merely because the coupon reduces the payable amount.
+
+Do not modify `src/config/store-policy.ts`.
+
+## 3.11 Guest checkout
+
+Guest customers must remain supported.
+
+Do not introduce mandatory customer account creation for coupon use.
+
+# 4. COUPON DATA MODEL
+
+Create a focused shared utility, preferably:
+
+`src/utils/coupons.ts`
+
+Define a strongly structured coupon model compatible with Firebase Realtime Database.
+
+Suggested schema:
+
+{
+  "id": "Firebase-generated-stable-id",
+  "code": "WELCOME20",
+  "discountType": "percentage",
+  "discountValue": 20,
+  "scope": "category",
+  "categorySlug": "hair-care",
+  "minimumSubtotal": 300,
+  "maximumDiscount": 150,
+  "startsAt": null,
+  "expiresAt": null,
+  "isActive": true,
+  "createdAt": 1794750000000,
+  "updatedAt": 1794750000000,
+  "createdBy": "admin@dandy.com",
+  "updatedBy": "admin@dandy.com",
+  "schemaVersion": 1
+}
+
+The example is illustrative.
+
+For all-products scope, store `categorySlug: null`.
+
+For fixed coupons, store `maximumDiscount: null`.
+
+Optional threshold/date fields should use null when unset.
+
+Use only the approved fields.
+
+Do not add:
+
+- `usageCount`
+- `usedCount`
+- `usageLimit`
+- `lastUsedAt`
+- Customer redemption lists
+- Analytics counters
+- Any inventory fields
+
+These usage and analytics features belong to the later groups.
+
+## 4.1 Coupon code normalization
+
+Implement a single shared normalization helper.
+
+Recommended behavior:
+
+- Trim surrounding whitespace.
+- Normalize to uppercase.
+- Accept ASCII letters, digits, hyphens, and underscores.
+- Length: 3–32 characters.
+- Reject invalid characters.
+- Reject empty codes.
+- Compare codes case-insensitively.
+
+Examples:
+
+`welcome20` → `WELCOME20`
+
+` WELCOME20 ` → `WELCOME20`
+
+Use one normalization function everywhere.
+
+Coupon codes must be unique across all stored coupons, regardless of letter case.
+
+## 4.2 Stable coupon IDs
+
+Use Firebase-generated stable push IDs or another safe server-generated identifier.
+
+Do not use a raw customer-supplied ID as a database path.
+
+Editing a coupon must not change its stable identifier.
+
+Never use a raw coupon code directly as an unvalidated Firebase database path.
+
+## 4.3 Configuration validation
+
+Implement pure validation functions that reject:
+
+- Invalid codes.
+- Duplicate codes.
+- Invalid discount types.
+- Invalid percentages.
+- Non-positive fixed values.
+- Invalid category scope.
+- Category scope without a valid category slug.
+- All-products scope with an unexpected category.
+- Invalid minimum amounts.
+- Invalid maximum discount.
+- Maximum discount on fixed coupons.
+- Invalid date values.
+- Expiry dates that precede or equal the start date.
+- Unexpected or unsupported fields.
+
+Normalize validated values before persistence.
+
+The server must generate timestamps and audit metadata.
+
+Never trust browser-supplied `createdAt`, `updatedAt`, `createdBy`, or `updatedBy`.
+
+# 5. FIREBASE STORAGE AND SECURITY
+
+Store coupons under:
+
+`settings/coupons`
+
+Use the existing Firebase Admin SDK:
+
+`src/utils/firebase-admin.ts`
+
+The existing Firebase RTDB rules currently deny direct client access to `settings`.
+
+**Do not modify Firebase rules.**
+
+All coupon operations must pass through server-side API endpoints.
+
+The browser must NEVER:
+
+- Read `settings/coupons` directly.
+- Write `settings/coupons` directly.
+- Change coupon definitions through Firebase client SDK.
+- Set authoritative coupon prices or discount amounts.
+
+Firebase Admin access bypasses client security rules, so the API must enforce the existing verified-admin authentication.
+
+## 5.1 Atomic uniqueness
+
+Ensure duplicate coupon codes cannot be created by two concurrent admin requests.
+
+Use a safe transaction or equivalent server-side atomic strategy for the coupon collection.
+
+A normal read-then-write uniqueness check alone is insufficient when requests can race.
+
+During create/update:
+
+- Normalize the code.
+- Verify uniqueness.
+- Preserve existing coupon records.
+- Do not overwrite the entire `settings` root.
+- Do not overwrite unrelated settings.
+- Preserve existing creation metadata on update.
+
+If a code is already in use, return a clear `409 COUPON_CODE_EXISTS` response.
+
+# 6. SERVER-SIDE ADMIN API
+
+Create:
+
+`src/pages/api/coupons/admin.js`
+
+Use the existing Astro API route conventions.
+
+Export:
+
+`prerender = false`
+
+All handlers must reuse:
+
+- `verifyAdminRequest()`
+- `adminUnauthorizedResponse()`
+- `getAdminDb()`
+
+Do not introduce a new admin authentication mechanism.
+
+Every GET and mutation must verify the Firebase ID token through the existing helper.
+
+Do not trust admin email or role supplied in the request body.
+
+Use the verified admin claims returned by the existing authentication helper for audit metadata.
+
+## 6.1 GET
+
+`GET /api/coupons/admin`
+
+Authorized admin only.
+
+Return:
+
+- Coupon records.
+- Safe category options from the centralized category taxonomy.
+- Any minimal metadata needed by the dashboard.
+
+If no coupons exist, return an empty list.
+
+Do not automatically create sample coupons or bootstrap records.
+
+Use appropriate private no-cache response headers.
+
+## 6.2 POST actions
+
+Use a single clearly validated action-based mutation endpoint, consistent with the existing Pink Friday API patterns.
+
+Supported actions:
+
+### `create`
+
+Create a new coupon after complete validation.
+
+### `update`
+
+Edit an existing coupon while preserving:
+
+- Stable ID.
+- Original `createdAt`.
+- Original `createdBy`.
+
+Update only the approved editable fields.
+
+Check code uniqueness against other coupon records atomically.
+
+### `set_active`
+
+Enable or disable a coupon using an explicit boolean.
+
+Do not accept arbitrary status strings.
+
+## 6.3 No hard deletion
+
+Do not implement hard coupon deletion in this initial release.
+
+Deactivation preserves historical references and prepares the system for future analytics.
+
+## 6.4 API integrity
+
+Every mutation must:
+
+1. Verify the admin token.
+2. Validate the action.
+3. Validate the payload.
+4. Normalize values.
+5. Verify category and date constraints.
+6. Enforce unique coupon codes.
+7. Persist through Firebase Admin.
+8. Return a clear JSON result.
+
+Use appropriate HTTP status codes.
+
+Never expose service-account information, secrets, internal filesystem details, or complete stack traces.
+
+Do not introduce public coupon endpoints in this group.
+
+# 7. PURE COUPON BUSINESS-RULE HELPERS
+
+Inside `src/utils/coupons.ts`, implement reusable pure helpers that GROUP 2A.6 can use.
+
+These may include:
+
+- `normalizeCouponCode()`
+- `validateCouponDefinition()`
+- `getCouponStatus()`
+- `resolveCouponEligibleProducts()`
+- `calculateCouponDiscount()`
+- `evaluateCouponEligibility()`
+
+The helpers should support:
+
+- All-products scope.
+- One-category scope.
+- Minimum eligible subtotal.
+- Percentage discount.
+- Fixed discount.
+- Maximum percentage discount.
+- Coupon active state.
+- Start/expiry dates.
+- No Pink Friday stacking.
+- No shipping discount.
+
+Important:
+
+For category coupons, the minimum subtotal and maximum discount apply to eligible category products only.
+
+For fixed coupons, the final discount must never exceed the eligible product subtotal.
+
+All monetary calculations must use consistent EGP rounding to two decimal places.
+
+Use trusted product prices after existing price and campaign resolution.
+
+For Pink Friday compatibility, an order containing a Pink Friday offer or collection must be classified as ineligible for coupon application across the entire order.
+
+These helpers must be implemented and tested in this group, but do not yet connect them to `create-order.js`, cart, or checkout.
+
+Do not recalculate product prices independently in the coupon module.
+
+# 8. ADMIN DASHBOARD UI
+
+Create a new page:
+
+`src/pages/dashboard-coupons.astro`
+
+Add a navigation entry in:
+
+`src/components/DashboardNav.astro`
+
+Suggested Arabic navigation label:
+
+`الكوبونات`
+
+Use the current DANDY admin dashboard patterns.
+
+Inspect and reuse the existing:
+
+- Dashboard navigation.
+- Firebase Auth initialization.
+- Admin email/verified-email guard.
+- `getAuthToken()` pattern.
+- Toast and modal interaction conventions.
+- Responsive table/form styling.
+
+Do not introduce a separate dashboard architecture.
+
+## 8.1 Main coupons table
+
+Display:
+
+| Field | Description |
+|---|---|
+| كود الكوبون | Normalized coupon code |
+| نوع الخصم | نسبة / مبلغ ثابت |
+| القيمة | 20% or 50 EGP |
+| النطاق | جميع المنتجات / اسم القسم |
+| الحد الأدنى | Optional |
+| أقصى خصم | Optional |
+| بداية الصلاحية | Optional |
+| نهاية الصلاحية | Optional |
+| الحالة | Active / Scheduled / Expired / Disabled |
+| الإجراءات | Edit / Activate / Deactivate |
+
+Provide:
+
+- Search by coupon code.
+- Filter by active/disabled/scheduled/expired status.
+- Filter by discount type.
+- Filter by category scope.
+
+Do not display fake usage numbers or analytics fields.
+
+## 8.2 Create coupon form
+
+The create/edit form must include:
+
+1. Coupon code.
+2. Discount type:
+   - Percentage.
+   - Fixed EGP amount.
+3. Discount value.
+4. Coupon scope:
+   - All products.
+   - One selected category.
+5. Category dropdown when category scope is selected.
+6. Optional minimum eligible subtotal.
+7. Optional maximum discount for percentage coupons.
+8. Optional start date and time.
+9. Optional expiration date and time.
+10. Active state.
+
+When scope is `category`, the category dropdown must become required.
+
+Populate the dropdown from the categories returned by the protected admin API.
+
+Do not hardcode a second list of category definitions.
+
+The interface must allow editing existing records and toggling status without deleting them.
+
+Use Arabic RTL labels and the existing DANDY visual identity.
+
+Sanitize rendered coupon data and avoid unsafe inline HTML/JavaScript interpolation.
+
+## 8.3 Admin UX
+
+Provide:
+
+- Clear loading state.
+- Empty state when no coupons exist.
+- Save success/error feedback.
+- Duplicate-code error feedback.
+- Form field validation.
+- Confirmation before deactivation.
+- Confirmation or clear warning when updating an active coupon.
+- Responsive mobile layout.
+- No browser `alert()` dependency where the dashboard has existing toast/modal conventions.
+
+The admin page must use the protected API with:
+
+`Authorization: Bearer <Firebase ID Token>`
+
+Do not access coupon records through Firebase client SDK.
+
+Because customer checkout integration belongs to GROUP 2A.6, make the admin interface clear that this group manages coupon definitions only; actual customer coupon application will be enabled in the next integration group.
+
+# 9. SECURITY REQUIREMENTS
+
+This group introduces a new protected admin feature.
+
+It must reuse the existing security architecture rather than replace it.
+
+Preserve:
+
+- Existing admin email verification.
+- Firebase ID Token verification.
+- Firebase Admin initialization.
+- Firebase RTDB default deny rules.
+- Protected `settings` path.
+- Existing API error handling conventions.
+
+Do not:
+
+- Add public reads of coupon definitions.
+- Accept discount values from customers.
+- Trust browser-supplied category identity.
+- Trust browser-supplied admin identity.
+- Expose coupon records publicly.
+- Add a new authentication provider.
+- Weaken existing rules.
+- Add new environment variables.
+- Modify admin-auth.js.
+- Modify firebase-admin.ts.
+
+If an existing security control appears insufficient, report it separately. Do not silently redesign it during this task.
+
+# 10. STRICTLY PROTECTED ORDER AND NOTIFICATION SYSTEMS
+
+This group does not integrate coupons into checkout.
+
+Do not modify:
+
+- `src/pages/api/create-order.js`
+- `src/utils/order-idempotency.ts`
+- `src/utils/notifications-outbox.ts`
+- `src/utils/email-service.ts`
+- `src/utils/telegram.js`
+- `src/pages/invoice.astro`
+- `src/pages/track-order.astro`
+- Existing invoice encryption or access tokens.
+- Existing order schemas.
+- Existing order lifecycle.
+- Existing Pink Friday calculation or campaign admin.
+
+Do not change:
+
+- Product pricing.
+- Shipping calculations.
+- Free-shipping threshold.
+- COD.
+- Existing cart or checkout calculations.
+
+These integrations will be handled separately in GROUP 2A.6.
+
+# 11. NO INVENTORY SYSTEM — STRICT BUSINESS RULE
+
+DANDY intentionally does not currently operate a real inventory management system.
+
+Do not introduce:
+
+- Stock quantity tracking.
+- Stock reservations.
+- Stock decrements.
+- Inventory transactions.
+- Variant stock management.
+- New inventory fields.
+- New Firebase inventory paths.
+- Stock-related admin dashboard functionality.
+
+Do not read or write new `stockQuantity` fields.
+
+Do not modify the optional legacy stock deduction path.
+
+Coupon category eligibility is based exclusively on trusted product category classification, not stock quantities.
+
+# 12. COUPON ANALYTICS — STRICTLY DEFERRED
+
+The following belong to GROUP 2A.7 and must not be implemented now:
+
+- Coupon usage statistics.
+- Coupon redemption records.
+- Usage counters.
+- Unique customer counts.
+- Revenue attribution.
+- Coupon performance charts.
+- Coupon conversion analytics.
+- CSV reports.
+- Customer usage histories.
+- Campaign ROI.
+
+Do not create fake counters or initialize usage counts.
+
+GROUP 2A.6 will introduce the authoritative successful-order coupon usage records needed by GROUP 2A.7.
+
+# 13. PROTECTED BUILD, RUNTIME & VERCEL CONFIGURATION
+
+DANDY's build, runtime, and Vercel configuration are already established and working.
+
+They are strictly protected.
+
+The following existing files must remain byte-for-byte unchanged:
+
+### Package management
+
+- `package.json`
+- `package-lock.json` if present
+- `bun.lock`
+- `bun.lockb` if present
+- `.npmrc` if present
+
+Do not change package manager, dependencies, dependency versions, package scripts, or lockfiles.
+
+### Astro and runtime
+
+- `astro.config.mjs`
+- `astro.config.js` if present
+- `vite.config.js` if present
+- `vite.config.ts` if present
+- `tsconfig.json`
+- `patch-env.cjs`
+- `server.js`
+
+Do not change Astro adapters, SSR, prerender, build output, runtime settings, aliases, or integrations.
+
+### Vercel and deployment
+
+- `vercel.json`
+- `.vercel/` configuration
+- Existing deployment workflows under `.github/workflows/`
+
+Do not change Vercel build commands, output configuration, runtime, routing, rewrites, or deployment behavior.
+
+### Firebase and environment
+
+- `firebase.json`
+- `.firebaserc` if present
+- `.env`
+- `.env.*`
+- `.env.example`
+- Firebase project IDs and database URLs.
+
+Do not change Firebase initialization, project configuration, deployment targets, or environment requirements.
+
+### Generated artifacts
+
+Do not manually edit or commit generated build outputs, including:
+
+- `dist/`
+- `.vercel/output/`
+- Generated Astro files and generated type files.
+
+Normal local build output is permitted.
+
+## 13.1 Required protection procedure
+
+Before implementation:
+
+1. Record current Git status if available.
+2. Record SHA-256 hashes of existing protected files.
+3. Record pre-existing user modifications.
+4. Do not reset, restore, overwrite, or revert any existing changes.
+
+After implementation:
+
+1. Compare protected file hashes.
+2. Verify package scripts and dependency versions remain unchanged.
+3. Inspect changed-file lists and Git diff.
+4. If Git metadata is absent, perform direct before/after content or SHA-256 comparison.
+
+If any protected file changes unexpectedly, STOP immediately.
+
+Do not automatically restore or rewrite it.
+
+If the implementation appears to require modifying any protected configuration, explain why and wait for explicit approval.
+
+# 14. EXPECTED FILE SCOPE
+
+Prefer limiting changes to:
+
+- `src/utils/coupons.ts` (new).
+- `src/utils/categories.ts` (additive strict category resolver only; preserve existing helpers).
+- `src/pages/api/coupons/admin.js` (new).
+- `src/pages/dashboard-coupons.astro` (new).
+- `src/components/DashboardNav.astro` (add one navigation item).
+- `test/group2a5-coupon-admin.test.mjs` (new).
+- Additional directly relevant tests only if strictly necessary.
+
+Do not create unnecessary abstractions or modify unrelated files.
+
+No new dependencies.
+
+No database migration.
+
+No package manifest changes.
+
+# 15. AUTOMATED TESTING REQUIREMENTS
+
+Add deterministic tests for:
+
+## A. Coupon code validation
+
+1. Lowercase to uppercase normalization.
+2. Surrounding whitespace trimming.
+3. Empty code rejection.
+4. Invalid characters rejection.
+5. Minimum and maximum code length.
+6. Duplicate case-insensitive code rejection.
+
+## B. Coupon definition validation
+
+7. Valid percentage coupon.
+8. Valid fixed coupon.
+9. Invalid percentage above 100%.
+10. Zero or negative discount value.
+11. Invalid scope.
+12. Missing category slug for category scope.
+13. Unsupported category slug.
+14. Category on all-products scope.
+15. Invalid minimum subtotal.
+16. Maximum discount for percentage coupon.
+17. Maximum discount rejected for fixed coupon.
+18. Invalid timestamps.
+19. Expiry before or equal to start.
+20. Active, scheduled, expired, disabled status derivation.
+
+## C. Category resolver
+
+21. Hair category aliases.
+22. Body category aliases.
+23. Fragrance category aliases.
+24. Skin category aliases.
+25. PRODUCT_CATEGORY_OVERRIDES.
+26. Unknown category returns null.
+27. Empty category does not default to skin-care.
+28. Existing getCategorySlugForProduct behavior remains unchanged.
+
+## D. Pure coupon calculation helpers
+
+29. All-products percentage discount.
+30. Category-specific percentage discount.
+31. Category-specific fixed discount.
+32. Mixed cart eligible subtotal.
+33. Minimum subtotal evaluated against eligible product lines only.
+34. Maximum percentage discount cap.
+35. Fixed discount cannot exceed eligible subtotal.
+36. Zero eligible product subtotal rejected.
+37. Discount does not include shipping.
+38. Pink Friday presence rejects coupon eligibility.
+39. Inactive coupon rejected.
+40. Future and expired coupon rejected.
+
+These are pure helper tests only; do not connect them to checkout during GROUP 2A.5.
+
+## E. Admin API
+
+41. GET without authorization returns the existing unauthorized response.
+42. Invalid/expired token rejected.
+43. Unverified admin email rejected.
+44. Non-admin user rejected.
+45. Valid verified admin can read coupon records.
+46. GET with empty storage returns an empty list without creating data.
+47. Valid coupon creation.
+48. Duplicate code returns 409.
+49. Concurrent duplicate creation cannot persist duplicate codes.
+50. Invalid create payload rejected.
+51. Valid coupon update.
+52. Update preserves createdAt and createdBy.
+53. Update checks code uniqueness.
+54. Activate and deactivate actions work.
+55. Unknown action rejected.
+56. Malformed JSON rejected safely.
+57. No hard deletion action exists.
+58. All persistence uses the intended `settings/coupons` Admin SDK path.
+59. No direct browser RTDB access is introduced.
+60. GET/POST responses use appropriate no-cache headers.
+
+## F. Admin dashboard
+
+61. Dashboard page uses existing navigation and auth conventions.
+62. Uses the protected API with a Firebase ID Token.
+63. Category options come from the server-provided taxonomy.
+64. Switching scope between all/category works.
+65. Category selection becomes required for category scope.
+66. Edit and toggle states reflect the API response.
+67. No analytics counters are displayed as if they were real.
+68. No hard-delete interface exists.
+
+## G. Regression and protection
+
+69. Existing Pink Friday admin behavior remains unchanged.
+70. Existing shipping rules remain unchanged.
+71. Existing order flow remains unchanged.
+72. No inventory logic is introduced.
+73. Protected file hashes are unchanged.
+74. Existing security tests remain successful.
+
+Use mocked Firebase Admin dependencies and deterministic fixtures.
+
+Do not write to production Firebase.
+
+# 16. TEST EXECUTION
+
+Run:
+
+- The new coupon admin test suite.
+- Relevant category tests.
+- Relevant existing admin authentication tests.
+- Existing Pink Friday tests.
+- Existing shipping policy tests.
+- Existing order submission and idempotency tests.
+- The full non-emulator regression suite.
+
+Also run:
+
+- `npm run build`
+- The actual configured lint command.
+
+Report exact commands and observed results.
+
+The existing two baseline failures previously documented in:
+
+- `test/group2b11-final-notification-identity-outcome.test.mjs`
+- `test/group2b111-final-outbox-identity-simulation.test.mjs`
+
+must be compared against their pre-implementation baseline.
+
+Do not change Astro, Vercel, package, environment, or protected configuration to make historical tests pass.
+
+Do not describe `astro sync` alone as ESLint.
+
+The Firebase emulator suite may be excluded when unavailable, but state this explicitly.
+
+# 17. FINAL REPORT FORMAT
+
+Return:
+
+1. Initial inspection findings.
+2. Final coupon schema.
+3. Coupon code normalization and uniqueness strategy.
+4. Category targeting implementation and strict resolver details.
+5. Coupon validation and calculation helper behavior.
+6. Admin API routes and actions.
+7. Dashboard UI implementation.
+8. Files changed and reasons.
+9. Security design and confirmation that existing admin authentication was reused.
+10. Confirmation that Firebase Rules were untouched.
+11. Test commands and actual observed results.
+12. Build and lint results.
+13. SHA-256 integrity verification of protected configuration.
+14. Confirmation that no order/checkout/notification integration was implemented.
+15. Confirmation that no coupon analytics or usage tracking was prematurely implemented.
+16. Confirmation that no inventory system was introduced.
+17. Confirmation that no production Firebase data was modified.
+18. Git branch and commit details if available.
+19. Remaining limitations.
+
+# 18. COMPLETION CRITERIA
+
+GROUP 2A.5 is complete only when:
+
+- Admin can create valid coupons.
+- Admin can edit existing coupons.
+- Admin can activate and deactivate coupons.
+- Coupon codes remain unique.
+- General and category-targeted coupons are supported.
+- Exactly one canonical category can be selected per category coupon.
+- Unknown product categories never receive a category-specific coupon by fallback.
+- All management APIs enforce existing verified-admin authentication.
+- No customer can directly read or modify coupon definitions.
+- Business-rule helpers are tested and ready for GROUP 2A.6.
+- No coupon checkout logic is added yet.
+- No usage analytics or counters are added.
+- No inventory system is introduced.
+- Existing security, order, notification, and shipping systems remain unchanged.
+- Protected build/runtime/Vercel/Firebase/package configuration remains byte-for-byte unchanged.
+- Build and regression requirements are satisfied.
+
+Stop after GROUP 2A.5.
+
+Do not automatically implement GROUP 2A.6 or GROUP 2A.7.
+
+Return the complete final report for review and approval.
