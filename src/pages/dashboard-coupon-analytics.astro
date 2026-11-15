@@ -279,6 +279,20 @@ import BaseLayout from '../layouts/BaseLayout.astro';
         color: var(--ca-text-secondary);
       }
 
+      .ca-filter-semantics-note {
+        margin: 12px 0 0;
+        font-size: 0.8rem;
+        line-height: 1.6;
+        color: var(--ca-text-secondary);
+      }
+
+      .ca-line-incomplete-note {
+        margin-top: 3px;
+        font-size: 0.72rem;
+        font-weight: 700;
+        color: var(--ca-amber);
+      }
+
       /* Banners */
       .ca-banner {
         display: none;
@@ -857,6 +871,8 @@ import BaseLayout from '../layouts/BaseLayout.astro';
         <div id="customDateValidationMsg" style="font-size: 0.8rem; color: #b91c1c; font-weight: 700;"></div>
       </div>
 
+      <p class="ca-filter-semantics-note" id="categoryFilterSemanticsNote">عند اختيار قسم، يتم عرض الطلبات التي تحتوي على منتج مؤهل من هذا القسم. القيم المالية تعكس إجمالي الكوبون والطلب بالكامل، ولا تمثل خصمًا موزعًا على هذا القسم وحده.</p>
+
       <div class="ca-filter-actions">
         <div class="ca-filter-btns">
           <button type="button" class="ca-btn ca-btn-accent" id="btnApplyFilters">
@@ -1322,6 +1338,8 @@ import BaseLayout from '../layouts/BaseLayout.astro';
           <li>تستند قيمة الطلبات المُسلّمة إلى حالة الطلب المسجلة حالياً ولا تمثل دليلاً على تسوية مالية مستقلة نظراً لاعتماد الدفع عند الاستلام.</li>
           <li>لا يتضمن النظام الحالي سجل مرتجعات أو استرداد مالي مستقل، وتُصنف أي حالات غير قياسية في خانة غير محدد / أخرى.</li>
           <li>لا يمكن حساب صافي الربح أو تكلفة البضاعة أو تكلفة الاستحواذ أو العائد على الإنفاق الإعلاني أو معدل التحويل من بيانات الطلبات الحالية؛ لذا تُعرض المؤشرات المتاحة بمسمياتها الدقيقة فقط.</li>
+          <li>عند اختيار قسم، يتم عرض الطلبات التي تحتوي على منتج مؤهل من هذا القسم. القيم المالية تعكس إجمالي الكوبون والطلب بالكامل، ولا تمثل خصمًا موزعًا على هذا القسم وحده.</li>
+          <li>عند وجود نقص أو عدم تطابق في توزيع سطور المنتجات المؤهلة داخل طلب محفوظ، يُحتسب الطلب بقيمته الكاملة في ملخص الكوبون وسجل الاستخدامات، ويُستبعد تفصيل سطوره من جداول وتصدير الأقسام والمنتجات.</li>
         </ol>
       </section>
     </div>
@@ -1556,7 +1574,7 @@ import BaseLayout from '../layouts/BaseLayout.astro';
         if (dq.missingCustomerIdentities > 0) notes.push(`طلبات دون هوية عميل قابلة للتمييز: ${dq.missingCustomerIdentities}`);
         if (dq.appliedAtFallbacks > 0) notes.push(`طلبات اعتمدت وقت تطبيق الكوبون كبديل عن وقت الطلب: ${dq.appliedAtFallbacks}`);
         if (dq.missingTimestamps > 0) notes.push(`طلبات دون تاريخ صالح: ${dq.missingTimestamps}`);
-        if (dq.snapshotLineMismatches > 0) notes.push(`طلبات بها عدم تطابق في سطور المنتجات المؤهلة: ${dq.snapshotLineMismatches}`);
+        if (dq.snapshotLineMismatches > 0) notes.push(`طلبات بتوزيع سطور منتجات/أقسام غير مكتمل (تُحتسب في إجمالي الكوبون وتُستبعد من تفصيل وتصدير الأقسام والمنتجات): ${dq.snapshotLineMismatches}`);
         if (dq.unknownOrderStatuses > 0) notes.push(`طلبات بحالة غير قياسية: ${dq.unknownOrderStatuses}`);
         if (dq.missingHistoricalProductNames > 0) notes.push(`سطور منتجات دون اسم تاريخي (تم العرض بالمعرّف): ${dq.missingHistoricalProductNames}`);
 
@@ -1783,17 +1801,22 @@ import BaseLayout from '../layouts/BaseLayout.astro';
         const uses = (coupon.recentUses || []).slice(0, 15);
         usesBody.innerHTML = uses.length === 0
           ? '<tr><td colspan="7" style="text-align: center; color: #64748b;">لا توجد طلبات مسجلة لهذا الكوبون في النطاق المحدد.</td></tr>'
-          : uses.map((u) => `
-            <tr>
+          : uses.map((u) => {
+            const incompleteNote = u.lineAllocationIncomplete
+              ? '<div class="ca-line-incomplete-note">توزيع سطور المنتجات غير مكتمل</div>'
+              : '';
+            return `
+            <tr${u.lineAllocationIncomplete ? ' data-line-allocation-incomplete="true"' : ''}>
               <td class="ca-code-text">${escapeHtml(u.invoiceCode)}</td>
               <td class="ca-num">${escapeHtml(u.cairoDateTime)}</td>
               <td class="ca-code-text">${escapeHtml(u.couponCode)}</td>
-              <td class="ca-num">${escapeHtml(formatEgp(u.eligibleSubtotal))}</td>
+              <td class="ca-num">${escapeHtml(formatEgp(u.eligibleSubtotal))}${incompleteNote}</td>
               <td class="ca-num">${escapeHtml(formatEgp(u.discountAmount))}</td>
               <td class="ca-num">${escapeHtml(formatEgp(u.totalAmount))}</td>
               <td>${escapeHtml(getStatusArabic(u.status))}</td>
             </tr>
-          `).join('');
+          `;
+          }).join('');
       }
 
       function renderBreakdownTables(report) {
@@ -1838,13 +1861,16 @@ import BaseLayout from '../layouts/BaseLayout.astro';
         } else {
           usesBody.innerHTML = uses.map((u) => {
             const scopeLabel = u.scope === 'category' ? getCategoryArabic(u.categorySlug) : 'جميع المنتجات';
+            const incompleteNote = u.lineAllocationIncomplete
+              ? '<div class="ca-line-incomplete-note">توزيع سطور المنتجات غير مكتمل (مُستبعد من تفصيل الأقسام والمنتجات)</div>'
+              : '';
             return `
-              <tr>
+              <tr${u.lineAllocationIncomplete ? ' data-line-allocation-incomplete="true"' : ''}>
                 <td><span class="ca-code-text">${escapeHtml(u.invoiceCode)}</span></td>
                 <td class="ca-num">${escapeHtml(u.cairoDateTime)}</td>
                 <td><span class="ca-code-text">${escapeHtml(u.couponCode)}</span></td>
                 <td>${escapeHtml(scopeLabel)}</td>
-                <td class="ca-num">${escapeHtml(formatEgp(u.eligibleSubtotal))}</td>
+                <td class="ca-num">${escapeHtml(formatEgp(u.eligibleSubtotal))}${incompleteNote}</td>
                 <td class="ca-num" style="color: #db2777; font-weight: 700;">${escapeHtml(formatEgp(u.discountAmount))}</td>
                 <td class="ca-num">${escapeHtml(formatEgp(u.totalAmount))}</td>
                 <td>${escapeHtml(getStatusArabic(u.status))}</td>

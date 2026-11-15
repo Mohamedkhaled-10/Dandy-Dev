@@ -1290,3 +1290,390 @@ test('Section K (109–117): Zero usage counters, redemption ledgers, analytics 
   assert.equal(rules.rules.settings['.read'], false);
   assert.equal(rules.rules.settings['.write'], false);
 });
+
+// ============================================================================
+// SECTION L: GROUP 2A.7.1 Analytics Data Integrity & Category Filter Semantics
+// ============================================================================
+test('Section L1: Incomplete or mismatched eligibleProductLines retain top-level coupon financials and contribute ZERO to product/category breakdowns & CSV exports', () => {
+  const nowMs = Date.UTC(2026, 10, 15, 12, 0, 0);
+  const orders = {
+    ord_complete: {
+      invoiceCode: 'DND-COMP-1',
+      timestamp: nowMs - 1000,
+      status: 'delivered',
+      phone: '01011112222',
+      totalAmount: 450,
+      products: [
+        { id: 'prod_good', name: 'شامبو صالح', quantity: 1, price: 500 }
+      ],
+      coupon: {
+        id: 'cpn_mix',
+        code: 'MIX10',
+        discountType: 'percentage',
+        discountValue: 10,
+        scope: 'all',
+        eligibleSubtotal: 500,
+        discountAmount: 50,
+        eligibleProductLines: [
+          { productId: 'prod_good', categorySlug: 'hair-care', quantity: 1, lineSubtotal: 500 }
+        ]
+      }
+    },
+    ord_malformed: {
+      invoiceCode: 'DND-MAL-2',
+      timestamp: nowMs - 2000,
+      status: 'processing',
+      phone: '01022223333',
+      totalAmount: 220,
+      products: [
+        { id: 'prod_mal', name: 'منتج تالف السطور', quantity: 2, price: 100 }
+      ],
+      coupon: {
+        id: 'cpn_mix',
+        code: 'MIX10',
+        discountType: 'percentage',
+        discountValue: 10,
+        scope: 'all',
+        eligibleSubtotal: 200,
+        discountAmount: 20,
+        eligibleProductLines: 'not-an-array'
+      }
+    },
+    ord_mismatch: {
+      invoiceCode: 'DND-MISM-3',
+      timestamp: nowMs - 3000,
+      status: 'shipped',
+      phone: '01033334444',
+      totalAmount: 330,
+      // Intentionally omit product names to verify excluded incomplete lines don't inflate missingHistoricalProductNames
+      products: [],
+      coupon: {
+        id: 'cpn_mix',
+        code: 'MIX10',
+        discountType: 'percentage',
+        discountValue: 10,
+        scope: 'all',
+        eligibleSubtotal: 300,
+        discountAmount: 30,
+        eligibleProductLines: [
+          // Valid individual line shape, but sum 150 !== 300 -> lineAllocationIncomplete = true
+          { productId: 'prod_partial_only', categorySlug: 'body-care', quantity: 3, lineSubtotal: 150 }
+        ]
+      }
+    }
+  };
+
+  const report = aggregateCouponAnalytics({ orders, rawCoupons: {}, nowMs });
+
+  // Top-level financial & order totals preserved for all 3 orders
+  assert.equal(report.summary.couponOrders, 3);
+  assert.equal(report.summary.uniqueCustomers, 3);
+  assert.equal(report.summary.eligibleSubtotal, 1000); // 500 + 200 + 300
+  assert.equal(report.summary.discountAmount, 100); // 50 + 20 + 30
+  assert.equal(report.summary.eligibleNetSales, 900);
+  assert.equal(report.summary.associatedFinalOrderValue, 1000); // 450 + 220 + 330
+  assert.equal(report.summary.deliveredOrders, 1);
+  assert.equal(report.summary.pipelineOrders, 2);
+
+  // Data quality accurately counts incomplete allocations and omits excluded lines from missing-name count
+  assert.equal(report.dataQuality.snapshotLineMismatches, 2);
+  assert.equal(report.dataQuality.missingHistoricalProductNames, 0);
+
+  // Only ord_complete contributes to categoryBreakdown & productBreakdown
+  const hairCat = report.categoryBreakdown.find((c) => c.categorySlug === 'hair-care');
+  const bodyCat = report.categoryBreakdown.find((c) => c.categorySlug === 'body-care');
+  assert.equal(hairCat.eligibleQuantity, 1);
+  assert.equal(hairCat.eligibleSubtotal, 500);
+  assert.equal(hairCat.couponOrders, 1);
+  assert.equal(hairCat.uniqueCustomers, 1);
+
+  assert.equal(bodyCat.eligibleQuantity, 0);
+  assert.equal(bodyCat.eligibleSubtotal, 0);
+  assert.equal(bodyCat.couponOrders, 0);
+  assert.equal(bodyCat.uniqueCustomers, 0);
+
+  assert.equal(report.productBreakdown.length, 1);
+  assert.equal(report.productBreakdown[0].productId, 'prod_good');
+  assert.equal(report.productBreakdown.some((p) => p.productId === 'prod_partial_only'), false);
+
+  // Per-coupon breakdowns also exclude incomplete lines
+  const mixCoupon = report.coupons.find((c) => c.couponId === 'cpn_mix');
+  assert.equal(mixCoupon.couponOrders, 3);
+  assert.equal(mixCoupon.eligibleSubtotal, 1000);
+  assert.equal(mixCoupon.discountAmount, 100);
+  assert.equal(mixCoupon.productBreakdown.length, 1);
+  assert.equal(mixCoupon.categoryBreakdown.find((c) => c.categorySlug === 'body-care').eligibleSubtotal, 0);
+
+  // Incomplete line order does NOT trigger line-level category filter attribution when scope === 'all'
+  const bodyFilteredReport = aggregateCouponAnalytics({
+    orders,
+    rawCoupons: {},
+    filters: { period: 'all', categorySlug: 'body-care' },
+    nowMs
+  });
+  assert.equal(bodyFilteredReport.summary.couponOrders, 0);
+
+  // All 3 orders remain visible in recentUses with explicit lineAllocationIncomplete flag
+  assert.equal(report.recentUses.length, 3);
+  const malUse = report.recentUses.find((u) => u.invoiceCode === 'DND-MAL-2');
+  const mismUse = report.recentUses.find((u) => u.invoiceCode === 'DND-MISM-3');
+  const compUse = report.recentUses.find((u) => u.invoiceCode === 'DND-COMP-1');
+  assert.equal(malUse.lineAllocationIncomplete, true);
+  assert.equal(mismUse.lineAllocationIncomplete, true);
+  assert.equal(compUse.lineAllocationIncomplete, false);
+
+  // CSV products and categories exports do NOT contain partial lines
+  const { csvContent: productsCsv } = buildCouponAnalyticsCsv({ report, dataset: 'products' });
+  const { csvContent: categoriesCsv } = buildCouponAnalyticsCsv({ report, dataset: 'categories' });
+  assert.equal(productsCsv.includes('prod_partial_only'), false);
+  assert.ok(productsCsv.includes('prod_good'));
+  // body-care row in categories CSV must have 0 quantity and 0.00 subtotal
+  assert.ok(categoriesCsv.includes('"body-care","العناية بالجسم","0","0.00","0","0","0.00"'));
+});
+
+test('Section L2: Strict historical coupon snapshot validation (canonical categories, scope=all, fixed+maxDiscount, legacy snapshots)', () => {
+  // All 4 canonical category slugs accepted
+  for (const slug of ['hair-care', 'body-care', 'fragrance', 'skin-care']) {
+    const validCat = validateOrderCouponSnapshot({
+      id: 'cpn_cat',
+      code: 'CAT10',
+      discountType: 'percentage',
+      discountValue: 10,
+      scope: 'category',
+      categorySlug: slug,
+      eligibleSubtotal: 200,
+      discountAmount: 20
+    });
+    assert.ok(validCat, `Expected canonical category '${slug}' to be accepted`);
+    assert.equal(validCat.categorySlug, slug);
+  }
+
+  // Unknown category slug rejected
+  assert.equal(
+    validateOrderCouponSnapshot({
+      id: 'cpn_cat_bad',
+      code: 'CAT10',
+      discountType: 'percentage',
+      discountValue: 10,
+      scope: 'category',
+      categorySlug: 'electronics',
+      eligibleSubtotal: 200,
+      discountAmount: 20
+    }),
+    null
+  );
+
+  // Empty category slug rejected
+  for (const emptySlug of ['', '   ', null, undefined]) {
+    assert.equal(
+      validateOrderCouponSnapshot({
+        id: 'cpn_cat_empty',
+        code: 'CAT10',
+        discountType: 'percentage',
+        discountValue: 10,
+        scope: 'category',
+        categorySlug: emptySlug,
+        eligibleSubtotal: 200,
+        discountAmount: 20
+      }),
+      null
+    );
+  }
+
+  // All-products snapshot with unexpected categorySlug rejected
+  for (const unexpectedCat of ['hair-care', '', 'unknown']) {
+    assert.equal(
+      validateOrderCouponSnapshot({
+        id: 'cpn_all_bad',
+        code: 'ALL10',
+        discountType: 'percentage',
+        discountValue: 10,
+        scope: 'all',
+        categorySlug: unexpectedCat,
+        eligibleSubtotal: 200,
+        discountAmount: 20
+      }),
+      null
+    );
+  }
+
+  // Fixed coupon with maximumDiscount rejected
+  assert.equal(
+    validateOrderCouponSnapshot({
+      id: 'cpn_fixed_max',
+      code: 'FIX50',
+      discountType: 'fixed',
+      discountValue: 50,
+      scope: 'all',
+      categorySlug: null,
+      maximumDiscount: 100,
+      eligibleSubtotal: 300,
+      discountAmount: 50
+    }),
+    null
+  );
+
+  // Valid percentage coupon with maximumDiscount accepted
+  const validPctMax = validateOrderCouponSnapshot({
+    id: 'cpn_pct_max',
+    code: 'PCT20',
+    discountType: 'percentage',
+    discountValue: 20,
+    scope: 'all',
+    categorySlug: null,
+    maximumDiscount: 80,
+    eligibleSubtotal: 500,
+    discountAmount: 80
+  });
+  assert.ok(validPctMax);
+  assert.equal(validPctMax.maximumDiscount, 80);
+
+  // Legacy snapshot omitting optional fields (no categorySlug, minimumSubtotal, maximumDiscount, appliedAt, eligibleProductLines) preserved
+  const legacyNoOptional = validateOrderCouponSnapshot({
+    id: 'cpn_leg1',
+    code: 'LEG10',
+    discountType: 'fixed',
+    discountValue: 25,
+    scope: 'all',
+    eligibleSubtotal: 250,
+    discountAmount: 25
+  });
+  assert.ok(legacyNoOptional);
+  assert.equal(legacyNoOptional.groupKey, 'id:cpn_leg1');
+  assert.equal(legacyNoOptional.lineAllocationIncomplete, true);
+
+  // Legacy snapshot without coupon ID preserved
+  const legacyNoId = validateOrderCouponSnapshot({
+    code: 'OLDNOID',
+    discountType: 'percentage',
+    discountValue: 15,
+    scope: 'all',
+    eligibleSubtotal: 400,
+    discountAmount: 60
+  });
+  assert.ok(legacyNoId);
+  assert.equal(legacyNoId.groupKey, 'code:OLDNOID');
+  assert.equal(legacyNoId.couponId, null);
+
+  // Aggregate invalid historical snapshots: increment dataQuality.invalidCouponSnapshots & contribute 0 to metrics
+  const nowMs = Date.UTC(2026, 10, 15, 12, 0, 0);
+  const agg = aggregateCouponAnalytics({
+    orders: {
+      bad_cat: {
+        invoiceCode: 'INV-BAD-CAT',
+        timestamp: nowMs,
+        status: 'delivered',
+        phone: '01012345678',
+        totalAmount: 180,
+        coupon: {
+          id: 'cpn_bad1',
+          code: 'BADCAT',
+          discountType: 'percentage',
+          discountValue: 10,
+          scope: 'category',
+          categorySlug: 'accessories',
+          eligibleSubtotal: 200,
+          discountAmount: 20
+        }
+      },
+      bad_all_cat: {
+        invoiceCode: 'INV-BAD-ALLCAT',
+        timestamp: nowMs,
+        status: 'delivered',
+        phone: '01012345679',
+        totalAmount: 180,
+        coupon: {
+          id: 'cpn_bad2',
+          code: 'BADALL',
+          discountType: 'percentage',
+          discountValue: 10,
+          scope: 'all',
+          categorySlug: 'skin-care',
+          eligibleSubtotal: 200,
+          discountAmount: 20
+        }
+      },
+      bad_fixed_max: {
+        invoiceCode: 'INV-BAD-FIXMAX',
+        timestamp: nowMs,
+        status: 'delivered',
+        phone: '01012345670',
+        totalAmount: 150,
+        coupon: {
+          id: 'cpn_bad3',
+          code: 'BADFIX',
+          discountType: 'fixed',
+          discountValue: 50,
+          scope: 'all',
+          maximumDiscount: 40,
+          eligibleSubtotal: 200,
+          discountAmount: 50
+        }
+      }
+    },
+    rawCoupons: {},
+    nowMs
+  });
+
+  assert.equal(agg.dataQuality.invalidCouponSnapshots, 3);
+  assert.equal(agg.dataQuality.couponOrdersIncluded, 0);
+  assert.equal(agg.summary.couponOrders, 0);
+  assert.equal(agg.summary.eligibleSubtotal, 0);
+  assert.equal(agg.summary.discountAmount, 0);
+  assert.equal(agg.summary.associatedFinalOrderValue, 0);
+  assert.equal(agg.coupons.length, 0);
+});
+
+test('Section L3: Mixed-category order filter semantics and exact Arabic explanatory UI note', async () => {
+  const nowMs = Date.UTC(2026, 10, 15, 12, 0, 0);
+  const orders = {
+    mixed_ord: {
+      invoiceCode: 'DND-MIX-CAT',
+      timestamp: nowMs,
+      status: 'delivered',
+      phone: '01055556666',
+      totalAmount: 460,
+      products: [
+        { id: 'p_hair', name: 'شامبو', quantity: 1, price: 300 },
+        { id: 'p_skin', name: 'سيروم', quantity: 1, price: 200 }
+      ],
+      coupon: {
+        id: 'cpn_all20',
+        code: 'ALL20',
+        discountType: 'percentage',
+        discountValue: 20,
+        scope: 'all',
+        categorySlug: null,
+        eligibleSubtotal: 500,
+        discountAmount: 100,
+        eligibleProductLines: [
+          { productId: 'p_hair', categorySlug: 'hair-care', quantity: 1, lineSubtotal: 300 },
+          { productId: 'p_skin', categorySlug: 'skin-care', quantity: 1, lineSubtotal: 200 }
+        ]
+      }
+    }
+  };
+
+  const catFiltered = aggregateCouponAnalytics({
+    orders,
+    rawCoupons: {},
+    filters: { period: 'all', categorySlug: 'hair-care' },
+    nowMs
+  });
+
+  // Order counted once with full order-level & coupon-level financials (not prorated)
+  assert.equal(catFiltered.summary.couponOrders, 1);
+  assert.equal(catFiltered.summary.uniqueCustomers, 1);
+  assert.equal(catFiltered.summary.eligibleSubtotal, 500);
+  assert.equal(catFiltered.summary.discountAmount, 100);
+  assert.equal(catFiltered.summary.associatedFinalOrderValue, 460);
+
+  const dashSrc = await fs.readFile(path.resolve('src/pages/dashboard-coupon-analytics.astro'), 'utf8');
+  const expectedArabicNote =
+    'عند اختيار قسم، يتم عرض الطلبات التي تحتوي على منتج مؤهل من هذا القسم. القيم المالية تعكس إجمالي الكوبون والطلب بالكامل، ولا تمثل خصمًا موزعًا على هذا القسم وحده.';
+  assert.ok(dashSrc.includes(expectedArabicNote));
+  // Ensure recent-use incomplete indicator and data-quality message exist
+  assert.ok(dashSrc.includes('توزيع سطور المنتجات غير مكتمل'));
+  assert.ok(dashSrc.includes('lineAllocationIncomplete'));
+});
+

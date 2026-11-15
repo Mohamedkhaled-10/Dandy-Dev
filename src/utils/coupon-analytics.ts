@@ -844,7 +844,13 @@ export function validateOrderCouponSnapshot(rawSnapshot: unknown): ValidatedCoup
     if (typeof rawSnapshot.categorySlug !== 'string' || !rawSnapshot.categorySlug.trim()) {
       return null;
     }
-    categorySlug = rawSnapshot.categorySlug.trim().toLowerCase();
+    const normalizedCatSlug = rawSnapshot.categorySlug.trim().toLowerCase();
+    if (!isValidCanonicalCategorySlug(normalizedCatSlug)) {
+      return null;
+    }
+    categorySlug = normalizedCatSlug;
+  } else if (rawSnapshot.categorySlug !== undefined && rawSnapshot.categorySlug !== null) {
+    return null;
   }
 
   const rawEligibleSubtotal = parseFiniteNumber(rawSnapshot.eligibleSubtotal);
@@ -874,6 +880,9 @@ export function validateOrderCouponSnapshot(rawSnapshot: unknown): ValidatedCoup
 
   let maximumDiscount: number | null = null;
   if (rawSnapshot.maximumDiscount !== undefined && rawSnapshot.maximumDiscount !== null) {
+    if (discountType === 'fixed') {
+      return null;
+    }
     const maxDisc = parseFiniteNumber(rawSnapshot.maximumDiscount);
     if (maxDisc === null || maxDisc <= 0) return null;
     maximumDiscount = roundCurrency(maxDisc);
@@ -1086,6 +1095,7 @@ function matchesStaticCouponFilters(
     categorySlug: string | null;
     discountType: CouponDiscountType;
     eligibleProductLines?: ValidatedEligibleProductLine[];
+    lineAllocationIncomplete?: boolean;
   },
   filters: ValidatedAnalyticsFilters
 ): boolean {
@@ -1107,7 +1117,11 @@ function matchesStaticCouponFilters(
 
   if (filters.categorySlug) {
     const targetCat = filters.categorySlug;
-    if (snapshotOrDef.eligibleProductLines && snapshotOrDef.eligibleProductLines.length > 0) {
+    if (
+      !snapshotOrDef.lineAllocationIncomplete &&
+      snapshotOrDef.eligibleProductLines &&
+      snapshotOrDef.eligibleProductLines.length > 0
+    ) {
       const hasMatchingLine = snapshotOrDef.eligibleProductLines.some(
         (line) => (line.categorySlug || 'unknown') === targetCat
       );
@@ -1336,44 +1350,46 @@ function buildBreakdownAndTrendForEntries(
       );
     }
 
-    // Eligible product lines -> category & product breakdown (never re-adding order totals)
-    for (const line of snap.eligibleProductLines) {
-      const catSlug = line.categorySlug || 'unknown';
-      const catAccum = categoryAccums.get(catSlug) || categoryAccums.get('unknown')!;
-      catAccum.eligibleQuantity += line.quantity;
-      catAccum.eligibleSubtotal = roundCurrency(catAccum.eligibleSubtotal + line.lineSubtotal);
-      catAccum.orderKeys.add(entry.orderKey);
-      if (entry.ephemeralCustomerKey) {
-        catAccum.customerKeys.add(entry.ephemeralCustomerKey);
-      }
+    // Eligible product lines -> category & product breakdown (only when line allocation is complete)
+    if (!snap.lineAllocationIncomplete) {
+      for (const line of snap.eligibleProductLines) {
+        const catSlug = line.categorySlug || 'unknown';
+        const catAccum = categoryAccums.get(catSlug) || categoryAccums.get('unknown')!;
+        catAccum.eligibleQuantity += line.quantity;
+        catAccum.eligibleSubtotal = roundCurrency(catAccum.eligibleSubtotal + line.lineSubtotal);
+        catAccum.orderKeys.add(entry.orderKey);
+        if (entry.ephemeralCustomerKey) {
+          catAccum.customerKeys.add(entry.ephemeralCustomerKey);
+        }
 
-      const histName = entry.productNamesMap.get(line.productId) || '';
-      const hasMissingName = !histName;
-      const resolvedName = histName || line.productId;
-      const productKey = `${line.productId}::${catSlug}`;
-      let prodAccum = productAccums.get(productKey);
-      if (!prodAccum) {
-        prodAccum = {
-          productId: line.productId,
-          productName: resolvedName,
-          categorySlug: catSlug,
-          eligibleQuantity: 0,
-          eligibleSubtotal: 0,
-          orderKeys: new Set(),
-          customerKeys: new Set(),
-          hasMissingHistoricalName: hasMissingName
-        };
-        productAccums.set(productKey, prodAccum);
-      } else if (prodAccum.hasMissingHistoricalName && histName) {
-        prodAccum.productName = histName;
-        prodAccum.hasMissingHistoricalName = false;
-      }
+        const histName = entry.productNamesMap.get(line.productId) || '';
+        const hasMissingName = !histName;
+        const resolvedName = histName || line.productId;
+        const productKey = `${line.productId}::${catSlug}`;
+        let prodAccum = productAccums.get(productKey);
+        if (!prodAccum) {
+          prodAccum = {
+            productId: line.productId,
+            productName: resolvedName,
+            categorySlug: catSlug,
+            eligibleQuantity: 0,
+            eligibleSubtotal: 0,
+            orderKeys: new Set(),
+            customerKeys: new Set(),
+            hasMissingHistoricalName: hasMissingName
+          };
+          productAccums.set(productKey, prodAccum);
+        } else if (prodAccum.hasMissingHistoricalName && histName) {
+          prodAccum.productName = histName;
+          prodAccum.hasMissingHistoricalName = false;
+        }
 
-      prodAccum.eligibleQuantity += line.quantity;
-      prodAccum.eligibleSubtotal = roundCurrency(prodAccum.eligibleSubtotal + line.lineSubtotal);
-      prodAccum.orderKeys.add(entry.orderKey);
-      if (entry.ephemeralCustomerKey) {
-        prodAccum.customerKeys.add(entry.ephemeralCustomerKey);
+        prodAccum.eligibleQuantity += line.quantity;
+        prodAccum.eligibleSubtotal = roundCurrency(prodAccum.eligibleSubtotal + line.lineSubtotal);
+        prodAccum.orderKeys.add(entry.orderKey);
+        if (entry.ephemeralCustomerKey) {
+          prodAccum.customerKeys.add(entry.ephemeralCustomerKey);
+        }
       }
     }
 
@@ -1728,9 +1744,11 @@ export function aggregateCouponAnalytics(params: {
       if (snap.lineAllocationIncomplete) dataQuality.snapshotLineMismatches++;
       if (entry.status === 'unknown') dataQuality.unknownOrderStatuses++;
 
-      for (const line of snap.eligibleProductLines) {
-        if (!entry.productNamesMap.has(line.productId)) {
-          dataQuality.missingHistoricalProductNames++;
+      if (!snap.lineAllocationIncomplete) {
+        for (const line of snap.eligibleProductLines) {
+          if (!entry.productNamesMap.has(line.productId)) {
+            dataQuality.missingHistoricalProductNames++;
+          }
         }
       }
 
