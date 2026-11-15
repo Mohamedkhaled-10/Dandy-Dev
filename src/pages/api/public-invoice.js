@@ -201,10 +201,40 @@ export async function POST(context) {
       );
     }
 
+    let sanitizedOrder = lookup.order;
+    try {
+      const couponSnap = await adminDb.ref(`orders/${lookup.order.orderId}/coupon`).once('value');
+      const rawCoupon = couponSnap && typeof couponSnap.val === 'function' ? couponSnap.val() : null;
+      if (
+        rawCoupon &&
+        typeof rawCoupon === 'object' &&
+        !Array.isArray(rawCoupon) &&
+        typeof rawCoupon.code === 'string' &&
+        rawCoupon.code.trim() &&
+        Number.isFinite(Number(rawCoupon.discountAmount)) &&
+        Number(rawCoupon.discountAmount) > 0
+      ) {
+        sanitizedOrder = {
+          ...lookup.order,
+          coupon: {
+            code: rawCoupon.code.trim().toUpperCase(),
+            discountType: rawCoupon.discountType === 'fixed' ? 'fixed' : 'percentage',
+            discountValue: Number(rawCoupon.discountValue) || 0,
+            scope: rawCoupon.scope === 'category' ? 'category' : 'all',
+            categorySlug: rawCoupon.scope === 'category' ? (rawCoupon.categorySlug ?? null) : null,
+            eligibleSubtotal: Number(rawCoupon.eligibleSubtotal) || 0,
+            discountAmount: Math.round((Number(rawCoupon.discountAmount) + Number.EPSILON) * 100) / 100
+          }
+        };
+      }
+    } catch (_) {
+      // Best-effort coupon metadata attachment; never fail invoice lookup
+    }
+
     return new Response(
       JSON.stringify({
         success: true,
-        order: lookup.order
+        order: sanitizedOrder
       }),
       { status: 200, headers: SECURITY_HEADERS }
     );

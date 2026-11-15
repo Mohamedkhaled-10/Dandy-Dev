@@ -26,6 +26,8 @@ export interface OrderResponseSummary {
   orderId: string;
   invoiceCode: string;
   subtotal: number;
+  couponCode?: string;
+  couponDiscountAmount?: number;
   shippingFee: number;
   totalAmount: number;
 }
@@ -204,10 +206,15 @@ export function computeOrderRequestFingerprint(input: {
   address: string;
   customerId: string | null;
   items: any[];
+  couponCode?: string | null;
 }): string {
   const normalizedPhone = normalizeEgyptianPhone(input.phone) || input.phone.trim();
   const normalizedEmail =
     input.email && input.email !== 'N/A' ? input.email.trim().toLowerCase() : 'n/a';
+  const normalizedCouponCode =
+    typeof input.couponCode === 'string' && input.couponCode.trim()
+      ? input.couponCode.trim().toUpperCase()
+      : null;
 
   const canonicalPayload = canonicalizeJsonValue({
     name: input.name.trim(),
@@ -217,6 +224,7 @@ export function computeOrderRequestFingerprint(input: {
     city: input.city.trim(),
     address: input.address.trim(),
     customerId: input.customerId || null,
+    couponCode: normalizedCouponCode,
     items: Array.isArray(input.items) ? input.items.map(canonicalizeItemForFingerprint) : []
   });
 
@@ -224,6 +232,25 @@ export function computeOrderRequestFingerprint(input: {
     .createHash('sha256')
     .update(JSON.stringify(canonicalPayload), 'utf8')
     .digest('hex');
+}
+
+function extractCouponSummaryFields(orderData: any): {
+  couponCode?: string;
+  couponDiscountAmount?: number;
+} {
+  if (!isPlainObject(orderData) || !isPlainObject(orderData.coupon)) {
+    return {};
+  }
+  const code =
+    typeof orderData.coupon.code === 'string' ? orderData.coupon.code.trim().toUpperCase() : '';
+  const discountAmount = Number(orderData.coupon.discountAmount);
+  if (!code || !Number.isFinite(discountAmount) || discountAmount <= 0) {
+    return {};
+  }
+  return {
+    couponCode: code,
+    couponDiscountAmount: Math.round((discountAmount + Number.EPSILON) * 100) / 100
+  };
 }
 
 function allocateOrderId(adminDb: any): string {
@@ -265,6 +292,7 @@ async function promoteExistingOrderToCompleted(params: {
         ? orderData.invoiceCode
         : `DNY-${orderId.slice(-6)}`,
     subtotal: Number(orderData.subtotal) || 0,
+    ...extractCouponSummaryFields(orderData),
     shippingFee: Number(orderData.shippingFee) || 0,
     totalAmount: Number(orderData.totalAmount) || 0
   };
@@ -917,6 +945,7 @@ export async function transitionCommittingToCompleted(params: {
           orderId: payload.orderId || current.reservedOrderId,
           invoiceCode: payload.invoiceCode || payload.orderData.invoiceCode,
           subtotal: Number(payload.orderData.subtotal) || 0,
+          ...extractCouponSummaryFields(payload.orderData),
           shippingFee: Number(payload.orderData.shippingFee) || 0,
           totalAmount: Number(payload.orderData.totalAmount) || 0
         }
@@ -1059,6 +1088,8 @@ export async function resolveCompletedReplayPayload(params: {
   orderId: string;
   invoiceCode: string;
   subtotal: number;
+  couponCode?: string;
+  couponDiscountAmount?: number;
   shippingFee: number;
   totalAmount: number;
   invoiceAccessToken: string;
@@ -1096,6 +1127,18 @@ export async function resolveCompletedReplayPayload(params: {
     throw new Error(`Invalid invoice access token resolved for replay of ${orderId}`);
   }
 
+  const couponFallback = extractCouponSummaryFields(orderData);
+  const couponCode =
+    typeof record.responseSummary?.couponCode === 'string' && record.responseSummary.couponCode.trim()
+      ? record.responseSummary.couponCode.trim().toUpperCase()
+      : couponFallback.couponCode;
+  const rawCouponDiscount =
+    record.responseSummary?.couponDiscountAmount ?? couponFallback.couponDiscountAmount;
+  const couponDiscountAmount =
+    typeof rawCouponDiscount === 'number' && Number.isFinite(rawCouponDiscount) && rawCouponDiscount > 0
+      ? rawCouponDiscount
+      : undefined;
+
   return {
     success: true,
     orderId,
@@ -1104,6 +1147,9 @@ export async function resolveCompletedReplayPayload(params: {
       orderData.invoiceCode ||
       `DNY-${orderId.slice(-6)}`,
     subtotal: Number(record.responseSummary?.subtotal ?? orderData.subtotal) || 0,
+    ...(couponCode && couponDiscountAmount !== undefined
+      ? { couponCode, couponDiscountAmount }
+      : {}),
     shippingFee: Number(record.responseSummary?.shippingFee ?? orderData.shippingFee) || 0,
     totalAmount: Number(record.responseSummary?.totalAmount ?? orderData.totalAmount) || 0,
     invoiceAccessToken: token,

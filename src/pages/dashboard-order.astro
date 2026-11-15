@@ -355,9 +355,21 @@ import BaseLayout from '../layouts/BaseLayout.astro';
               <!-- Items injected here -->
             </tbody>
             <tfoot style="background: var(--color-surface-soft, #fcfcfc);">
+              <tr id="md-subtotal-row">
+                <td colspan="3" style="text-align: left; font-weight: 700; color: var(--color-muted);">المجموع الفرعي للمنتجات:</td>
+                <td id="md-subtotal" style="text-align: left; font-weight: 700; color: var(--color-primary);">0 ج.م</td>
+              </tr>
+              <tr id="md-coupon-row" style="display: none; background: rgba(5, 150, 105, 0.05);">
+                <td colspan="3" id="md-coupon-label" style="text-align: left; font-weight: 700; color: #059669;">خصم الكوبون:</td>
+                <td id="md-coupon-discount" style="text-align: left; font-weight: 800; color: #059669; direction: ltr;">0 ج.م</td>
+              </tr>
+              <tr id="md-shipping-row">
+                <td colspan="3" style="text-align: left; font-weight: 700; color: var(--color-muted);">مصاريف الشحن:</td>
+                <td id="md-shipping-fee" style="text-align: left; font-weight: 700; color: var(--color-primary);">0 ج.م</td>
+              </tr>
               <tr>
-                <td colspan="3" style="text-align: left; font-weight: 800; color: var(--color-primary);">إجمالي الطلب:</td>
-                <td id="md-grand-total" style="text-align: left; font-weight: 800; color: var(--color-blush); font-size: 1.1rem;">0 EGP</td>
+                <td colspan="3" style="text-align: left; font-weight: 800; color: var(--color-primary);">إجمالي الطلب النهائي:</td>
+                <td id="md-grand-total" style="text-align: left; font-weight: 800; color: var(--color-blush); font-size: 1.1rem;">0 ج.م</td>
               </tr>
             </tfoot>
           </table>
@@ -1519,11 +1531,24 @@ import BaseLayout from '../layouts/BaseLayout.astro';
         }).join('\n');
       }
 
-      const wpSum = `مرحباً ${o.name ?? 'يا فندم'}، نتواصل معكِ من Dandy لتأكيد تفاصيل طلبك:\n- كود الفاتورة: ${o.invoiceCode || o.id}\n- العنوان: ${fullLocation} - ${o.address ?? ''}\n\nالمنتجات:\n${productsListText}\n\nنتمنى لكِ يوماً سعيداً!`;
+      const rawCoupon = o.coupon && typeof o.coupon === 'object' && !Array.isArray(o.coupon)
+        ? o.coupon
+        : null;
+      const couponCode = rawCoupon && typeof rawCoupon.code === 'string' && rawCoupon.code.trim()
+        ? rawCoupon.code.trim().toUpperCase()
+        : '';
+      const couponDiscount = rawCoupon && Number.isFinite(Number(rawCoupon.discountAmount)) && Number(rawCoupon.discountAmount) > 0
+        ? Math.round(Number(rawCoupon.discountAmount) * 100) / 100
+        : 0;
+      const couponSummaryText = couponCode && couponDiscount > 0
+        ? `\n- خصم الكوبون (${couponCode}): -${currencyFormatter.format(couponDiscount)} ج.م`
+        : '';
+
+      const wpSum = `مرحباً ${o.name ?? 'يا فندم'}، نتواصل معكِ من Dandy لتأكيد تفاصيل طلبك:\n- كود الفاتورة: ${o.invoiceCode || o.id}\n- العنوان: ${fullLocation} - ${o.address ?? ''}\n\nالمنتجات:\n${productsListText}${couponSummaryText}\n\nنتمنى لكِ يوماً سعيداً!`;
       document.getElementById('md-whatsapp').href = `https://wa.me/${(o.phone || '').replace(/[^0-9]/g, '')}?text=${encodeURIComponent(wpSum)}`;
 
       const copyBtn = document.getElementById('md-copy-btn');
-      const copyText = `طلب رقم: ${o.invoiceCode || o.id}\nالاسم: ${o.name || '-'}\nالهاتف: ${o.phone || '-'}\nالعنوان: ${fullLocation} - ${o.address || ''}\n\nالمنتجات:\n${productsListText}`;
+      const copyText = `طلب رقم: ${o.invoiceCode || o.id}\nالاسم: ${o.name || '-'}\nالهاتف: ${o.phone || '-'}\nالعنوان: ${fullLocation} - ${o.address || ''}\n\nالمنتجات:\n${productsListText}${couponSummaryText}`;
       
       copyBtn.onclick = () => {
         navigator.clipboard.writeText(copyText).then(() => {
@@ -1541,6 +1566,11 @@ import BaseLayout from '../layouts/BaseLayout.astro';
       };
 
       const itemsBody = document.getElementById('md-items-body');
+      const subtotalEl = document.getElementById('md-subtotal');
+      const couponRowEl = document.getElementById('md-coupon-row');
+      const couponLabelEl = document.getElementById('md-coupon-label');
+      const couponDiscountEl = document.getElementById('md-coupon-discount');
+      const shippingFeeEl = document.getElementById('md-shipping-fee');
       const grandTotalEl = document.getElementById('md-grand-total');
       itemsBody.innerHTML = '';
       
@@ -1585,12 +1615,37 @@ import BaseLayout from '../layouts/BaseLayout.astro';
           itemsBody.appendChild(tr);
         });
         
+        const subtotalVal = (o.subtotal !== undefined && o.subtotal !== null && !Number.isNaN(Number(o.subtotal)))
+          ? Number(o.subtotal)
+          : calculatedTotal;
         const shippingFee = parseFloat(o.shippingFee) || 0;
-        const finalTotal = (parseFloat(o.totalAmount) || (calculatedTotal + shippingFee));
+        const savedTotal = (o.totalAmount !== undefined && o.totalAmount !== null && !Number.isNaN(Number(o.totalAmount)))
+          ? Number(o.totalAmount)
+          : NaN;
+        const finalTotal = Number.isFinite(savedTotal) && savedTotal > 0
+          ? savedTotal
+          : Math.max(0, Math.round((subtotalVal - couponDiscount + shippingFee) * 100) / 100);
+
+        if (subtotalEl) subtotalEl.textContent = currencyFormatter.format(subtotalVal) + ' ج.م';
+        if (couponRowEl && couponLabelEl && couponDiscountEl) {
+          if (couponCode && couponDiscount > 0) {
+            couponLabelEl.textContent = 'خصم الكوبون (' + couponCode + '):';
+            couponDiscountEl.textContent = '-' + currencyFormatter.format(couponDiscount) + ' ج.م';
+            couponRowEl.style.display = 'table-row';
+          } else {
+            couponRowEl.style.display = 'none';
+            couponLabelEl.textContent = 'خصم الكوبون:';
+            couponDiscountEl.textContent = '0 ج.م';
+          }
+        }
+        if (shippingFeeEl) shippingFeeEl.textContent = currencyFormatter.format(shippingFee) + ' ج.م';
         grandTotalEl.textContent = currencyFormatter.format(finalTotal) + ' ج.م';
 
       } else {
         itemsBody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--color-muted); padding: 20px;">السلة خالية من المنتجات أو غير متوفرة.</td></tr>';
+        if (subtotalEl) subtotalEl.textContent = '0 ج.م';
+        if (couponRowEl) couponRowEl.style.display = 'none';
+        if (shippingFeeEl) shippingFeeEl.textContent = '0 ج.م';
         grandTotalEl.textContent = '0 ج.م';
       }
 

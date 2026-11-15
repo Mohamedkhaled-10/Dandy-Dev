@@ -47,6 +47,11 @@ import {
   matchCollectionClientChoice,
   validateAndResolveCollectionItemVariant
 } from '../../utils/server-variant-pricing.ts';
+import {
+  validateCouponCode,
+  evaluateCouponEligibility,
+  roundCurrency
+} from '../../utils/coupons.ts';
 
 const SECURITY_HEADERS = {
   'Content-Type': 'application/json',
@@ -413,6 +418,35 @@ export async function POST(context) {
       return jsonResponse({ success: false, error: 'EMPTY_CART', message: 'سلة المشتريات فارغة' }, 400);
     }
 
+    // Validate optional couponCode (only treat undefined/null/empty whitespace as no coupon)
+    let requestedCouponCode = null;
+    if (body.couponCode !== undefined && body.couponCode !== null) {
+      if (typeof body.couponCode !== 'string') {
+        return jsonResponse(
+          {
+            success: false,
+            error: 'INVALID_COUPON_CODE',
+            message: 'صيغة كود الخصم غير صالحة.'
+          },
+          400
+        );
+      }
+      if (body.couponCode.trim() !== '') {
+        const couponCodeCheck = validateCouponCode(body.couponCode);
+        if (!couponCodeCheck.valid || !couponCodeCheck.normalizedCode) {
+          return jsonResponse(
+            {
+              success: false,
+              error: couponCodeCheck.error || 'INVALID_COUPON_CODE',
+              message: couponCodeCheck.message || 'كود الكوبون غير صالح.'
+            },
+            400
+          );
+        }
+        requestedCouponCode = couponCodeCheck.normalizedCode;
+      }
+    }
+
     // 8. Validate database & invoice token encryption configuration BEFORE any permanent DB writes
     if (!adminDb && !process.env.FIREBASE_SERVICE_ACCOUNT) {
       console.error('[CreateOrder] FIREBASE_SERVICE_ACCOUNT not configured in environment.');
@@ -464,6 +498,7 @@ export async function POST(context) {
         city,
         address,
         customerId,
+        couponCode: requestedCouponCode,
         items
       });
 
@@ -606,12 +641,22 @@ export async function POST(context) {
           _deps
         });
 
+        const recoveredCoupon = commitPayload.orderData?.coupon;
+        const recoveredCouponFields =
+          recoveredCoupon && typeof recoveredCoupon === 'object' && recoveredCoupon.code && Number(recoveredCoupon.discountAmount) > 0
+            ? {
+                couponCode: String(recoveredCoupon.code),
+                couponDiscountAmount: roundCurrency(Number(recoveredCoupon.discountAmount))
+              }
+            : {};
+
         return jsonResponse(
           {
             success: true,
             orderId: commitPayload.orderId,
             invoiceCode: commitPayload.invoiceCode,
             subtotal: commitPayload.orderData.subtotal,
+            ...recoveredCouponFields,
             shippingFee: commitPayload.orderData.shippingFee,
             totalAmount: commitPayload.orderData.totalAmount,
             invoiceAccessToken: recoveredToken,
@@ -631,7 +676,16 @@ export async function POST(context) {
 
     // 11. Fetch campaign & validate real server-side product pricing & availability
     const productsSnapshot = [];
+    const productsMap = {};
+    const couponEvalItems = [];
+    let hasPinkFridayInOrder = false;
     let subtotal = 0;
+
+    const nowMs =
+      typeof _deps?.now === 'function' && Number.isFinite(_deps.now()) && _deps.now() > 0
+        ? Math.trunc(_deps.now())
+        : Date.now();
+    const nowDate = new Date(nowMs);
 
     let activeCampaign = null;
     try {
@@ -658,7 +712,7 @@ export async function POST(context) {
 
         const campStatus =
           activeCampaign && activeCampaign.enabled !== false
-            ? getCampaignStatus(activeCampaign)
+            ? getCampaignStatus(activeCampaign, nowDate)
             : 'disabled';
 
         if (campStatus !== 'active') {
@@ -848,6 +902,17 @@ export async function POST(context) {
 
         const lineTotal = effectiveUnitPrice * quantity;
         subtotal += lineTotal;
+        hasPinkFridayInOrder = true;
+        couponEvalItems.push({
+          id: String(collection.id),
+          productId: String(collection.id),
+          quantity,
+          lineTotal,
+          isPinkFriday: true,
+          isCollection: true,
+          type: 'collection',
+          collectionId: String(collection.id)
+        });
 
         productsSnapshot.push({
           type: 'collection',
@@ -954,7 +1019,8 @@ export async function POST(context) {
           onSale: Boolean(pData.onSale),
           discount: pData.discount
         },
-        activeCampaign
+        activeCampaign,
+        nowDate
       );
 
       const isClientClaimingCampaign = Boolean(item.isPinkFriday || item.campaignPrice);
@@ -981,6 +1047,21 @@ export async function POST(context) {
       const effectiveUnitPrice = itemPricing.effectiveUnitPrice;
       const lineTotal = itemPricing.lineTotal;
       subtotal += lineTotal;
+
+      if (pfPricing.isEligible) {
+        hasPinkFridayInOrder = true;
+      }
+      productsMap[rawId] = {
+        id: rawId,
+        category: pData.category ?? null
+      };
+      couponEvalItems.push({
+        id: rawId,
+        productId: rawId,
+        quantity,
+        lineTotal,
+        isPinkFriday: Boolean(pfPricing.isEligible)
+      });
 
       const snap = {
         id: rawId,
@@ -1038,24 +1119,112 @@ export async function POST(context) {
       );
     }
 
-    // 12. Calculate shipping & total using centralized policy authority
-    const shippingFee = calculateShippingFee(governorate, subtotal);
-    const totalAmount = subtotal + shippingFee;
+    // 12. Calculate pre-coupon shipping, validate optional coupon, and compute final payable total
+    subtotal = roundCurrency(subtotal);
+    const shippingFee = roundCurrency(calculateShippingFee(governorate, subtotal));
+
+    let appliedCouponSnapshot = null;
+    let couponDiscountAmount = 0;
+
+    if (requestedCouponCode) {
+      const couponsSnap = await adminDb.ref('settings/coupons').once('value');
+      const rawCouponsVal = couponsSnap && typeof couponsSnap.val === 'function' ? couponsSnap.val() : null;
+      let matchedCoupon = null;
+      let matchedCouponId = null;
+
+      if (rawCouponsVal && typeof rawCouponsVal === 'object' && !Array.isArray(rawCouponsVal)) {
+        for (const [key, entry] of Object.entries(rawCouponsVal)) {
+          if (!entry || typeof entry !== 'object' || Array.isArray(entry)) continue;
+          const entryCodeCheck = validateCouponCode(entry.code);
+          if (entryCodeCheck.valid && entryCodeCheck.normalizedCode === requestedCouponCode) {
+            matchedCouponId =
+              typeof entry.id === 'string' && entry.id.trim() ? entry.id.trim() : String(key).trim();
+            matchedCoupon = {
+              code: entryCodeCheck.normalizedCode,
+              discountType: entry.discountType === 'fixed' ? 'fixed' : 'percentage',
+              discountValue: Number(entry.discountValue) || 0,
+              scope: entry.scope === 'category' ? 'category' : 'all',
+              categorySlug: entry.scope === 'category' ? (entry.categorySlug || null) : null,
+              minimumSubtotal: entry.minimumSubtotal ?? null,
+              maximumDiscount: entry.discountType === 'percentage' ? (entry.maximumDiscount ?? null) : null,
+              startsAt: entry.startsAt ?? null,
+              expiresAt: entry.expiresAt ?? null,
+              isActive: entry.isActive === true
+            };
+            break;
+          }
+        }
+      }
+
+      const evaluation = evaluateCouponEligibility({
+        coupon: matchedCoupon,
+        items: couponEvalItems,
+        hasPinkFridayInOrder,
+        productsMap,
+        now: nowMs
+      });
+
+      if (!evaluation.eligible || evaluation.discountAmount <= 0) {
+        const rejectMessages = {
+          COUPON_NOT_FOUND: 'كود الخصم المدخل غير صحيح أو غير موجود.',
+          COUPON_DISABLED: 'عذراً، كود الخصم غير مفعّل حالياً.',
+          COUPON_NOT_STARTED: 'عذراً، لم تبدأ فترة صلاحية هذا الكوبون بعد.',
+          COUPON_EXPIRED: 'عذراً، انتهت صلاحية كود الخصم.',
+          PINK_FRIDAY_NOT_COMBINABLE: 'عذراً، لا يمكن استخدام كوبونات الخصم مع منتجات أو عروض Pink Friday.',
+          NO_ELIGIBLE_CATEGORY_ITEMS: 'عذراً، لا توجد منتجات مؤهلة لهذا الكوبون في طلبك.',
+          EMPTY_ELIGIBLE_SUBTOTAL: 'عذراً، لا توجد منتجات مؤهلة لهذا الكوبون في طلبك.',
+          MINIMUM_SUBTOTAL_NOT_MET: `عذراً، يتطلب هذا الكوبون حداً أدنى للمنتجات المؤهلة بقيمة ${matchedCoupon?.minimumSubtotal ?? 0} ج.م.`
+        };
+        return await failBusinessOrConfig(
+          {
+            success: false,
+            error: evaluation.reason || 'COUPON_INELIGIBLE',
+            message: rejectMessages[evaluation.reason] || 'عذراً، كود الخصم غير صالح لهذا الطلب.'
+          },
+          evaluation.reason === 'PINK_FRIDAY_NOT_COMBINABLE' ? 409 : 400,
+          evaluation.reason || 'COUPON_INELIGIBLE'
+        );
+      }
+
+      couponDiscountAmount = roundCurrency(evaluation.discountAmount);
+      const appliedAtIso = new Date(nowMs).toISOString();
+      appliedCouponSnapshot = {
+        id: matchedCouponId || requestedCouponCode,
+        code: matchedCoupon.code,
+        discountType: matchedCoupon.discountType,
+        discountValue: matchedCoupon.discountValue,
+        scope: matchedCoupon.scope,
+        categorySlug: matchedCoupon.categorySlug ?? null,
+        minimumSubtotal: matchedCoupon.minimumSubtotal ?? null,
+        maximumDiscount: matchedCoupon.maximumDiscount ?? null,
+        eligibleSubtotal: evaluation.eligibleSubtotal,
+        discountAmount: couponDiscountAmount,
+        appliedAt: appliedAtIso,
+        eligibleProductLines: evaluation.eligibleItems.map((line) => ({
+          productId: line.productId,
+          categorySlug: line.categorySlug,
+          quantity: line.quantity,
+          lineSubtotal: line.lineSubtotal
+        }))
+      };
+    }
+
+    const totalAmount = roundCurrency(subtotal - couponDiscountAmount + shippingFee);
 
     if (totalAmount <= 0) {
       return await failBusinessOrConfig(
         {
           success: false,
-          error: 'INVALID_TOTAL',
-          message: 'إجمالي الطلب غير صحيح'
+          error: requestedCouponCode ? 'INVALID_COUPON_TOTAL' : 'INVALID_TOTAL',
+          message: requestedCouponCode ? 'إجمالي الطلب بعد خصم الكوبون يجب أن يكون أكبر من صفر.' : 'إجمالي الطلب غير صحيح'
         },
         400,
-        'INVALID_TOTAL'
+        requestedCouponCode ? 'INVALID_COUPON_TOTAL' : 'INVALID_TOTAL'
       );
     }
 
     // 13. Pre-generate orderId, encrypted invoice token & fixed-ID notifications_outbox BEFORE Commit Fencing
-    const nowIso = new Date().toISOString();
+    const nowIso = nowDate.toISOString();
     const orderId =
       idempotencyLock?.reservedOrderId ||
       adminDb.ref('orders').push().key ||
@@ -1071,13 +1240,17 @@ export async function POST(context) {
       city,
       address,
       products: productsSnapshot,
-      subtotal: parseFloat(subtotal.toFixed(2)),
-      shippingFee: parseFloat(shippingFee.toFixed(2)),
-      totalAmount: parseFloat(totalAmount.toFixed(2)),
+      subtotal,
+      shippingFee,
+      totalAmount,
       invoiceCode,
       status: 'New',
       timestamp: nowIso
     };
+
+    if (appliedCouponSnapshot) {
+      orderData.coupon = appliedCouponSnapshot;
+    }
 
     if (customerId) {
       orderData.customerId = customerId;
@@ -1250,6 +1423,9 @@ export async function POST(context) {
           orderId,
           invoiceCode,
           subtotal: orderData.subtotal,
+          ...(appliedCouponSnapshot
+            ? { couponCode: appliedCouponSnapshot.code, couponDiscountAmount }
+            : {}),
           shippingFee: orderData.shippingFee,
           totalAmount: orderData.totalAmount,
           invoiceAccessToken,
@@ -1287,6 +1463,9 @@ export async function POST(context) {
         orderId,
         invoiceCode,
         subtotal: orderData.subtotal,
+        ...(appliedCouponSnapshot
+          ? { couponCode: appliedCouponSnapshot.code, couponDiscountAmount }
+          : {}),
         shippingFee: orderData.shippingFee,
         totalAmount: orderData.totalAmount,
         invoiceAccessToken,

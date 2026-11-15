@@ -124,6 +124,8 @@
     var normalizedPhone = normalizeEgyptianPhoneClient(rawPhone) || rawPhone.trim();
     var rawEmail = typeof safe.email === 'string' ? safe.email.trim() : '';
     var normalizedEmail = rawEmail && rawEmail !== 'N/A' ? rawEmail.toLowerCase() : 'n/a';
+    var rawCoupon = typeof safe.couponCode === 'string' ? safe.couponCode.trim().toUpperCase() : '';
+    var normalizedCouponCode = rawCoupon ? rawCoupon : null;
 
     return canonicalizeJsonValue({
       name: typeof safe.name === 'string' ? safe.name.trim() : '',
@@ -133,6 +135,7 @@
       city: typeof safe.city === 'string' ? safe.city.trim() : '',
       address: typeof safe.address === 'string' ? safe.address.trim() : '',
       customerId: safe.customerId ? String(safe.customerId) : null,
+      couponCode: normalizedCouponCode,
       items: Array.isArray(safe.items) ? safe.items.map(canonicalizeItemForFingerprint) : []
     });
   }

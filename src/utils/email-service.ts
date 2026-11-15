@@ -383,10 +383,23 @@ export function formatEGP(amount: number | string | null | undefined): string {
  * - Safely recalculates missing or 0 values from line items.
  * - Delegates governorate shipping rates and free-shipping eligibility to `src/config/store-policy.ts`.
  */
+export interface CalculatedCouponSummary {
+  code: string;
+  discountType: string | null;
+  discountValue: number | null;
+  scope: string | null;
+  categorySlug: string | null;
+  eligibleSubtotal: number | null;
+  discountAmount: number;
+}
+
 export interface CalculatedFinancials {
   products: any[];
   calculatedSubtotal: number;
   subtotal: number;
+  couponCode: string | null;
+  couponDiscountAmount: number;
+  coupon: CalculatedCouponSummary | null;
   shippingFee: number;
   totalAmount: number;
   isFreeShipping: boolean;
@@ -399,6 +412,9 @@ export function calculateOrderFinancials(order: any): CalculatedFinancials {
       products: [],
       calculatedSubtotal: 0,
       subtotal: 0,
+      couponCode: null,
+      couponDiscountAmount: 0,
+      coupon: null,
       shippingFee: 0,
       totalAmount: 0,
       isFreeShipping: false,
@@ -493,9 +509,36 @@ export function calculateOrderFinancials(order: any): CalculatedFinancials {
     isIncomplete = true;
   }
 
-  // 2. Resolve shipping fee:
+  // 2. Resolve coupon snapshot (strictly from order.coupon, never legacy order.discount)
+  let couponCode: string | null = null;
+  let couponDiscountAmount = 0;
+  let couponSummary: CalculatedCouponSummary | null = null;
+  const rawCoupon = order.coupon && typeof order.coupon === 'object' && !Array.isArray(order.coupon)
+    ? order.coupon
+    : null;
+  if (rawCoupon) {
+    const parsedCode = typeof rawCoupon.code === 'string' && rawCoupon.code.trim()
+      ? rawCoupon.code.trim().toUpperCase()
+      : null;
+    const parsedDiscount = parseNumOrNull(rawCoupon.discountAmount);
+    if (parsedCode && parsedDiscount !== null && parsedDiscount > 0) {
+      couponCode = parsedCode;
+      couponDiscountAmount = parseFloat(parsedDiscount.toFixed(2));
+      couponSummary = {
+        code: parsedCode,
+        discountType: typeof rawCoupon.discountType === 'string' ? rawCoupon.discountType : null,
+        discountValue: parseNumOrNull(rawCoupon.discountValue),
+        scope: typeof rawCoupon.scope === 'string' ? rawCoupon.scope : null,
+        categorySlug: typeof rawCoupon.categorySlug === 'string' ? rawCoupon.categorySlug : null,
+        eligibleSubtotal: parseNumOrNull(rawCoupon.eligibleSubtotal),
+        discountAmount: couponDiscountAmount
+      };
+    }
+  }
+
+  // 3. Resolve shipping fee:
   // If explicitly specified in order, preserve it.
-  // Otherwise apply the centralized shipping policy from `src/config/store-policy.ts`.
+  // Otherwise apply the centralized shipping policy from `src/config/store-policy.ts` on pre-coupon subtotal.
   const rawShipping = parseNumOrNull(order.shippingFee);
   let shippingFee = 0;
 
@@ -505,16 +548,16 @@ export function calculateOrderFinancials(order: any): CalculatedFinancials {
     shippingFee = calculateShippingFee(order.governorate, subtotal);
   }
 
-  // 3. Resolve totalAmount:
+  // 4. Resolve totalAmount:
   // If order.totalAmount is present and > 0, use it.
-  // Otherwise fall back to (subtotal + shippingFee).
+  // Otherwise fall back to Math.max(0, subtotal - couponDiscountAmount + shippingFee).
   const rawTotal = parseNumOrNull(order.totalAmount);
   let totalAmount = 0;
 
   if (rawTotal !== null && rawTotal > 0) {
     totalAmount = rawTotal;
   } else if (subtotal > 0 || shippingFee > 0) {
-    totalAmount = parseFloat((subtotal + shippingFee).toFixed(2));
+    totalAmount = parseFloat(Math.max(0, subtotal - couponDiscountAmount + shippingFee).toFixed(2));
   } else {
     totalAmount = 0;
     if (hasValidProducts) isIncomplete = true;
@@ -524,6 +567,9 @@ export function calculateOrderFinancials(order: any): CalculatedFinancials {
     products: sanitizedProducts,
     calculatedSubtotal,
     subtotal: parseFloat(subtotal.toFixed(2)),
+    couponCode,
+    couponDiscountAmount,
+    coupon: couponSummary,
     shippingFee: parseFloat(shippingFee.toFixed(2)),
     totalAmount: parseFloat(totalAmount.toFixed(2)),
     isFreeShipping: shippingFee === 0,
@@ -862,6 +908,10 @@ export function generateOrderConfirmationText(
     return `• ${name} (الكمية: ${qty}) - ${total}`;
   }).join('\n');
 
+  const couponTextLine = financials.couponCode && financials.couponDiscountAmount > 0
+    ? `\n- خصم الكوبون (${financials.couponCode}): -${formatEGP(financials.couponDiscountAmount)}`
+    : '';
+
   return `DANDY COSMETICS - جمالكِ الطبيعي يبدأ من هنا
 ==================================================
 تم تأكيد استلام طلبك بنجاح
@@ -883,7 +933,7 @@ export function generateOrderConfirmationText(
 ${productsList || 'لا توجد منتجات'}
 
 الملخص المالي:
-- إجمالي المنتجات: ${formatEGP(financials.subtotal)}
+- إجمالي المنتجات: ${formatEGP(financials.subtotal)}${couponTextLine}
 - مصاريف الشحن: ${financials.isFreeShipping ? 'شحن مجاني' : formatEGP(financials.shippingFee)}
 - المبلغ المطلوب سداده عند الاستلام (COD): ${formatEGP(financials.totalAmount)}
 * الدفع نقداً عند استلام الشحنة.
@@ -932,6 +982,10 @@ export function generateOrderStatusText(
       statusMsg = 'تم تحديث حالة طلبك لدى داندي.';
   }
 
+  const couponStatusTextLine = financials.couponCode && financials.couponDiscountAmount > 0
+    ? `\n- إجمالي المنتجات: ${formatEGP(financials.subtotal)}\n- خصم الكوبون (${financials.couponCode}): -${formatEGP(financials.couponDiscountAmount)}`
+    : '';
+
   return `DANDY COSMETICS - جمالكِ الطبيعي يبدأ من هنا
 ==================================================
 تحديث حالة الطلب: ${status}
@@ -942,7 +996,7 @@ ${statusMsg}
 ملخص الطلب:
 - رقم الفاتورة: ${invoiceCode}
 - تاريخ الطلب: ${dateStr}
-- الحالة الحالية: ${status}
+- الحالة الحالية: ${status}${couponStatusTextLine}
 - المبلغ المطلوب سداده عند الاستلام (COD): ${formatEGP(financials.totalAmount)}
 
 ${isDiag ? 'ملاحظة: هذا البريد فحص تشغيلي تجريبي للإدارة.' : `عرض فاتورتك وتتبع طلبك:\n${trackingUrl}`}
@@ -1022,6 +1076,12 @@ export function generateOrderConfirmationEmail(
         <td style="padding:4px 0;color:#595050;font-size:13px;text-align:right;">إجمالي المنتجات:</td>
         <td style="padding:4px 0;color:#2c2828;font-size:14px;font-weight:700;text-align:left;">${formatEGP(financials.subtotal)}</td>
       </tr>
+      ${financials.couponCode && financials.couponDiscountAmount > 0 ? `
+      <tr>
+        <td style="padding:4px 0;color:#059669;font-size:13px;text-align:right;font-weight:700;">خصم الكوبون (<span dir="ltr">${escapeHtml(financials.couponCode)}</span>):</td>
+        <td style="padding:4px 0;color:#059669;font-size:14px;font-weight:800;text-align:left;" dir="ltr">-${formatEGP(financials.couponDiscountAmount)}</td>
+      </tr>
+      ` : ''}
       <tr>
         <td style="padding:4px 0;color:#595050;font-size:13px;text-align:right;">مصاريف الشحن${gov ? ` (${escapeHtml(gov)})` : ''}:</td>
         <td style="padding:4px 0;color:#2c2828;font-size:14px;font-weight:700;text-align:left;">
@@ -1221,6 +1281,16 @@ export function generateOrderStatusEmail(
 
           <div style="border-top:1px solid #ebdbe3;margin:8px 0;padding-top:8px;">
             <table width="100%" cellpadding="0" cellspacing="0" border="0">
+              ${financials.couponCode && financials.couponDiscountAmount > 0 ? `
+              <tr>
+                <td style="padding:2px 0;color:#595050;font-size:12px;text-align:right;">إجمالي المنتجات:</td>
+                <td style="padding:2px 0;color:#2c2828;font-size:12px;font-weight:700;text-align:left;">${formatEGP(financials.subtotal)}</td>
+              </tr>
+              <tr>
+                <td style="padding:2px 0 6px 0;color:#059669;font-size:12px;text-align:right;font-weight:700;">خصم الكوبون (<span dir="ltr">${escapeHtml(financials.couponCode)}</span>):</td>
+                <td style="padding:2px 0 6px 0;color:#059669;font-size:12px;font-weight:800;text-align:left;" dir="ltr">-${formatEGP(financials.couponDiscountAmount)}</td>
+              </tr>
+              ` : ''}
               <tr>
                 <td style="font-weight:800;color:#2c2828;font-size:13px;text-align:right;">
                   ${newStatus === 'ملغي' ? 'إجمالي الطلب الملغي:' : 'المبلغ المطلوب سداده عند الاستلام (COD):'}

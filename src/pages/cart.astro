@@ -914,6 +914,146 @@ const serializedStoreShippingPolicy = JSON.stringify(publicStoreShippingPolicy).
           font-size: 1.12rem !important;
         }
       }
+
+      /* Coupon Box Styling */
+      .coupon-box-card {
+        background: var(--color-surface-soft, #faf7f9);
+        border: 1px solid var(--border-light);
+        border-radius: 10px;
+        padding: 12px;
+        margin: 12px 0 14px;
+      }
+
+      .coupon-box-label {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 0.85rem;
+        font-weight: 800;
+        color: var(--color-primary);
+        margin-bottom: 8px;
+      }
+
+      .coupon-box-label i {
+        color: var(--color-blush);
+      }
+
+      .coupon-input-row {
+        display: flex;
+        gap: 8px;
+        align-items: stretch;
+      }
+
+      .coupon-input-row input {
+        flex: 1;
+        min-width: 0;
+        padding: 9px 11px;
+        border: 1px solid var(--border-light);
+        border-radius: 8px;
+        background: #ffffff;
+        color: var(--color-primary);
+        font-size: 0.88rem;
+        font-weight: 700;
+        font-family: inherit;
+        text-align: left;
+      }
+
+      .coupon-input-row input:focus {
+        outline: none;
+        border-color: var(--color-blush);
+        box-shadow: 0 0 0 3px rgba(254, 93, 159, 0.12);
+      }
+
+      .coupon-apply-btn {
+        padding: 0 14px;
+        min-height: 40px;
+        border-radius: 8px;
+        border: none;
+        background: var(--color-primary);
+        color: #ffffff;
+        font-size: 0.84rem;
+        font-weight: 700;
+        font-family: inherit;
+        cursor: pointer;
+        white-space: nowrap;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        transition: var(--transition-fast);
+      }
+
+      .coupon-apply-btn:hover:not(:disabled) {
+        background: var(--color-blush);
+      }
+
+      .coupon-apply-btn:disabled {
+        opacity: 0.65;
+        cursor: not-allowed;
+      }
+
+      .coupon-applied-chip {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        margin-top: 8px;
+        padding: 7px 10px;
+        border-radius: 8px;
+        background: #ecfdf5;
+        border: 1px solid #a7f3d0;
+        color: #065f46;
+        font-size: 0.8rem;
+        font-weight: 700;
+      }
+
+      .coupon-remove-btn {
+        border: 1px solid #6ee7b7;
+        background: #ffffff;
+        color: #047857;
+        border-radius: 6px;
+        padding: 3px 9px;
+        font-size: 0.76rem;
+        font-weight: 700;
+        font-family: inherit;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+      }
+
+      .coupon-remove-btn:hover {
+        background: #fef2f2;
+        border-color: #fecdd3;
+        color: #be123c;
+      }
+
+      .coupon-feedback {
+        margin-top: 8px;
+        padding: 7px 10px;
+        border-radius: 8px;
+        font-size: 0.8rem;
+        font-weight: 600;
+        line-height: 1.45;
+      }
+
+      .coupon-feedback.is-success {
+        background: #ecfdf5;
+        border: 1px solid #a7f3d0;
+        color: #065f46;
+      }
+
+      .coupon-feedback.is-error {
+        background: #fff1f2;
+        border: 1px solid #fecdd3;
+        color: #9f1239;
+      }
+
+      .coupon-feedback.is-info {
+        background: #fffbeb;
+        border: 1px solid #fde68a;
+        color: #92400e;
+      }
     </style>
   </slot>
 
@@ -1000,6 +1140,37 @@ const serializedStoreShippingPolicy = JSON.stringify(publicStoreShippingPolicy).
               <div class="summary-row">
                 <span class="summary-row-label">المجموع الفرعي للمنتجات:</span>
                 <span id="subtotalValSummary" class="summary-row-value">0 ج.م</span>
+              </div>
+
+              <div class="coupon-box-card" id="couponBoxCard">
+                <label for="couponCodeInput" class="coupon-box-label">
+                  <i class="fas fa-ticket-alt"></i>
+                  <span>كود الخصم</span>
+                </label>
+                <div class="coupon-input-row">
+                  <input
+                    type="text"
+                    id="couponCodeInput"
+                    placeholder="أدخلي كود الخصم"
+                    autocomplete="off"
+                    autocapitalize="characters"
+                    spellcheck="false"
+                    dir="ltr"
+                  />
+                  <button type="button" id="applyCouponBtn" class="coupon-apply-btn">تطبيق</button>
+                </div>
+                <div id="appliedCouponBadge" class="coupon-applied-chip" style="display:none;">
+                  <span>مُطبق: <strong id="appliedCouponCodeLabel" dir="ltr"></strong></span>
+                  <button type="button" id="removeCouponBtn" class="coupon-remove-btn">
+                    <i class="fas fa-times"></i> إزالة
+                  </button>
+                </div>
+                <div id="couponFeedback" class="coupon-feedback" role="status" aria-live="polite" style="display:none;"></div>
+              </div>
+
+              <div class="summary-row" id="couponSummaryRow1" style="display:none;">
+                <span class="summary-row-label">خصم الكوبون (<span id="couponCodeSummary1" dir="ltr"></span>):</span>
+                <span id="couponDiscountSummary1" class="summary-row-value" dir="ltr" style="color:#059669; font-weight:800;">0 ج.م</span>
               </div>
 
               <div class="summary-row">
@@ -1150,6 +1321,11 @@ const serializedStoreShippingPolicy = JSON.stringify(publicStoreShippingPolicy).
                 <span id="subtotalValSummary2" class="summary-row-value">0 ج.م</span>
               </div>
 
+              <div class="summary-row" id="couponSummaryRow2" style="display:none;">
+                <span class="summary-row-label">خصم الكوبون (<span id="couponCodeSummary2" dir="ltr"></span>):</span>
+                <span id="couponDiscountSummary2" class="summary-row-value" dir="ltr" style="color:#059669; font-weight:800;">0 ج.م</span>
+              </div>
+
               <div class="summary-row">
                 <span class="summary-row-label">حالة الشحن المجاني:</span>
                 <span id="freeShippingStatusSummary2" class="summary-row-value" style="font-size:0.82rem;"></span>
@@ -1249,6 +1425,10 @@ const serializedStoreShippingPolicy = JSON.stringify(publicStoreShippingPolicy).
                 <div class="summary-row">
                   <span class="summary-row-label">المجموع الفرعي للمنتجات:</span>
                   <span id="summSubtotal" class="summary-row-value">0 ج.م</span>
+                </div>
+                <div class="summary-row" id="couponSummaryRow3" style="display:none;">
+                  <span class="summary-row-label">خصم الكوبون (<span id="couponCodeSummary3" dir="ltr"></span>):</span>
+                  <span id="summCouponDiscount" class="summary-row-value" dir="ltr" style="color:#059669; font-weight:800;">0 ج.م</span>
                 </div>
                 <div class="summary-row">
                   <span class="summary-row-label">حالة الشحن المجاني:</span>
@@ -1498,6 +1678,332 @@ const serializedStoreShippingPolicy = JSON.stringify(publicStoreShippingPolicy).
       }
     }
 
+    // Coupon Checkout State & Persistence (Stores normalized code only — never definitions or trusted discounts)
+    const COUPON_STORAGE_KEY = 'dandy_checkout_coupon_v1';
+    let couponPreviewSeq = 0;
+    let isValidatingCoupon = false;
+    let activeCouponState = null;
+
+    function normalizeClientCouponCode(raw) {
+      if (typeof raw !== 'string') return '';
+      return raw.trim().toUpperCase();
+    }
+
+    function readStoredCouponCode() {
+      try {
+        if (typeof localStorage === 'undefined' || !localStorage || typeof localStorage.getItem !== 'function') {
+          return null;
+        }
+        const raw = localStorage.getItem(COUPON_STORAGE_KEY);
+        const normalized = normalizeClientCouponCode(raw);
+        return normalized || null;
+      } catch (_) {
+        return null;
+      }
+    }
+
+    function writeStoredCouponCode(code) {
+      const normalized = normalizeClientCouponCode(code);
+      if (!normalized) return;
+      try {
+        if (typeof localStorage !== 'undefined' && localStorage && typeof localStorage.setItem === 'function') {
+          localStorage.setItem(COUPON_STORAGE_KEY, normalized);
+        }
+      } catch (_) {}
+    }
+
+    function clearStoredCouponCode() {
+      try {
+        if (typeof localStorage !== 'undefined' && localStorage && typeof localStorage.removeItem === 'function') {
+          localStorage.removeItem(COUPON_STORAGE_KEY);
+        }
+      } catch (_) {}
+    }
+
+    let pendingCouponCode = readStoredCouponCode();
+
+    function buildMinimalCouponPreviewItems() {
+      return cart.map(item => {
+        if (item.type === 'collection' || item.isCollection || item.collectionId) {
+          return {
+            type: 'collection',
+            isCollection: true,
+            collectionId: item.collectionId || item.id,
+            quantity: parseInt(item.quantity, 10) || 1,
+            selectedItems: Array.isArray(item.selectedItems) ? item.selectedItems : []
+          };
+        }
+
+        const rawVariants = (Array.isArray(item.selectedVariants) && item.selectedVariants.length > 0)
+          ? item.selectedVariants
+          : (item.selectedVariant ? [item.selectedVariant] : (item.variantName ? [{ id: item.variantId || 'scent-variant', name: item.variantName }] : []));
+
+        return {
+          productId: item.productId || String(item.id).split('::')[0],
+          quantity: parseInt(item.quantity, 10) || 1,
+          selectedVariants: rawVariants.map(v => ({
+            id: v.id || 'scent-variant',
+            name: v.name || String(v)
+          }))
+        };
+      });
+    }
+
+    function renderCouponFeedback(type, message) {
+      const feedbackEl = document.getElementById('couponFeedback');
+      if (!feedbackEl) return;
+      if (!message) {
+        feedbackEl.style.display = 'none';
+        feedbackEl.textContent = '';
+        feedbackEl.className = 'coupon-feedback';
+        return;
+      }
+      feedbackEl.textContent = message;
+      feedbackEl.className = 'coupon-feedback ' + (type === 'success' ? 'is-success' : (type === 'info' ? 'is-info' : 'is-error'));
+      feedbackEl.style.display = 'block';
+    }
+
+    function renderCouponUiState(options) {
+      const opts = options || {};
+      const inputEl = document.getElementById('couponCodeInput');
+      const applyBtn = document.getElementById('applyCouponBtn');
+      const appliedBadge = document.getElementById('appliedCouponBadge');
+      const appliedCodeLabel = document.getElementById('appliedCouponCodeLabel');
+      const removeBtn = document.getElementById('removeCouponBtn');
+
+      if (applyBtn) {
+        applyBtn.disabled = Boolean(opts.loading);
+        applyBtn.innerHTML = opts.loading
+          ? '<i class="fas fa-spinner fa-spin"></i> جاري التحقق...'
+          : 'تطبيق';
+      }
+      if (removeBtn) {
+        removeBtn.disabled = Boolean(opts.loading);
+      }
+
+      if (activeCouponState && activeCouponState.code) {
+        if (inputEl && typeof opts.preserveInput !== 'boolean') {
+          inputEl.value = activeCouponState.code;
+        }
+        if (appliedCodeLabel) appliedCodeLabel.textContent = activeCouponState.code;
+        if (appliedBadge) appliedBadge.style.display = 'flex';
+      } else {
+        if (appliedCodeLabel) appliedCodeLabel.textContent = '';
+        if (appliedBadge) appliedBadge.style.display = 'none';
+      }
+
+      if (Object.prototype.hasOwnProperty.call(opts, 'feedbackMessage')) {
+        renderCouponFeedback(opts.feedbackType || 'info', opts.feedbackMessage);
+      }
+    }
+
+    async function validateCouponWithServer(rawCode, options) {
+      const opts = options || {};
+      const normalizedCode = normalizeClientCouponCode(rawCode);
+      const inputEl = document.getElementById('couponCodeInput');
+
+      if (!normalizedCode) {
+        activeCouponState = null;
+        pendingCouponCode = null;
+        clearStoredCouponCode();
+        renderCouponUiState({
+          loading: false,
+          preserveInput: true,
+          feedbackType: 'error',
+          feedbackMessage: 'يرجى إدخال كود الخصم أولاً.'
+        });
+        syncAllShippingAndOrderSummaries();
+        return { ok: false, reason: 'COUPON_CODE_REQUIRED' };
+      }
+
+      if (!Array.isArray(cart) || cart.length === 0) {
+        activeCouponState = null;
+        pendingCouponCode = null;
+        clearStoredCouponCode();
+        renderCouponUiState({ loading: false, feedbackMessage: '' });
+        syncAllShippingAndOrderSummaries();
+        return { ok: false, reason: 'EMPTY_CART' };
+      }
+
+      if (inputEl && !opts.preserveInput) {
+        inputEl.value = normalizedCode;
+      }
+
+      if (typeof fetch !== 'function') {
+        activeCouponState = null;
+        pendingCouponCode = null;
+        renderCouponUiState({
+          loading: false,
+          preserveInput: true,
+          feedbackType: 'error',
+          feedbackMessage: 'تعذر التحقق من الكوبون حالياً؛ لم يتم تطبيق أي خصم.'
+        });
+        syncAllShippingAndOrderSummaries();
+        return { ok: false, reason: 'FETCH_UNAVAILABLE' };
+      }
+
+      const seq = ++couponPreviewSeq;
+      isValidatingCoupon = true;
+      renderCouponUiState({
+        loading: true,
+        preserveInput: true,
+        feedbackType: 'info',
+        feedbackMessage: opts.isRevalidation ? 'جاري إعادة التحقق من صلاحية الكوبون...' : 'جاري التحقق من الكوبون...'
+      });
+
+      let res = null;
+      let data = {};
+      let networkError = false;
+
+      try {
+        res = await fetch('/api/coupons/validate', {
+          method: 'POST',
+          cache: 'no-store',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            code: normalizedCode,
+            items: buildMinimalCouponPreviewItems()
+          })
+        });
+        data = await res.json().catch(() => ({}));
+      } catch (_) {
+        networkError = true;
+      }
+
+      if (seq !== couponPreviewSeq) {
+        return { ok: false, stale: true };
+      }
+
+      isValidatingCoupon = false;
+
+      if (!Array.isArray(cart) || cart.length === 0) {
+        activeCouponState = null;
+        pendingCouponCode = null;
+        clearStoredCouponCode();
+        renderCouponUiState({ loading: false, feedbackMessage: '' });
+        syncAllShippingAndOrderSummaries();
+        return { ok: false, reason: 'EMPTY_CART' };
+      }
+
+      if (!networkError && res && res.ok && data && data.success === true && data.eligible === true) {
+        const discountVal = Math.round((Number(data.discountAmount) || 0) * 100) / 100;
+        const resolvedCode = normalizeClientCouponCode(data.code || normalizedCode);
+        activeCouponState = {
+          code: resolvedCode,
+          discountType: data.discountType || null,
+          discountValue: data.discountValue ?? null,
+          scope: data.scope || null,
+          categorySlug: data.categorySlug || null,
+          eligibleSubtotal: Number(data.eligibleSubtotal) || 0,
+          orderProductSubtotal: Number(data.orderProductSubtotal) || 0,
+          discountAmount: discountVal,
+          discountedProductSubtotal: Number(data.discountedProductSubtotal) || 0,
+          message: data.message || `تم تطبيق الكوبون ${resolvedCode} بخصم ${formatCartEgp(discountVal)} ج.م.`
+        };
+        pendingCouponCode = resolvedCode;
+        writeStoredCouponCode(resolvedCode);
+        renderCouponUiState({
+          loading: false,
+          feedbackType: 'success',
+          feedbackMessage: activeCouponState.message
+        });
+        syncAllShippingAndOrderSummaries();
+        return { ok: true, data };
+      }
+
+      // Any rejection, rate limit, outage, or network error: NEVER preserve stale active discount preview
+      activeCouponState = null;
+      pendingCouponCode = null;
+      clearStoredCouponCode();
+
+      let errMsg = (data && typeof data.message === 'string' && data.message.trim())
+        ? data.message.trim()
+        : '';
+      if (!errMsg) {
+        if (networkError || !res || res.status >= 500) {
+          errMsg = 'تعذر التحقق من صلاحية الكوبون حالياً؛ لم يتم تطبيق أي خصم. يرجى المحاولة مرة أخرى.';
+        } else if (res.status === 429) {
+          errMsg = 'تم إرسال عدد كبير من محاولات التحقق من الكوبون. يرجى الانتظار قليلاً ثم المحاولة.';
+        } else {
+          errMsg = 'كود الخصم غير صالح أو غير مؤهل لهذه السلة.';
+        }
+      }
+
+      renderCouponUiState({
+        loading: false,
+        preserveInput: true,
+        feedbackType: 'error',
+        feedbackMessage: errMsg
+      });
+      syncAllShippingAndOrderSummaries();
+      return { ok: false, reason: (data && (data.reason || data.error)) || 'COUPON_VALIDATION_FAILED', message: errMsg };
+    }
+
+    window.applyCouponCode = function() {
+      const inputEl = document.getElementById('couponCodeInput');
+      const raw = inputEl ? inputEl.value : '';
+      return validateCouponWithServer(raw, { isRevalidation: false });
+    };
+
+    window.removeCouponCode = function(silent) {
+      couponPreviewSeq += 1;
+      isValidatingCoupon = false;
+      activeCouponState = null;
+      pendingCouponCode = null;
+      clearStoredCouponCode();
+      const inputEl = document.getElementById('couponCodeInput');
+      if (inputEl) inputEl.value = '';
+      renderCouponUiState({
+        loading: false,
+        preserveInput: true,
+        feedbackType: 'info',
+        feedbackMessage: silent ? '' : 'تمت إزالة كود الخصم.'
+      });
+      syncAllShippingAndOrderSummaries();
+    };
+
+    const applyCouponBtnEl = document.getElementById('applyCouponBtn');
+    if (applyCouponBtnEl) {
+      applyCouponBtnEl.addEventListener('click', function() {
+        window.applyCouponCode();
+      });
+    }
+    const removeCouponBtnEl = document.getElementById('removeCouponBtn');
+    if (removeCouponBtnEl) {
+      removeCouponBtnEl.addEventListener('click', function() {
+        window.removeCouponCode(false);
+      });
+    }
+    const couponInputDomEl = document.getElementById('couponCodeInput');
+    if (couponInputDomEl) {
+      couponInputDomEl.addEventListener('keydown', function(evt) {
+        if (evt && evt.key === 'Enter') {
+          if (typeof evt.preventDefault === 'function') evt.preventDefault();
+          window.applyCouponCode();
+        }
+      });
+    }
+
+    function updateCouponSummaryRows(couponCode, couponDiscount) {
+      const show = Boolean(couponCode && couponDiscount > 0);
+      const formattedDiscount = '-' + formatCartEgp(couponDiscount) + ' ج.م';
+
+      const pairs = [
+        { row: 'couponSummaryRow1', code: 'couponCodeSummary1', val: 'couponDiscountSummary1' },
+        { row: 'couponSummaryRow2', code: 'couponCodeSummary2', val: 'couponDiscountSummary2' },
+        { row: 'couponSummaryRow3', code: 'couponCodeSummary3', val: 'summCouponDiscount' }
+      ];
+
+      pairs.forEach(p => {
+        const rowEl = document.getElementById(p.row);
+        const codeEl = document.getElementById(p.code);
+        const valEl = document.getElementById(p.val);
+        if (rowEl) rowEl.style.display = show ? 'flex' : 'none';
+        if (codeEl) codeEl.textContent = show ? couponCode : '';
+        if (valEl) valEl.textContent = show ? formattedDiscount : '0 ج.م';
+      });
+    }
+
     function syncAllShippingAndOrderSummaries() {
       const subtotal = calculateCartSubtotal();
       const govInfo = getSelectedGovernorateInfo();
@@ -1533,6 +2039,7 @@ const serializedStoreShippingPolicy = JSON.stringify(publicStoreShippingPolicy).
               subtotalText: formatCartEgp(subtotal) + ' ج.م',
               shippingFee: fee,
               shippingConfirmed: fee !== null,
+              totalConfirmed: fee !== null,
               shippingDisplayText: fee === 0 ? 'شحن مجاني (0 ج.م)' : (fee !== null ? `${formatCartEgp(fee)} ج.م (${govInfo.label})` : `تُحدد حسب المحافظة (${feeRange.min}–${feeRange.max} ج.م)`),
               step1TotalLabel: eligible ? 'الإجمالي المستحق:' : (hasGov ? `الإجمالي شامل الشحن (${govInfo.label}):` : 'مجموع المنتجات (قبل الشحن):'),
               step1TotalText: eligible ? formatCartEgp(subtotal) + ' ج.م' : (hasGov ? formatCartEgp(subtotal + fee) + ' ج.م' : formatCartEgp(subtotal) + ' ج.م + الشحن'),
@@ -1543,6 +2050,34 @@ const serializedStoreShippingPolicy = JSON.stringify(publicStoreShippingPolicy).
               step3TotalText: fee !== null ? formatCartEgp(subtotal + fee) + ' ج.م' : 'يُحدد بعد اختيار المحافظة'
             };
           })();
+
+      const activeCode = activeCouponState && activeCouponState.code ? activeCouponState.code : '';
+      const rawCouponDiscount = activeCode && Number.isFinite(Number(activeCouponState.discountAmount)) && Number(activeCouponState.discountAmount) > 0
+        ? Math.round(Number(activeCouponState.discountAmount) * 100) / 100
+        : 0;
+      const couponDiscount = Math.min(subtotal, rawCouponDiscount);
+      const hasActiveCoupon = Boolean(activeCode && couponDiscount > 0);
+      const discountedSubtotal = Math.max(0, Math.round((subtotal - couponDiscount) * 100) / 100);
+
+      updateCouponSummaryRows(activeCode, couponDiscount);
+
+      const step1TotalText = hasActiveCoupon
+        ? (summaryState.shippingConfirmed
+            ? formatCartEgp(Math.max(0, Math.round((discountedSubtotal + Number(summaryState.shippingFee || 0)) * 100) / 100)) + ' ج.م'
+            : formatCartEgp(discountedSubtotal) + ' ج.م + الشحن')
+        : summaryState.step1TotalText;
+
+      const step2TotalText = hasActiveCoupon
+        ? (summaryState.totalConfirmed
+            ? formatCartEgp(Math.max(0, Math.round((discountedSubtotal + Number(summaryState.shippingFee || 0)) * 100) / 100)) + ' ج.م'
+            : summaryState.step2TotalText)
+        : summaryState.step2TotalText;
+
+      const step3TotalText = hasActiveCoupon
+        ? (summaryState.shippingConfirmed
+            ? formatCartEgp(Math.max(0, Math.round((discountedSubtotal + Number(summaryState.shippingFee || 0)) * 100) / 100)) + ' ج.م'
+            : summaryState.step3TotalText)
+        : summaryState.step3TotalText;
 
       renderFreeShippingProgressCard(summaryState.progress);
 
@@ -1559,7 +2094,7 @@ const serializedStoreShippingPolicy = JSON.stringify(publicStoreShippingPolicy).
       }
       const grandTotalLabel1 = document.getElementById('grandTotalLabelSummary1');
       if (grandTotalLabel1) grandTotalLabel1.textContent = summaryState.step1TotalLabel;
-      if (grandTotalSummaryValue1) grandTotalSummaryValue1.textContent = summaryState.step1TotalText;
+      if (grandTotalSummaryValue1) grandTotalSummaryValue1.textContent = step1TotalText;
       const hint1 = document.getElementById('shippingSummaryHint1');
       if (hint1) hint1.textContent = summaryState.step1TotalHint || '';
 
@@ -1575,7 +2110,7 @@ const serializedStoreShippingPolicy = JSON.stringify(publicStoreShippingPolicy).
       const grandTotalLabel2 = document.getElementById('grandTotalLabelSummary2');
       if (grandTotalLabel2) grandTotalLabel2.textContent = summaryState.step2TotalLabel;
       if (grandTotalSummaryValue2) {
-        grandTotalSummaryValue2.textContent = summaryState.step2TotalText;
+        grandTotalSummaryValue2.textContent = step2TotalText;
         grandTotalSummaryValue2.style.fontSize = summaryState.totalConfirmed ? '1.25rem' : '0.96rem';
         grandTotalSummaryValue2.style.color = summaryState.totalConfirmed ? 'var(--color-blush)' : 'var(--color-primary)';
       }
@@ -1589,7 +2124,7 @@ const serializedStoreShippingPolicy = JSON.stringify(publicStoreShippingPolicy).
         summShipping.textContent = summaryState.step3ShippingText;
         summShipping.style.color = summaryState.progress.isEligible ? 'var(--color-success)' : 'var(--color-primary)';
       }
-      if (finalSummaryTotal) finalSummaryTotal.textContent = summaryState.step3TotalText;
+      if (finalSummaryTotal) finalSummaryTotal.textContent = step3TotalText;
 
       return summaryState;
     }
@@ -1714,6 +2249,24 @@ const serializedStoreShippingPolicy = JSON.stringify(publicStoreShippingPolicy).
       syncAllShippingAndOrderSummaries();
     }
 
+    function revalidateActiveCouponOnCartChange() {
+      const codeToCheck = (activeCouponState && activeCouponState.code) || pendingCouponCode;
+      if (!codeToCheck || !Array.isArray(cart) || cart.length === 0) {
+        couponPreviewSeq += 1;
+        isValidatingCoupon = false;
+        activeCouponState = null;
+        pendingCouponCode = null;
+        clearStoredCouponCode();
+        renderCouponUiState({ loading: false, feedbackMessage: '' });
+        syncAllShippingAndOrderSummaries();
+        return;
+      }
+      // Clear active discount immediately until server confirms new cart totals
+      activeCouponState = null;
+      syncAllShippingAndOrderSummaries();
+      validateCouponWithServer(codeToCheck, { isRevalidation: true });
+    }
+
     window.changeQty = function(index, delta) {
       if (cart[index]) {
         const current = parseInt(cart[index].quantity, 10) || 1;
@@ -1723,6 +2276,9 @@ const serializedStoreShippingPolicy = JSON.stringify(publicStoreShippingPolicy).
         handleGovChange();
         if (typeof window.updateSharedCartCount === 'function') window.updateSharedCartCount();
         window.dispatchEvent(new CustomEvent('cart-updated'));
+        if ((activeCouponState && activeCouponState.code) || pendingCouponCode) {
+          revalidateActiveCouponOnCartChange();
+        }
       }
     };
 
@@ -1733,6 +2289,15 @@ const serializedStoreShippingPolicy = JSON.stringify(publicStoreShippingPolicy).
       handleGovChange();
       if (typeof window.updateSharedCartCount === 'function') window.updateSharedCartCount();
       window.dispatchEvent(new CustomEvent('cart-updated'));
+      if (cart.length === 0) {
+        couponPreviewSeq += 1;
+        isValidatingCoupon = false;
+        activeCouponState = null;
+        pendingCouponCode = null;
+        clearStoredCouponCode();
+      } else if ((activeCouponState && activeCouponState.code) || pendingCouponCode) {
+        revalidateActiveCouponOnCartChange();
+      }
     };
 
     // --- تكامل حساب العميل والعناوين المحفوظة في الـ Checkout ---
@@ -2133,6 +2698,17 @@ const serializedStoreShippingPolicy = JSON.stringify(publicStoreShippingPolicy).
         return;
       }
 
+      if (isValidatingCoupon) {
+        showCheckoutBanner('جاري التحقق من كود الخصم؛ يرجى الانتظار لحظة ثم المحاولة مرة أخرى.', 'warning');
+        restoreSubmitBtn();
+        savingTextLoader.innerHTML = '<i class="fas fa-clock" style="color:var(--color-blush);"></i> يرجى الانتظار حتى يكتمل التحقق من الكوبون.';
+        return;
+      }
+
+      const appliedCouponCode = activeCouponState && activeCouponState.code
+        ? normalizeClientCouponCode(activeCouponState.code)
+        : null;
+
       const customerUid = currentAuthUser && currentAuthUser.uid ? currentAuthUser.uid : null;
       let idempotencyPrep = null;
       try {
@@ -2145,6 +2721,7 @@ const serializedStoreShippingPolicy = JSON.stringify(publicStoreShippingPolicy).
             city,
             address,
             customerId: customerUid,
+            couponCode: appliedCouponCode,
             items
           },
           sessionStorage: window.sessionStorage
@@ -2173,26 +2750,31 @@ const serializedStoreShippingPolicy = JSON.stringify(publicStoreShippingPolicy).
       let networkError = false;
 
       try {
+        const orderRequestBody = {
+          customer: {
+            name,
+            phone,
+            email: email || 'N/A',
+            governorate,
+            city,
+            address
+          },
+          items,
+          idToken,
+          turnstileToken,
+          clientRequestId
+        };
+        if (appliedCouponCode) {
+          orderRequestBody.couponCode = appliedCouponCode;
+        }
+
         response = await fetch('/api/create-order', {
           method: 'POST',
           cache: 'no-store',
           headers: {
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify({
-            customer: {
-              name,
-              phone,
-              email: email || 'N/A',
-              governorate,
-              city,
-              address
-            },
-            items,
-            idToken,
-            turnstileToken,
-            clientRequestId
-          })
+          body: JSON.stringify(orderRequestBody)
         });
 
         result = await response.json().catch(() => ({}));
@@ -2224,9 +2806,35 @@ const serializedStoreShippingPolicy = JSON.stringify(publicStoreShippingPolicy).
             flow.saveRecentLookupCode(window.localStorage, outcome.invoiceCode);
           }
         }
+        clearStoredCouponCode();
+        activeCouponState = null;
+        pendingCouponCode = null;
         localStorage.removeItem('cart');
         window.location.href = outcome.redirectUrl;
         return;
+      }
+
+      // If final submission rejected coupon, clear applied coupon state so stale discount is never shown
+      const serverErrCode = result && typeof result.error === 'string' ? result.error : '';
+      if (
+        appliedCouponCode &&
+        (serverErrCode.startsWith('COUPON_') ||
+          serverErrCode === 'PINK_FRIDAY_NOT_COMBINABLE' ||
+          serverErrCode === 'NO_ELIGIBLE_CATEGORY_ITEMS' ||
+          serverErrCode === 'EMPTY_ELIGIBLE_SUBTOTAL' ||
+          serverErrCode === 'MINIMUM_SUBTOTAL_NOT_MET' ||
+          serverErrCode === 'INVALID_COUPON_TOTAL')
+      ) {
+        activeCouponState = null;
+        pendingCouponCode = null;
+        clearStoredCouponCode();
+        renderCouponUiState({
+          loading: false,
+          preserveInput: true,
+          feedbackType: 'error',
+          feedbackMessage: outcome.message
+        });
+        syncAllShippingAndOrderSummaries();
       }
 
       // Any non-redirect outcome: NEVER clear cart, NEVER auto-retry silently, reset one-time Turnstile token
@@ -2249,5 +2857,12 @@ const serializedStoreShippingPolicy = JSON.stringify(publicStoreShippingPolicy).
     };
 
     renderStep1CartItems();
+    if (cart.length === 0) {
+      clearStoredCouponCode();
+      pendingCouponCode = null;
+      activeCouponState = null;
+    } else if (pendingCouponCode) {
+      validateCouponWithServer(pendingCouponCode, { isRevalidation: true });
+    }
   </script>
 </BaseLayout>

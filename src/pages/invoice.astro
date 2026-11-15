@@ -376,6 +376,10 @@ import BaseLayout from '../layouts/BaseLayout.astro';
               <td colspan="2" style="text-align: left; font-weight: 700; color: var(--color-muted);">المجموع الفرعي:</td>
               <td id="tableSubtotal" style="text-align: left; font-weight: 700;">...</td>
             </tr>
+            <tr id="tableCouponRow" style="display: none; background: rgba(5, 150, 105, 0.04);">
+              <td colspan="2" id="tableCouponLabel" style="text-align: left; font-weight: 700; color: #059669;">خصم الكوبون:</td>
+              <td id="tableCouponDiscount" style="text-align: left; font-weight: 800; color: #059669; direction: ltr;">0 ج.م</td>
+            </tr>
             <tr>
               <td colspan="2" style="text-align: left; font-weight: 700; color: var(--color-muted);">مصاريف الشحن:</td>
               <td id="tableShipping" style="text-align: left; font-weight: 700; color: var(--color-success);">...</td>
@@ -427,8 +431,19 @@ import BaseLayout from '../layouts/BaseLayout.astro';
     const itemsBody = document.getElementById('itemsBody');
 
     const tableSubtotal = document.getElementById('tableSubtotal');
+    const tableCouponRow = document.getElementById('tableCouponRow');
+    const tableCouponLabel = document.getElementById('tableCouponLabel');
+    const tableCouponDiscount = document.getElementById('tableCouponDiscount');
     const tableShipping = document.getElementById('tableShipping');
     const tableGrandTotal = document.getElementById('tableGrandTotal');
+
+    function formatInvoiceEgp(value) {
+      const n = Number(value);
+      if (!Number.isFinite(n)) return '0';
+      const rounded = Math.round(n * 100) / 100;
+      const clean = Object.is(rounded, -0) ? 0 : rounded;
+      return Math.abs(clean - Math.round(clean)) < 1e-9 ? String(Math.round(clean)) : String(clean);
+    }
 
     const DEFAULT_FALLBACK_IMAGE = 'https://images.unsplash.com/photo-1608248597481-496100c80836?auto=format&fit=crop&w=100&q=80';
     let currentInvoiceCode = '';
@@ -668,13 +683,36 @@ import BaseLayout from '../layouts/BaseLayout.astro';
           itemsBody.appendChild(tr);
         });
 
+        const rawCoupon = order.coupon && typeof order.coupon === 'object' && !Array.isArray(order.coupon)
+          ? order.coupon
+          : null;
+        const couponCode = rawCoupon && typeof rawCoupon.code === 'string' && rawCoupon.code.trim()
+          ? rawCoupon.code.trim().toUpperCase()
+          : '';
+        const couponDiscountVal = rawCoupon && Number.isFinite(Number(rawCoupon.discountAmount)) && Number(rawCoupon.discountAmount) > 0
+          ? Math.round(Number(rawCoupon.discountAmount) * 100) / 100
+          : 0;
+
         const subtotalVal = order.subtotal !== undefined ? parseFloat(order.subtotal) : calculatedSubtotal;
         const shippingVal = order.shippingFee !== undefined ? parseFloat(order.shippingFee) : 0;
-        const totalVal = order.totalAmount !== undefined ? parseFloat(order.totalAmount) : (subtotalVal + shippingVal);
+        const totalVal = order.totalAmount !== undefined
+          ? parseFloat(order.totalAmount)
+          : Math.max(0, Math.round((subtotalVal - couponDiscountVal + shippingVal) * 100) / 100);
 
-        tableSubtotal.textContent = subtotalVal.toFixed(0) + " ج.م";
-        tableShipping.textContent = shippingVal.toFixed(0) + " ج.م";
-        tableGrandTotal.textContent = totalVal.toFixed(0) + " ج.م";
+        tableSubtotal.textContent = formatInvoiceEgp(subtotalVal) + " ج.م";
+        if (tableCouponRow && tableCouponLabel && tableCouponDiscount) {
+          if (couponCode && couponDiscountVal > 0) {
+            tableCouponLabel.textContent = "خصم الكوبون (" + couponCode + "):";
+            tableCouponDiscount.textContent = "-" + formatInvoiceEgp(couponDiscountVal) + " ج.م";
+            tableCouponRow.style.display = "table-row";
+          } else {
+            tableCouponRow.style.display = "none";
+            tableCouponLabel.textContent = "خصم الكوبون:";
+            tableCouponDiscount.textContent = "0 ج.م";
+          }
+        }
+        tableShipping.textContent = formatInvoiceEgp(shippingVal) + " ج.م";
+        tableGrandTotal.textContent = formatInvoiceEgp(totalVal) + " ج.م";
 
         // =========================================================================
         // إضافة حدث الشراء (Meta Pixel Purchase Event) عبر DandyMeta
@@ -724,6 +762,7 @@ import BaseLayout from '../layouts/BaseLayout.astro';
       } else {
         itemsBody.innerHTML = '<tr><td colspan="3" style="text-align:center;color:var(--color-muted);padding:20px;">سلة المشتريات فارغة.</td></tr>';
         tableSubtotal.textContent = '0 ج.م';
+        if (tableCouponRow) tableCouponRow.style.display = 'none';
         tableShipping.textContent = '0 ج.م';
         tableGrandTotal.textContent = '0 ج.م';
       }
