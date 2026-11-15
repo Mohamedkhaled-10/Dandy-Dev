@@ -58,6 +58,54 @@ export const SHIPPING_RATES_BY_GOVERNORATE: Readonly<Record<string, number>> = O
   'Matrouh': 120
 });
 
+/**
+ * Arabic governorate name aliases mapped to canonical keys in SHIPPING_RATES_BY_GOVERNORATE.
+ * Rates remain strictly single-sourced in SHIPPING_RATES_BY_GOVERNORATE.
+ */
+export const GOVERNORATE_ALIASES: Readonly<Record<string, keyof typeof SHIPPING_RATES_BY_GOVERNORATE>> = Object.freeze({
+  'الغربية': 'Gharbia',
+  'الدقهلية': 'Dakahlia',
+  'الشرقية': 'Sharqia',
+  'كفر الشيخ': 'Kafr El Sheikh',
+  'القليوبية': 'Qalyubia',
+  'بورسعيد': 'Port Said',
+  'دمياط': 'Damietta',
+  'السويس': 'Suez',
+  'الإسماعيلية': 'Ismailia',
+  'القاهرة': 'Cairo',
+  'الجيزة': 'Giza',
+  'البحيرة': 'Beheira',
+  'المنوفية': 'Monufia',
+  'الإسكندرية': 'Alexandria',
+  'الفيوم': 'Fayoum',
+  'بني سويف': 'Beni Suef',
+  'المنيا': 'Minya',
+  'الأقصر': 'Luxor',
+  'أسوان': 'Aswan',
+  'أسيوط': 'Assiut',
+  'سوهاج': 'Sohag',
+  'شمال سيناء': 'North Sinai',
+  'جنوب سيناء': 'South Sinai',
+  'قنا': 'Qena',
+  'الوادي الجديد': 'New Valley',
+  'البحر الأحمر': 'Red Sea',
+  'مطروح': 'Matrouh'
+});
+
+const NORMALIZED_GOVERNORATE_RATES: ReadonlyMap<string, number> = (() => {
+  const map = new Map<string, number>();
+  for (const [gov, fee] of Object.entries(SHIPPING_RATES_BY_GOVERNORATE)) {
+    map.set(gov.toLowerCase(), fee);
+  }
+  for (const [alias, canonical] of Object.entries(GOVERNORATE_ALIASES)) {
+    const fee = SHIPPING_RATES_BY_GOVERNORATE[canonical];
+    if (typeof fee === 'number') {
+      map.set(alias.toLowerCase(), fee);
+    }
+  }
+  return map;
+})();
+
 export const DEFAULT_SHIPPING_FEE_EGP = 120;
 
 /**
@@ -89,8 +137,8 @@ export const STORE_SHIPPING_POLICY: StoreShippingPolicy = Object.freeze({
 });
 
 /**
- * Returns the governorate shipping rate in EGP, falling back to DEFAULT_SHIPPING_FEE_EGP (120)
- * when the governorate is empty or unrecognized.
+ * Returns the governorate shipping rate in EGP (supporting English & Arabic governorate names
+ * and case-insensitive matching), falling back to DEFAULT_SHIPPING_FEE_EGP (120) when empty or unrecognized.
  */
 export function getShippingFeeForGovernorate(governorate?: string | null): number {
   if (!governorate || typeof governorate !== 'string') {
@@ -102,6 +150,10 @@ export function getShippingFeeForGovernorate(governorate?: string | null): numbe
   }
   if (Object.prototype.hasOwnProperty.call(SHIPPING_RATES_BY_GOVERNORATE, key)) {
     return SHIPPING_RATES_BY_GOVERNORATE[key];
+  }
+  const normalizedFee = NORMALIZED_GOVERNORATE_RATES.get(key.toLowerCase());
+  if (normalizedFee !== undefined) {
+    return normalizedFee;
   }
   return DEFAULT_SHIPPING_FEE_EGP;
 }

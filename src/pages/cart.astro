@@ -15,6 +15,7 @@ const serializedStoreShippingPolicy = JSON.stringify(publicStoreShippingPolicy).
   <slot name="head" slot="head">
     <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
     <script is:inline src="/assets/js/order-flow-helpers.js"></script>
+    <script is:inline src="/assets/js/cart-shipping-progress.js"></script>
     <meta name="robots" content="noindex, nofollow" />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://dandy-ebon.vercel.app/cart" />
@@ -720,6 +721,199 @@ const serializedStoreShippingPolicy = JSON.stringify(publicStoreShippingPolicy).
       .trust-checkout-tag i {
         color: #059669;
       }
+
+      /* Free-Shipping Progress Card & Summary Clarity (Group 2A.4) */
+      .free-shipping-progress-card {
+        background: var(--color-surface);
+        border: 1.5px solid var(--border-blush);
+        border-radius: var(--border-radius-md);
+        padding: 16px 20px;
+        margin-bottom: 22px;
+        transition: border-color 0.2s ease, background-color 0.2s ease;
+        box-sizing: border-box;
+      }
+
+      .free-shipping-progress-card[data-state="below_threshold"] {
+        background: var(--color-blush-soft);
+        border-color: var(--border-blush);
+      }
+
+      .free-shipping-progress-card[data-state="at_threshold"] {
+        background: var(--color-warning-soft);
+        border-color: #fcd34d;
+      }
+
+      .free-shipping-progress-card[data-state="unlocked"] {
+        background: var(--color-success-soft);
+        border-color: #bbf7d0;
+      }
+
+      .free-shipping-progress-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 12px;
+        flex-wrap: wrap;
+      }
+
+      .free-shipping-title-wrap {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        flex: 1 1 260px;
+        min-width: 0;
+      }
+
+      .free-shipping-icon {
+        width: 38px;
+        height: 38px;
+        border-radius: 50%;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        font-size: 0.98rem;
+        background: #fff;
+        border: 1px solid var(--border-light);
+        color: var(--color-blush);
+      }
+
+      .free-shipping-progress-card[data-state="at_threshold"] .free-shipping-icon {
+        color: var(--color-warning);
+        border-color: #fde68a;
+      }
+
+      .free-shipping-progress-card[data-state="unlocked"] .free-shipping-icon {
+        color: var(--color-success);
+        border-color: #bbf7d0;
+      }
+
+      .free-shipping-title {
+        font-size: 0.96rem;
+        font-weight: 800;
+        color: var(--color-primary);
+        line-height: 1.4;
+        margin-bottom: 3px;
+      }
+
+      .free-shipping-subtitle {
+        font-size: 0.85rem;
+        color: var(--color-text-secondary);
+        line-height: 1.55;
+        word-break: break-word;
+      }
+
+      .free-shipping-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        padding: 4px 12px;
+        border-radius: 99px;
+        font-size: 0.78rem;
+        font-weight: 700;
+        white-space: nowrap;
+        background: #fff;
+        border: 1px solid var(--border-blush);
+        color: var(--color-blush);
+        flex-shrink: 0;
+      }
+
+      .free-shipping-progress-card[data-state="at_threshold"] .free-shipping-badge {
+        color: var(--color-warning);
+        border-color: #fcd34d;
+      }
+
+      .free-shipping-progress-card[data-state="unlocked"] .free-shipping-badge {
+        color: var(--color-success);
+        border-color: #86efac;
+      }
+
+      .free-shipping-track {
+        width: 100%;
+        height: 10px;
+        border-radius: 99px;
+        background: rgba(255, 255, 255, 0.85);
+        border: 1px solid var(--border-light);
+        overflow: hidden;
+      }
+
+      .free-shipping-fill {
+        height: 100%;
+        width: 0%;
+        border-radius: 99px;
+        background: var(--color-blush);
+        transition: width 0.25s ease, background-color 0.2s ease;
+      }
+
+      .free-shipping-progress-card[data-state="at_threshold"] .free-shipping-fill {
+        background: var(--color-warning);
+      }
+
+      .free-shipping-progress-card[data-state="unlocked"] .free-shipping-fill {
+        background: var(--color-success);
+      }
+
+      .free-shipping-scale {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-top: 6px;
+        font-size: 0.76rem;
+        color: var(--color-muted);
+        font-weight: 600;
+      }
+
+      .summary-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: 10px;
+        margin-bottom: 10px;
+        font-size: 0.9rem;
+      }
+
+      .summary-row-label {
+        color: var(--color-muted);
+        flex-shrink: 0;
+      }
+
+      .summary-row-value {
+        font-weight: 700;
+        color: var(--color-primary);
+        text-align: left;
+        word-break: break-word;
+      }
+
+      .summary-total-row {
+        border-top: 1px solid var(--border-light);
+        margin: 14px 0 10px;
+        padding-top: 14px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .summary-total-hint {
+        font-size: 0.8rem;
+        color: var(--color-muted);
+        line-height: 1.5;
+        margin-bottom: 14px;
+      }
+
+      @media (max-width: 600px) {
+        .free-shipping-progress-card {
+          padding: 14px 14px;
+          margin-bottom: 18px;
+        }
+        .free-shipping-badge {
+          white-space: normal;
+        }
+        .summary-total-row strong {
+          font-size: 1.12rem !important;
+        }
+      }
     </style>
   </slot>
 
@@ -754,6 +948,37 @@ const serializedStoreShippingPolicy = JSON.stringify(publicStoreShippingPolicy).
       </div>
 
       <div id="checkoutFlowViews">
+
+        <div id="freeShippingProgressCard" class="free-shipping-progress-card" data-state="below_threshold" dir="rtl" aria-live="polite" aria-atomic="true">
+          <div class="free-shipping-progress-header">
+            <div class="free-shipping-title-wrap">
+              <span class="free-shipping-icon" aria-hidden="true">
+                <i id="freeShippingIcon" class="fas fa-truck"></i>
+              </span>
+              <div>
+                <div class="free-shipping-title" id="freeShippingTitle"></div>
+                <div class="free-shipping-subtitle" id="freeShippingMessage"></div>
+              </div>
+            </div>
+            <span class="free-shipping-badge" id="freeShippingBadge"></span>
+          </div>
+          <div
+            class="free-shipping-track"
+            id="freeShippingProgressBar"
+            role="progressbar"
+            aria-label="تقدم الشحن المجاني"
+            aria-valuemin="0"
+            aria-valuemax={publicStoreShippingPolicy.freeShippingThresholdEgp}
+            aria-valuenow="0"
+            aria-valuetext=""
+          >
+            <div class="free-shipping-fill" id="freeShippingProgressFill" style="width: 0%;"></div>
+          </div>
+          <div class="free-shipping-scale" aria-hidden="true">
+            <span>0 ج.م</span>
+            <span>حد التجاوز: {publicStoreShippingPolicy.freeShippingThresholdEgp} ج.م</span>
+          </div>
+        </div>
         
         <div id="step-panel-1" class="checkout-step-panel active">
           <div class="catalog-checkout-grid">
@@ -767,25 +992,32 @@ const serializedStoreShippingPolicy = JSON.stringify(publicStoreShippingPolicy).
               </div>
             </div>
 
-            <div class="panel-side-summary">
+            <div class="panel-side-summary" dir="rtl">
               <h3 style="font-size:1.05rem; font-weight:800; margin-bottom:16px; color:var(--color-primary); text-align: right;" dir="rtl">
                 <i class="fas fa-receipt" style="color:var(--color-blush); margin-left:6px;"></i> ملخص الحساب
               </h3>
               
-              <div style="display:flex; justify-content:space-between; margin-bottom:10px; font-size:0.92rem;">
-                <span style="color:var(--color-muted);">المجموع الفرعي:</span>
-                <span id="subtotalValSummary" style="font-weight:700; color:var(--color-primary);">00.00 ج.م</span>
-              </div>
-              
-              <div style="display:flex; justify-content:space-between; margin-bottom:6px; font-size:0.88rem;">
-                <span style="color:var(--color-muted);">تكلفة الشحن:</span>
-                <span style="color:var(--color-muted);" id="shippingCostSummary1">تُحدد في الخطوة التالية</span>
+              <div class="summary-row">
+                <span class="summary-row-label">المجموع الفرعي للمنتجات:</span>
+                <span id="subtotalValSummary" class="summary-row-value">0 ج.م</span>
               </div>
 
-              <div style="border-top:1px solid var(--border-light); margin:14px 0; padding-top:14px; display:flex; justify-content:space-between; align-items:center;">
-                <span style="font-weight:800; font-size:1rem; color:var(--color-primary);">الإجمالي التقديري:</span>
-                <strong style="font-size:1.35rem; color:var(--color-blush);" id="grandTotalSummaryValue1">00 ج.م</strong>
+              <div class="summary-row">
+                <span class="summary-row-label">حالة الشحن المجاني:</span>
+                <span id="freeShippingStatusSummary1" class="summary-row-value" style="font-size:0.82rem;"></span>
               </div>
+              
+              <div class="summary-row">
+                <span class="summary-row-label">تكلفة الشحن:</span>
+                <span class="summary-row-value" style="color:var(--color-muted); font-size:0.86rem;" id="shippingCostSummary1"></span>
+              </div>
+
+              <div class="summary-total-row">
+                <span id="grandTotalLabelSummary1" style="font-weight:800; font-size:0.96rem; color:var(--color-primary);">مجموع المنتجات (قبل الشحن):</span>
+                <strong style="font-size:1.25rem; color:var(--color-blush); text-align:left;" id="grandTotalSummaryValue1">0 ج.م</strong>
+              </div>
+
+              <div id="shippingSummaryHint1" class="summary-total-hint"></div>
 
               <button class="btn-checkout-primary" style="width:100%; justify-content:center;" onclick="goToStep(2)">
                 <span>متابعة لبيانات الشحن</span>
@@ -908,25 +1140,32 @@ const serializedStoreShippingPolicy = JSON.stringify(publicStoreShippingPolicy).
               </div>
             </div>
 
-            <div class="panel-side-summary">
+            <div class="panel-side-summary" dir="rtl">
               <h3 style="font-size:1.05rem; font-weight:800; margin-bottom:14px; color:var(--color-primary); text-align: right;" dir="rtl">
                 <i class="fas fa-receipt" style="color:var(--color-blush); margin-left:6px;"></i> ملخص الطلب
               </h3>
               
-              <div style="display:flex; justify-content:space-between; margin-bottom:10px; font-size:0.92rem;">
-                <span style="color:var(--color-muted);">المجموع الفرعي:</span>
-                <span id="subtotalValSummary2" style="font-weight:700; color:var(--color-primary);">00.00 ج.م</span>
+              <div class="summary-row">
+                <span class="summary-row-label">المجموع الفرعي للمنتجات:</span>
+                <span id="subtotalValSummary2" class="summary-row-value">0 ج.م</span>
               </div>
 
-              <div style="display:flex; justify-content:space-between; margin-bottom:10px; align-items: center; font-size:0.88rem;">
-                <span style="color:var(--color-muted);">مصاريف الشحن:</span>
-                <span id="shippingCostSummary2" style="font-weight:700; color:var(--color-blush);">شحن مجاني عند الشراء بأكثر من {publicStoreShippingPolicy.freeShippingThresholdEgp} ج.م</span>
+              <div class="summary-row">
+                <span class="summary-row-label">حالة الشحن المجاني:</span>
+                <span id="freeShippingStatusSummary2" class="summary-row-value" style="font-size:0.82rem;"></span>
               </div>
 
-              <div style="border-top:1px solid var(--border-light); margin:14px 0; padding-top:14px; display:flex; justify-content:space-between; align-items:center;">
-                <span style="font-weight:800; font-size:1rem; color:var(--color-primary);">الإجمالي الكلي:</span>
-                <strong style="font-size:1.35rem; color:var(--color-blush);" id="grandTotalSummaryValue2">00 ج.م</strong>
+              <div class="summary-row">
+                <span class="summary-row-label">مصاريف الشحن:</span>
+                <span id="shippingCostSummary2" class="summary-row-value" style="font-size:0.86rem;"></span>
               </div>
+
+              <div class="summary-total-row">
+                <span id="grandTotalLabelSummary2" style="font-weight:800; font-size:0.96rem; color:var(--color-primary);">الإجمالي النهائي:</span>
+                <strong style="font-size:1.25rem; color:var(--color-blush); text-align:left;" id="grandTotalSummaryValue2">يُحدد بعد اختيار المحافظة</strong>
+              </div>
+
+              <div id="shippingSummaryHint2" class="summary-total-hint" style="margin-bottom:0;"></div>
 
               <div style="background:var(--color-surface-soft); font-size:0.8rem; padding:12px; border-radius:8px; margin-top:14px; border:1px solid var(--border-light); color:var(--color-text); line-height:1.5;">
                 <i class="fas fa-shipping-fast" style="color:var(--color-blush); margin-left:4px;"></i> يصلكِ الطلب خلال {publicStoreShippingPolicy.deliveryEstimate.minDays} إلى {publicStoreShippingPolicy.deliveryEstimate.maxDays} أيام عمل من تاريخ التأكيد.
@@ -1007,17 +1246,21 @@ const serializedStoreShippingPolicy = JSON.stringify(publicStoreShippingPolicy).
               </div>
 
               <div style="margin-bottom:12px; line-height:1.6;">
-                <div style="display:flex; justify-content:space-between; margin-bottom:6px; font-size: 0.9rem;">
-                  <span style="color:var(--color-muted);">المجموع الفرعي:</span>
-                  <span id="summSubtotal" style="font-weight:700; color:var(--color-primary);">00 ج.م</span>
+                <div class="summary-row">
+                  <span class="summary-row-label">المجموع الفرعي للمنتجات:</span>
+                  <span id="summSubtotal" class="summary-row-value">0 ج.م</span>
                 </div>
-                <div style="display:flex; justify-content:space-between; margin-bottom:6px; font-size: 0.9rem;">
-                  <span style="color:var(--color-muted);">مصاريف الشحن:</span>
-                  <span id="summShipping" style="font-weight:700; color:#059669;">00 ج.م</span>
+                <div class="summary-row">
+                  <span class="summary-row-label">حالة الشحن المجاني:</span>
+                  <span id="freeShippingStatusSummary3" class="summary-row-value" style="font-size:0.82rem;"></span>
                 </div>
-                <div style="border-top:1px solid var(--border-light); margin-top:10px; padding-top:10px; display:flex; justify-content:space-between; align-items:center;">
-                  <span style="color:var(--color-primary); font-size:0.92rem; font-weight:800;">الإجمالي الكلي:</span>
-                  <strong style="font-size: 1.4rem; color:var(--color-blush);" id="finalSummaryTotal">00 ج.م</strong>
+                <div class="summary-row">
+                  <span class="summary-row-label">مصاريف الشحن:</span>
+                  <span id="summShipping" class="summary-row-value" style="color:#059669;">0 ج.م</span>
+                </div>
+                <div class="summary-total-row" style="margin-bottom:0;">
+                  <span style="color:var(--color-primary); font-size:0.95rem; font-weight:800;">الإجمالي النهائي المستحق:</span>
+                  <strong style="font-size: 1.35rem; color:var(--color-blush); text-align:left;" id="finalSummaryTotal">0 ج.م</strong>
                 </div>
               </div>
               
@@ -1039,7 +1282,26 @@ const serializedStoreShippingPolicy = JSON.stringify(publicStoreShippingPolicy).
   <script is:inline>
     const db = firebase.database();
 
-    let cart = JSON.parse(localStorage.getItem('cart')) || [];
+    function escapeCartHtml(str) {
+      if (str === undefined || str === null) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    let cart = typeof safeParseCart === 'function'
+      ? safeParseCart(localStorage.getItem('cart'))
+      : (() => {
+          try {
+            const parsed = JSON.parse(localStorage.getItem('cart') || '[]');
+            return Array.isArray(parsed) ? parsed.filter(i => i && typeof i === 'object') : [];
+          } catch (_) {
+            return [];
+          }
+        })();
     let currentStep = 1;
 
     // Reconcile cart items with current Pink Friday campaign state
@@ -1147,46 +1409,196 @@ const serializedStoreShippingPolicy = JSON.stringify(publicStoreShippingPolicy).
     const summSubtotal = document.getElementById('summSubtotal');
     const summShipping = document.getElementById('summShipping');
 
+    function formatCartEgp(value) {
+      if (window.DandyCartShipping && typeof window.DandyCartShipping.formatCurrencyAmount === 'function') {
+        return window.DandyCartShipping.formatCurrencyAmount(value);
+      }
+      const n = Number(value);
+      if (!Number.isFinite(n) || n <= 0) return '0';
+      const rounded = Math.round(n * 100) / 100;
+      return Math.abs(rounded - Math.round(rounded)) < 1e-9 ? String(Math.round(rounded)) : String(rounded);
+    }
+
     function calculateCartSubtotal() {
+      if (window.DandyCartShipping && typeof window.DandyCartShipping.computeCartSubtotal === 'function') {
+        return window.DandyCartShipping.computeCartSubtotal(
+          cart,
+          typeof getEffectiveUnitPrice === 'function' ? getEffectiveUnitPrice : null
+        );
+      }
       let subtotal = 0;
       cart.forEach(item => {
         const unitPrice = typeof getEffectiveUnitPrice === 'function'
           ? getEffectiveUnitPrice(item)
           : (Number(item.price) || 0);
-        const qtyVal = parseInt(item.quantity) || 1;
+        const qtyVal = parseInt(item.quantity, 10) || 1;
         subtotal += unitPrice * qtyVal;
       });
-      return subtotal;
+      return Math.round(subtotal * 100) / 100;
+    }
+
+    function getSelectedGovernorateInfo() {
+      const govDropdown = document.getElementById('f-gov');
+      if (!govDropdown || !govDropdown.value) {
+        return { value: '', label: '' };
+      }
+      const selectedIdx = govDropdown.selectedIndex;
+      const optText = selectedIdx >= 0 && govDropdown.options[selectedIdx]
+        ? govDropdown.options[selectedIdx].text
+        : govDropdown.value;
+      return {
+        value: govDropdown.value,
+        label: optText || govDropdown.value
+      };
+    }
+
+    function renderFreeShippingProgressCard(progress) {
+      const card = document.getElementById('freeShippingProgressCard');
+      if (!card || !progress) return;
+
+      card.setAttribute('data-state', progress.state);
+
+      const iconEl = document.getElementById('freeShippingIcon');
+      if (iconEl) {
+        if (progress.state === 'unlocked') {
+          iconEl.className = 'fas fa-check-circle';
+        } else if (progress.state === 'at_threshold') {
+          iconEl.className = 'fas fa-exclamation-circle';
+        } else {
+          iconEl.className = 'fas fa-truck';
+        }
+      }
+
+      const titleEl = document.getElementById('freeShippingTitle');
+      const msgEl = document.getElementById('freeShippingMessage');
+      const badgeEl = document.getElementById('freeShippingBadge');
+      const barEl = document.getElementById('freeShippingProgressBar');
+      const fillEl = document.getElementById('freeShippingProgressFill');
+
+      if (titleEl) titleEl.textContent = progress.titleText;
+      if (msgEl) msgEl.textContent = progress.messageText;
+      if (badgeEl) badgeEl.textContent = progress.badgeText;
+      if (fillEl) fillEl.style.width = progress.progressPercent + '%';
+      if (barEl) {
+        barEl.setAttribute('aria-valuemax', String(progress.threshold));
+        barEl.setAttribute('aria-valuenow', String(Math.min(progress.subtotal, progress.threshold)));
+        barEl.setAttribute('aria-valuetext', progress.ariaValueText);
+      }
+    }
+
+    function applyFreeShippingStatusEl(el, progress) {
+      if (!el || !progress) return;
+      el.textContent = progress.statusChipText;
+      if (progress.state === 'unlocked') {
+        el.style.color = 'var(--color-success)';
+      } else if (progress.state === 'at_threshold') {
+        el.style.color = 'var(--color-warning)';
+      } else {
+        el.style.color = 'var(--color-blush)';
+      }
+    }
+
+    function syncAllShippingAndOrderSummaries() {
+      const subtotal = calculateCartSubtotal();
+      const govInfo = getSelectedGovernorateInfo();
+
+      const summaryState = (window.DandyCartShipping && typeof window.DandyCartShipping.computeCheckoutSummaryState === 'function')
+        ? window.DandyCartShipping.computeCheckoutSummaryState({
+            subtotal: subtotal,
+            policy: STORE_SHIPPING_POLICY,
+            selectedGovernorate: govInfo.value,
+            selectedGovernorateLabel: govInfo.label
+          })
+        : (() => {
+            const eligible = isFreeShippingEligible(subtotal);
+            const hasGov = Boolean(govInfo.value);
+            const fee = eligible ? 0 : (hasGov ? calculateShippingFeeForGov(govInfo.value, subtotal) : null);
+            const threshold = Number(STORE_SHIPPING_POLICY.freeShippingThresholdEgp);
+            const feeRange = STORE_SHIPPING_POLICY.feeRangeEgp || { min: 70, max: 120 };
+            const state = eligible ? 'unlocked' : (subtotal === threshold ? 'at_threshold' : 'below_threshold');
+            return {
+              progress: {
+                state,
+                isEligible: eligible,
+                isAtThreshold: subtotal === threshold,
+                subtotal,
+                threshold,
+                progressPercent: eligible ? 100 : (subtotal === threshold ? 99 : Math.min(98, Math.round((subtotal / threshold) * 100))),
+                titleText: eligible ? 'تم تفعيل الشحن المجاني' : `شحن مجاني للطلبات فوق ${threshold} ج.م`,
+                messageText: eligible ? `تجاوز المجموع ${threshold} ج.م` : `يتبقى للوصول ${Math.max(0, threshold - subtotal)} ج.م ويلزم تجاوز ${threshold} ج.م`,
+                badgeText: eligible ? 'شحن مجاني مُفعّل' : (state === 'at_threshold' ? 'عند الحد تماماً' : 'متبقي للشحن المجاني'),
+                statusChipText: eligible ? 'مُفعّل' : 'غير مؤهل بعد',
+                ariaValueText: String(subtotal)
+              },
+              subtotalText: formatCartEgp(subtotal) + ' ج.م',
+              shippingFee: fee,
+              shippingConfirmed: fee !== null,
+              shippingDisplayText: fee === 0 ? 'شحن مجاني (0 ج.م)' : (fee !== null ? `${formatCartEgp(fee)} ج.م (${govInfo.label})` : `تُحدد حسب المحافظة (${feeRange.min}–${feeRange.max} ج.م)`),
+              step1TotalLabel: eligible ? 'الإجمالي المستحق:' : (hasGov ? `الإجمالي شامل الشحن (${govInfo.label}):` : 'مجموع المنتجات (قبل الشحن):'),
+              step1TotalText: eligible ? formatCartEgp(subtotal) + ' ج.م' : (hasGov ? formatCartEgp(subtotal + fee) + ' ج.م' : formatCartEgp(subtotal) + ' ج.م + الشحن'),
+              step2TotalLabel: eligible ? 'الإجمالي النهائي:' : (hasGov ? 'الإجمالي الكلي (شامل الشحن):' : 'الإجمالي النهائي:'),
+              step2TotalText: eligible ? formatCartEgp(subtotal) + ' ج.م' : (hasGov ? formatCartEgp(subtotal + fee) + ' ج.م' : 'يُحدد بعد اختيار المحافظة'),
+              step2TotalHint: '',
+              step3ShippingText: fee === 0 ? 'شحن مجاني (0 ج.م)' : (fee !== null ? `${formatCartEgp(fee)} ج.م (${govInfo.label})` : `تُحدد حسب المحافظة`),
+              step3TotalText: fee !== null ? formatCartEgp(subtotal + fee) + ' ج.م' : 'يُحدد بعد اختيار المحافظة'
+            };
+          })();
+
+      renderFreeShippingProgressCard(summaryState.progress);
+
+      // Step 1 Summary
+      if (subtotalValSummary) subtotalValSummary.textContent = summaryState.subtotalText;
+      applyFreeShippingStatusEl(document.getElementById('freeShippingStatusSummary1'), summaryState.progress);
+      const shippingCostSummary1 = document.getElementById('shippingCostSummary1');
+      if (shippingCostSummary1) {
+        shippingCostSummary1.textContent = summaryState.shippingDisplayText;
+        shippingCostSummary1.style.color = summaryState.progress.isEligible
+          ? 'var(--color-success)'
+          : (summaryState.shippingConfirmed ? 'var(--color-primary)' : 'var(--color-muted)');
+        shippingCostSummary1.style.fontWeight = summaryState.shippingConfirmed ? '700' : '600';
+      }
+      const grandTotalLabel1 = document.getElementById('grandTotalLabelSummary1');
+      if (grandTotalLabel1) grandTotalLabel1.textContent = summaryState.step1TotalLabel;
+      if (grandTotalSummaryValue1) grandTotalSummaryValue1.textContent = summaryState.step1TotalText;
+      const hint1 = document.getElementById('shippingSummaryHint1');
+      if (hint1) hint1.textContent = summaryState.step1TotalHint || '';
+
+      // Step 2 Summary
+      if (subtotalValSummary2) subtotalValSummary2.textContent = summaryState.subtotalText;
+      applyFreeShippingStatusEl(document.getElementById('freeShippingStatusSummary2'), summaryState.progress);
+      if (shippingCostSummary2) {
+        shippingCostSummary2.textContent = summaryState.shippingDisplayText;
+        shippingCostSummary2.style.color = summaryState.progress.isEligible
+          ? 'var(--color-success)'
+          : (summaryState.shippingConfirmed ? 'var(--color-primary)' : 'var(--color-blush)');
+      }
+      const grandTotalLabel2 = document.getElementById('grandTotalLabelSummary2');
+      if (grandTotalLabel2) grandTotalLabel2.textContent = summaryState.step2TotalLabel;
+      if (grandTotalSummaryValue2) {
+        grandTotalSummaryValue2.textContent = summaryState.step2TotalText;
+        grandTotalSummaryValue2.style.fontSize = summaryState.totalConfirmed ? '1.25rem' : '0.96rem';
+        grandTotalSummaryValue2.style.color = summaryState.totalConfirmed ? 'var(--color-blush)' : 'var(--color-primary)';
+      }
+      const hint2 = document.getElementById('shippingSummaryHint2');
+      if (hint2) hint2.textContent = summaryState.step2TotalHint;
+
+      // Step 3 Summary
+      if (summSubtotal) summSubtotal.textContent = summaryState.subtotalText;
+      applyFreeShippingStatusEl(document.getElementById('freeShippingStatusSummary3'), summaryState.progress);
+      if (summShipping) {
+        summShipping.textContent = summaryState.step3ShippingText;
+        summShipping.style.color = summaryState.progress.isEligible ? 'var(--color-success)' : 'var(--color-primary)';
+      }
+      if (finalSummaryTotal) finalSummaryTotal.textContent = summaryState.step3TotalText;
+
+      return summaryState;
     }
 
     // Handle live updates on Governorates dropdown change
     window.handleGovChange = function() {
       const govDropdown = document.getElementById('f-gov');
       if (!govDropdown) return; // Prevent TypeError if the cart is empty and the DOM is replaced
-
-      const selectedGov = govDropdown.value;
-      const subtotal = calculateCartSubtotal();
-      
-      if (selectedGov) {
-        const fee = calculateShippingFeeForGov(selectedGov, subtotal);
-        if (fee === 0) {
-          shippingCostSummary2.textContent = "شحن مجاني";
-          shippingCostSummary2.style.color = "var(--color-success)";
-        } else {
-          shippingCostSummary2.textContent = fee + " ج.م";
-          shippingCostSummary2.style.color = "var(--color-primary)";
-        }
-        grandTotalSummaryValue2.textContent = (subtotal + fee).toFixed(0) + " ج.م";
-      } else {
-        if (isFreeShippingEligible(subtotal)) {
-          shippingCostSummary2.textContent = "شحن مجاني";
-          shippingCostSummary2.style.color = "var(--color-success)";
-        } else {
-          shippingCostSummary2.textContent = `شحن مجاني عندما تتخطى القيمة ${STORE_SHIPPING_POLICY.freeShippingThresholdEgp} جنيه`;
-          shippingCostSummary2.style.color = "var(--color-blush)";
-        }
-        grandTotalSummaryValue2.textContent = subtotal.toFixed(0) + " ج.م";
-      }
+      syncAllShippingAndOrderSummaries();
     };
 
     // Update Cart Badge inside Navbar
@@ -1196,7 +1608,7 @@ const serializedStoreShippingPolicy = JSON.stringify(publicStoreShippingPolicy).
       } else {
         const badge = document.getElementById('cart-count');
         if (badge) {
-          const totalQty = cart.reduce((sum, item) => sum + item.quantity, 0);
+          const totalQty = cart.reduce((sum, item) => sum + (parseInt(item.quantity, 10) || 1), 0);
           badge.textContent = totalQty;
         }
       }
@@ -1224,7 +1636,7 @@ const serializedStoreShippingPolicy = JSON.stringify(publicStoreShippingPolicy).
 
       cartItemsList.innerHTML = '';
       cart.forEach((item, index) => {
-        const qtyVal = parseInt(item.quantity) || 1;
+        const qtyVal = parseInt(item.quantity, 10) || 1;
         const unitPrice = typeof getEffectiveUnitPrice === 'function'
           ? getEffectiveUnitPrice(item)
           : (Number(item.price) || 0);
@@ -1238,7 +1650,7 @@ const serializedStoreShippingPolicy = JSON.stringify(publicStoreShippingPolicy).
         const variantHtml = (varInfo && varInfo.text)
           ? `<div class="cart-item-scent-badge">
                <i class="fas fa-sparkles"></i>
-               <span>${varInfo.label}: <strong>${varInfo.text}</strong></span>
+               <span>${escapeCartHtml(varInfo.label)}: <strong>${escapeCartHtml(varInfo.text)}</strong></span>
              </div>`
           : '';
 
@@ -1250,7 +1662,7 @@ const serializedStoreShippingPolicy = JSON.stringify(publicStoreShippingPolicy).
               <ul style="margin:0; padding-right:16px; list-style-type:circle; color:#374151;">
                 ${item.selectedItems.map(si => {
                   const scentName = si.selectedVariant && (si.selectedVariant.name || si.selectedVariant.id) ? (si.selectedVariant.name || si.selectedVariant.id) : '';
-                  return `<li>${si.productName || 'منتج'}${scentName ? ` <span style="color:#9d174d; font-weight:600;">(الرائحة: ${scentName})</span>` : ''}</li>`;
+                  return `<li>${escapeCartHtml(si.productName || 'منتج')}${scentName ? ` <span style="color:#9d174d; font-weight:600;">(الرائحة: ${escapeCartHtml(scentName)})</span>` : ''}</li>`;
                 }).join('')}
               </ul>
             </div>
@@ -1259,8 +1671,8 @@ const serializedStoreShippingPolicy = JSON.stringify(publicStoreShippingPolicy).
 
         const pfBadgeHtml = item.isPinkFriday
           ? `<div class="cart-item-pf-badge" style="display:inline-flex; align-items:center; gap:6px; background:#fe5d9f; color:#ffffff; font-size:0.75rem; font-weight:700; padding:2px 8px; border-radius:99px; margin-bottom:4px;">
-               <span>${item.badgeText || (item.isCollection ? 'كوليكشن Pink Friday' : 'Pink Friday')}</span>
-               ${item.regularPrice ? `<span style="text-decoration:line-through; opacity:0.85;">${Number(item.regularPrice).toFixed(0)} ج.م</span>` : ''}
+               <span>${escapeCartHtml(item.badgeText || (item.isCollection ? 'كوليكشن Pink Friday' : 'Pink Friday'))}</span>
+               ${item.regularPrice ? `<span style="text-decoration:line-through; opacity:0.85;">${formatCartEgp(item.regularPrice)} ج.م</span>` : ''}
              </div>`
           : '';
 
@@ -1268,13 +1680,13 @@ const serializedStoreShippingPolicy = JSON.stringify(publicStoreShippingPolicy).
         itemCard.className = 'cart-product-list-item';
         itemCard.innerHTML = `
           <div class="cart-item-info">
-            <img loading="lazy" src="${item.image}" alt="${item.name}" onerror="this.onerror=null;this.src='https://images.unsplash.com/photo-1608248597481-496100c80836?auto=format&fit=crop&w=100&q=80';">
+            <img loading="lazy" src="${escapeCartHtml(item.image || '')}" alt="${escapeCartHtml(item.name || '')}" onerror="this.onerror=null;this.src='https://images.unsplash.com/photo-1608248597481-496100c80836?auto=format&fit=crop&w=100&q=80';">
             <div class="cart-item-meta">
-              <h3>${item.name}</h3>
+              <h3>${escapeCartHtml(item.name || '')}</h3>
               ${pfBadgeHtml}
               ${variantHtml}
               ${collectionHtml}
-              <div class="cart-item-unit-price">${Number(unitPrice).toFixed(0)} ج.م للقطعة</div>
+              <div class="cart-item-unit-price">${formatCartEgp(unitPrice)} ج.م للقطعة</div>
             </div>
           </div>
 
@@ -1287,7 +1699,7 @@ const serializedStoreShippingPolicy = JSON.stringify(publicStoreShippingPolicy).
 
             <div class="cart-item-actions-left">
               <div class="cart-item-subtotal">
-                ${Number(rowSubtotal).toFixed(0)} ج.م
+                ${formatCartEgp(rowSubtotal)} ج.م
               </div>
 
               <button type="button" class="action-btn-delete" onclick="removeItemFromCart(${index})" title="حذف من السلة" aria-label="حذف المنتج">
@@ -1299,34 +1711,18 @@ const serializedStoreShippingPolicy = JSON.stringify(publicStoreShippingPolicy).
         cartItemsList.appendChild(itemCard);
       });
 
-      const sub = calculateCartSubtotal();
-      subtotalValSummary.textContent = sub.toFixed(0) + ' ج.م';
-      subtotalValSummary2.textContent = sub.toFixed(0) + ' ج.م';
-      grandTotalSummaryValue1.textContent = sub.toFixed(0) + ' ج.م';
-      grandTotalSummaryValue2.textContent = sub.toFixed(0) + ' ج.م';
-
-      const shippingCostSummary1 = document.getElementById('shippingCostSummary1');
-      if (shippingCostSummary1) {
-        if (isFreeShippingEligible(sub)) {
-          shippingCostSummary1.textContent = 'شحن مجاني';
-          shippingCostSummary1.style.color = 'var(--color-success)';
-          shippingCostSummary1.style.fontWeight = 'bold';
-        } else {
-          shippingCostSummary1.textContent = 'تُحدد في الخطوة التالية';
-          shippingCostSummary1.style.color = 'var(--color-muted)';
-          shippingCostSummary1.style.fontWeight = 'normal';
-        }
-      }
+      syncAllShippingAndOrderSummaries();
     }
 
     window.changeQty = function(index, delta) {
       if (cart[index]) {
-        cart[index].quantity = (parseInt(cart[index].quantity) || 1) + delta;
-        if (cart[index].quantity < 1) cart[index].quantity = 1;
+        const current = parseInt(cart[index].quantity, 10) || 1;
+        cart[index].quantity = Math.max(1, current + delta);
         localStorage.setItem('cart', JSON.stringify(cart));
         renderStep1CartItems();
         handleGovChange();
         if (typeof window.updateSharedCartCount === 'function') window.updateSharedCartCount();
+        window.dispatchEvent(new CustomEvent('cart-updated'));
       }
     };
 
@@ -1336,6 +1732,7 @@ const serializedStoreShippingPolicy = JSON.stringify(publicStoreShippingPolicy).
       renderStep1CartItems();
       handleGovChange();
       if (typeof window.updateSharedCartCount === 'function') window.updateSharedCartCount();
+      window.dispatchEvent(new CustomEvent('cart-updated'));
     };
 
     // --- تكامل حساب العميل والعناوين المحفوظة في الـ Checkout ---
@@ -1491,6 +1888,7 @@ const serializedStoreShippingPolicy = JSON.stringify(publicStoreShippingPolicy).
       const pct = ((step - 1) / 2) * 100;
       document.getElementById('stepperLineProgress').style.width = pct + '%';
       document.getElementById(`step-panel-${step}`).classList.add('active');
+      syncAllShippingAndOrderSummaries();
       
       window.scrollTo({ top: 40, behavior: 'smooth' });
     };
@@ -1520,10 +1918,6 @@ const serializedStoreShippingPolicy = JSON.stringify(publicStoreShippingPolicy).
         return;
       }
 
-      const subtotal = calculateCartSubtotal();
-      const fee = calculateShippingFeeForGov(governorate, subtotal);
-      const orderTotal = subtotal + fee;
-
       revCustName.textContent = name;
       revCustPhone.textContent = phone;
       revCustEmail.textContent = email || 'لا يوجد';
@@ -1535,7 +1929,7 @@ const serializedStoreShippingPolicy = JSON.stringify(publicStoreShippingPolicy).
       revContainer.className = 'rev-products-container';
 
       cart.forEach(item => {
-        const qtyVal = parseInt(item.quantity) || 1;
+        const qtyVal = parseInt(item.quantity, 10) || 1;
         const unitPrice = typeof getEffectiveUnitPrice === 'function'
           ? getEffectiveUnitPrice(item)
           : (Number(item.price) || 0);
@@ -1549,7 +1943,7 @@ const serializedStoreShippingPolicy = JSON.stringify(publicStoreShippingPolicy).
         divItem.className = 'rev-product-item';
 
         const variantBadgeHtml = (varInfo && varInfo.text)
-          ? `<span class="rev-product-variant"><i class="fas fa-sparkles" style="font-size:0.7rem;"></i> ${varInfo.label}: <strong>${varInfo.text}</strong></span>`
+          ? `<span class="rev-product-variant"><i class="fas fa-sparkles" style="font-size:0.7rem;"></i> ${escapeCartHtml(varInfo.label)}: <strong>${escapeCartHtml(varInfo.text)}</strong></span>`
           : '';
 
         let revCollectionHtml = '';
@@ -1559,7 +1953,7 @@ const serializedStoreShippingPolicy = JSON.stringify(publicStoreShippingPolicy).
               <span style="font-weight:700;">محتويات الكوليكشن:</span>
               ${item.selectedItems.map(si => {
                 const sName = si.selectedVariant && (si.selectedVariant.name || si.selectedVariant.id) ? (si.selectedVariant.name || si.selectedVariant.id) : '';
-                return `• ${si.productName || 'منتج'}${sName ? ` (${sName})` : ''}`;
+                return `• ${escapeCartHtml(si.productName || 'منتج')}${sName ? ` (${escapeCartHtml(sName)})` : ''}`;
               }).join(' | ')}
             </div>
           `;
@@ -1567,28 +1961,25 @@ const serializedStoreShippingPolicy = JSON.stringify(publicStoreShippingPolicy).
 
         divItem.innerHTML = `
           <div class="rev-product-start">
-            <img class="rev-product-img" loading="lazy" src="${item.image}" alt="${item.name}" onerror="this.onerror=null;this.src='https://images.unsplash.com/photo-1608248597481-496100c80836?auto=format&fit=crop&w=100&q=80';">
+            <img class="rev-product-img" loading="lazy" src="${escapeCartHtml(item.image || '')}" alt="${escapeCartHtml(item.name || '')}" onerror="this.onerror=null;this.src='https://images.unsplash.com/photo-1608248597481-496100c80836?auto=format&fit=crop&w=100&q=80';">
             <div class="rev-product-details">
-              <h4 class="rev-product-name">${item.name}</h4>
+              <h4 class="rev-product-name">${escapeCartHtml(item.name || '')}</h4>
               <div class="rev-product-meta-row">
                 ${variantBadgeHtml}
-                <span class="rev-product-qty-badge">الكمية: <strong>${qtyVal}</strong> × ${unitPrice.toFixed(0)} ج.م</span>
+                <span class="rev-product-qty-badge">الكمية: <strong>${qtyVal}</strong> × ${formatCartEgp(unitPrice)} ج.م</span>
               </div>
               ${revCollectionHtml}
             </div>
           </div>
           <div class="rev-product-subtotal">
-            ${sub.toFixed(0)} ج.م
+            ${formatCartEgp(sub)} ج.م
           </div>
         `;
         revContainer.appendChild(divItem);
       });
       revProductsList.appendChild(revContainer);
 
-      summSubtotal.textContent = subtotal.toFixed(0) + " ج.م";
-      summShipping.textContent = fee === 0 ? "شحن مجاني" : fee.toFixed(0) + " ج.م";
-      finalSummaryTotal.textContent = orderTotal.toFixed(0) + " ج.م";
-
+      syncAllShippingAndOrderSummaries();
       goToStep(3);
     };
 

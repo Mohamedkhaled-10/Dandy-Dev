@@ -2,7 +2,7 @@
 import BaseLayout from '../layouts/BaseLayout.astro';
 
 // SEO Crawl Discipline: Parameter-aware robots signaling for catalog query states
-const AUDITED_CATALOG_PARAMS = ['category', 'search', 'sort', 'page'];
+const AUDITED_CATALOG_PARAMS = ['category', 'status', 'search', 'sort', 'page'];
 const hasAuditedCatalogParam = AUDITED_CATALOG_PARAMS.some(param => Astro.url.searchParams.has(param));
 const robotsDirective = hasAuditedCatalogParam ? 'noindex, follow' : 'index, follow';
 ---
@@ -931,27 +931,45 @@ const robotsDirective = hasAuditedCatalogParam ? 'noindex, follow' : 'index, fol
       }
 
       chipsBar.style.display = 'flex';
-      chipsList.innerHTML = chips.map(chip => `
-        <span class="filter-chip">
-          <span>${escapeHtml(chip.label)}</span>
-          <button type="button" class="chip-remove-btn" onclick="removeFilterChip('${chip.type}', '${escapeHtml(chip.value)}')" title="إزالة الفلتر" aria-label="إزالة الفلتر">
-            <i class="fas fa-times"></i>
-          </button>
-        </span>
-      `).join('');
+      chipsList.innerHTML = '';
+      chips.forEach(chip => {
+        const chipEl = document.createElement('span');
+        chipEl.className = 'filter-chip';
+
+        const labelEl = document.createElement('span');
+        labelEl.textContent = chip.label;
+
+        const removeBtn = document.createElement('button');
+        removeBtn.type = 'button';
+        removeBtn.className = 'chip-remove-btn';
+        removeBtn.title = 'إزالة الفلتر';
+        removeBtn.setAttribute('aria-label', 'إزالة الفلتر');
+        removeBtn.dataset.filterType = chip.type;
+        removeBtn.dataset.filterValue = chip.value;
+        removeBtn.innerHTML = '<i class="fas fa-times"></i>';
+        removeBtn.addEventListener('click', () => {
+          window.removeFilterChip(chip.type, chip.value);
+        });
+
+        chipEl.appendChild(labelEl);
+        chipEl.appendChild(removeBtn);
+        chipsList.appendChild(chipEl);
+      });
     }
 
     window.removeFilterChip = function(type, value) {
       if (type === 'category' || type === 'status') {
         const selector = type === 'category' ? '#category-filters' : '#status-filters';
         const chk = Array.from(document.querySelectorAll(`${selector} input[type="checkbox"]`))
-          .find(c => c.value.toLowerCase() === value.toLowerCase());
+          .find(c => c.value.toLowerCase() === String(value || '').toLowerCase());
         if (chk) {
           chk.checked = false;
         }
       } else if (type === 'search') {
         const sinp = document.getElementById("search-input");
         if (sinp) sinp.value = "";
+        const sbox = document.getElementById("search-suggestions");
+        if (sbox) sbox.style.display = "none";
       }
       window.applyFiltersAndSort();
     };
@@ -988,7 +1006,153 @@ const robotsDirective = hasAuditedCatalogParam ? 'noindex, follow' : 'index, fol
       }
     }
 
-    window.applyFiltersAndSort = function() {
+    const CATEGORY_PARAM_ALIASES = {
+      'skin care': 'skin care',
+      'skin-care': 'skin care',
+      'skin': 'skin care',
+      'عناية بالبشرة': 'skin care',
+      'hair care': 'hair care',
+      'hair-care': 'hair care',
+      'hair': 'hair care',
+      'منتجات الشعر': 'hair care',
+      'عناية بالشعر': 'hair care',
+      'body care': 'body care',
+      'body-care': 'body care',
+      'body': 'body care',
+      'منتجات الجسم': 'body care',
+      'عناية بالجسم': 'body care',
+      'perfume': 'perfume',
+      'fragrance': 'perfume',
+      'fragrances': 'perfume',
+      'منتجات العطور': 'perfume',
+      'عطور ومستخلصات': 'perfume'
+    };
+
+    function normalizeCategoryParam(rawValue) {
+      if (typeof rawValue !== 'string') return null;
+      const trimmed = rawValue.trim().toLowerCase();
+      if (!trimmed) return null;
+      if (Object.prototype.hasOwnProperty.call(CATEGORY_PARAM_ALIASES, trimmed)) {
+        return CATEGORY_PARAM_ALIASES[trimmed];
+      }
+      return trimmed;
+    }
+
+    window.syncCatalogUrl = function() {
+      if (typeof window === 'undefined' || !window.location) return;
+      const url = new URL(window.location.href);
+      const params = url.searchParams;
+
+      params.delete('category');
+      params.delete('status');
+      params.delete('search');
+      params.delete('sort');
+
+      const selectedCategories = Array.from(
+        document.querySelectorAll('#category-filters input[type="checkbox"]:checked')
+      ).map(chk => chk.value);
+      selectedCategories.forEach(cat => params.append('category', cat));
+
+      const selectedStatuses = Array.from(
+        document.querySelectorAll('#status-filters input[type="checkbox"]:checked')
+      ).map(chk => chk.value);
+      selectedStatuses.forEach(st => params.append('status', st));
+
+      const sinp = document.getElementById('search-input');
+      const searchVal = (sinp?.value || '').trim();
+      if (searchVal) {
+        params.set('search', searchVal);
+      }
+
+      const sortSel = document.getElementById('sort-select');
+      const validSortValues = sortSel
+        ? Array.from(sortSel.options).map(opt => opt.value)
+        : ['default'];
+      const sortVal = sortSel ? sortSel.value : 'default';
+      if (sortVal && sortVal !== 'default' && validSortValues.includes(sortVal)) {
+        params.set('sort', sortVal);
+      }
+
+      const qs = params.toString();
+      const nextUrl = `${url.pathname}${qs ? '?' + qs : ''}${url.hash}`;
+      const currentUrl = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+
+      if (nextUrl !== currentUrl && window.history && typeof window.history.replaceState === 'function') {
+        window.history.replaceState(window.history.state, '', nextUrl);
+      }
+    };
+
+    window.restoreCatalogStateFromUrl = function() {
+      const urlParams = new URLSearchParams(window.location.search);
+
+      const categoryCheckboxes = Array.from(
+        document.querySelectorAll('#category-filters input[type="checkbox"]')
+      );
+      categoryCheckboxes.forEach(chk => { chk.checked = false; });
+
+      const rawCategories = urlParams.getAll('category');
+      rawCategories.forEach(rawCat => {
+        const normalized = normalizeCategoryParam(rawCat);
+        if (!normalized) return;
+        const match = categoryCheckboxes.find(
+          chk => chk.value.toLowerCase() === normalized
+        );
+        if (match) {
+          match.checked = true;
+        }
+      });
+
+      const statusCheckboxes = Array.from(
+        document.querySelectorAll('#status-filters input[type="checkbox"]')
+      );
+      statusCheckboxes.forEach(chk => { chk.checked = false; });
+
+      const rawStatuses = urlParams.getAll('status');
+      rawStatuses.forEach(rawStatus => {
+        const normalized = String(rawStatus || '').trim().toLowerCase();
+        if (!normalized) return;
+        const match = statusCheckboxes.find(
+          chk => chk.value.toLowerCase() === normalized
+        );
+        if (match) {
+          match.checked = true;
+        }
+      });
+
+      const sinp = document.getElementById('search-input');
+      if (sinp) {
+        const rawSearch = urlParams.get('search');
+        sinp.value = rawSearch && rawSearch.trim() ? rawSearch.trim() : '';
+      }
+
+      const sortSel = document.getElementById('sort-select');
+      if (sortSel) {
+        const rawSort = (urlParams.get('sort') || '').trim().toLowerCase();
+        const matchingOption = Array.from(sortSel.options).find(
+          opt => opt.value.toLowerCase() === rawSort
+        );
+        sortSel.value = matchingOption ? matchingOption.value : 'default';
+      }
+
+      const activeCategories = categoryCheckboxes
+        .filter(chk => chk.checked)
+        .map(chk => chk.value.toLowerCase());
+      const activeStatuses = statusCheckboxes
+        .filter(chk => chk.checked)
+        .map(chk => chk.value.toLowerCase());
+      const query = (sinp?.value || '').trim().toLowerCase();
+
+      const clearSearchBtn = document.getElementById('clear-search');
+      if (clearSearchBtn) {
+        clearSearchBtn.style.display = query ? 'flex' : 'none';
+      }
+
+      renderActiveChips(activeCategories, activeStatuses, query);
+      window.updateBadgesAndClearBtn();
+    };
+
+    window.applyFiltersAndSort = function(options) {
+      const shouldSyncUrl = !options || options.syncUrl !== false;
       const sinp = document.getElementById("search-input");
       const query = (sinp?.value || "").trim().toLowerCase();
 
@@ -1066,6 +1230,11 @@ const robotsDirective = hasAuditedCatalogParam ? 'noindex, follow' : 'index, fol
 
       // Maintain active sort order
       window.sortProductsDOM();
+
+      // Synchronize catalog URL state without page reload
+      if (shouldSyncUrl) {
+        window.syncCatalogUrl();
+      }
     };
 
     window.clearAllFilters = function() {
@@ -1073,19 +1242,13 @@ const robotsDirective = hasAuditedCatalogParam ? 'noindex, follow' : 'index, fol
       checkboxes.forEach(chk => chk.checked = false);
       const sinp = document.getElementById("search-input");
       if (sinp) sinp.value = "";
+      const sbox = document.getElementById("search-suggestions");
+      if (sbox) sbox.style.display = "none";
       window.applyFiltersAndSort();
     };
 
-    // Handle category from URL param initially
-    const initUrlParams = new URLSearchParams(window.location.search);
-    const initCategory = initUrlParams.get('category')?.toLowerCase();
-    if (initCategory) {
-      const checkTarget = Array.from(document.querySelectorAll('#category-filters input[type="checkbox"]')).find(chk => chk.value.toLowerCase() === initCategory || (initCategory.includes('hair') && chk.value === 'hair care'));
-      if (checkTarget) {
-        checkTarget.checked = true;
-      }
-    }
-    window.updateBadgesAndClearBtn();
+    // Restore supported catalog state from URL parameters on initial load
+    window.restoreCatalogStateFromUrl();
 
     // Hook up sidebar filter change listeners
     const filterCheckboxes = document.querySelectorAll('.shop-sidebar input[type="checkbox"]');
@@ -1100,6 +1263,7 @@ const robotsDirective = hasAuditedCatalogParam ? 'noindex, follow' : 'index, fol
     if (sortSelect) {
       sortSelect.addEventListener("change", () => {
         window.sortProductsDOM();
+        window.syncCatalogUrl();
       });
     }
 
@@ -1238,13 +1402,6 @@ const robotsDirective = hasAuditedCatalogParam ? 'noindex, follow' : 'index, fol
     };
 
     const container = document.getElementById("productContainer");
-    const urlParams = new URLSearchParams(window.location.search);
-    const searchQuery = urlParams.get("search")?.toLowerCase() || "";
-    
-    if (searchQuery) {
-      const sinp = document.getElementById("search-input");
-      if (sinp) sinp.value = searchQuery;
-    }
 
     // Fetch and build catalog cards dynamically from Firebase Realtime Database
     db.ref("products").on("value", snapshot => {
@@ -1373,7 +1530,7 @@ const robotsDirective = hasAuditedCatalogParam ? 'noindex, follow' : 'index, fol
         container.appendChild(productEl);
       });
 
-      window.applyFiltersAndSort();
+      window.applyFiltersAndSort({ syncUrl: false });
     });
 
     const searchInput = document.getElementById("search-input");

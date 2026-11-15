@@ -570,3 +570,42 @@ test('13. Customer-facing pages & B.A.B knowledge reflect 70-120 EGP, >2000 free
   const bundled = JSON.parse(bundledMatch[1]);
   assert.deepEqual(bundled, knowledge);
 });
+
+// ===========================================================================
+// 14. Group 2A.1.1: Arabic & Case-Insensitive Parity Across Policy, Email Service & Order API
+// ===========================================================================
+test('14. Arabic & case-insensitive governorate names resolve identically across store-policy, email-service, and create-order API', async () => {
+  const { GOVERNORATE_ALIASES } = await import('../src/config/store-policy.ts');
+
+  assert.equal(Object.keys(GOVERNORATE_ALIASES).length, 27);
+
+  for (const [arGov, engGov] of Object.entries(GOVERNORATE_ALIASES)) {
+    const expectedFee = SHIPPING_RATES_BY_GOVERNORATE[engGov];
+    assert.equal(getShippingFeeForGovernorate(arGov), expectedFee);
+    assert.equal(emailServiceGetShippingFee(arGov), expectedFee);
+    assert.equal(calculateShippingFee(arGov, 2000), expectedFee);
+    assert.equal(calculateShippingFee(arGov, 2001), 0);
+  }
+
+  // Verify end-to-end create-order POST with Arabic governorate at === 2000 boundary
+  const hexKey = crypto.randomBytes(32).toString('hex');
+  const mockDb = createRtdbMock({
+    products: {
+      p2000: { name: 'روتين كامل', price: 2000, stockQuantity: 50 }
+    }
+  });
+  const res = await createOrderPOST({
+    request: makeOrderReq({
+      customer: { governorate: 'الغربية' },
+      items: [{ productId: 'p2000', quantity: 1 }]
+    }),
+    clientAddress: '41.41.60.9',
+    _deps: makeDeps(mockDb, hexKey)
+  });
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  const savedOrder = mockDb.data.orders[body.orderId];
+  assert.equal(savedOrder.shippingFee, 70);
+  assert.equal(savedOrder.totalAmount, 2070);
+});
+

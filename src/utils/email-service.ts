@@ -11,6 +11,10 @@ import {
   type OutboxProviderOutcome,
   type OutboxPersistenceOutcome
 } from './notifications-outbox.ts';
+import {
+  calculateShippingFee,
+  getShippingFeeForGovernorate
+} from '../config/store-policy.ts';
 
 export type NotificationStatus =
   | 'accepted_by_mailapp'
@@ -351,83 +355,13 @@ function getAdminDb() {
 // Egyptian Governorate Shipping Rates & Financial Calculations
 // =============================================================================
 
-export const EGYPT_SHIPPING_RATES: Record<string, number> = {
-  // English keys
-  "Gharbia": 70,
-  "Dakahlia": 85,
-  "Sharqia": 85,
-  "Kafr El Sheikh": 85,
-  "Qalyubia": 85,
-  "Port Said": 85,
-  "Damietta": 85,
-  "Suez": 85,
-  "Ismailia": 85,
-  "Cairo": 85,
-  "Giza": 85,
-  "Beheira": 85,
-  "Monufia": 85,
-  "Alexandria": 85,
-  "Fayoum": 100,
-  "Beni Suef": 100,
-  "Minya": 100,
-  "Luxor": 120,
-  "Aswan": 120,
-  "Assiut": 120,
-  "Sohag": 120,
-  "North Sinai": 120,
-  "South Sinai": 120,
-  "Qena": 120,
-  "New Valley": 120,
-  "Red Sea": 120,
-  "Matrouh": 120,
-
-  // Arabic keys
-  "الغربية": 70,
-  "الدقهلية": 85,
-  "الشرقية": 85,
-  "كفر الشيخ": 85,
-  "القليوبية": 85,
-  "بورسعيد": 85,
-  "دمياط": 85,
-  "السويس": 85,
-  "الإسماعيلية": 85,
-  "القاهرة": 85,
-  "الجيزة": 85,
-  "البحيرة": 85,
-  "المنوفية": 85,
-  "الإسكندرية": 85,
-  "الفيوم": 100,
-  "بني سويف": 100,
-  "المنيا": 100,
-  "الأقصر": 120,
-  "أسوان": 120,
-  "أسيوط": 120,
-  "سوهاج": 120,
-  "شمال سيناء": 120,
-  "جنوب سيناء": 120,
-  "قنا": 120,
-  "الوادي الجديد": 120,
-  "البحر الأحمر": 120,
-  "مطروح": 120
-};
-
 /**
  * Returns standard shipping fee for an Egyptian governorate (in English or Arabic).
- * Defaults to 120 EGP if governorate is unrecognized or empty.
+ * Delegates to the centralized store policy (`src/config/store-policy.ts`),
+ * which defaults to 120 EGP if the governorate is unrecognized or empty.
  */
 export function getShippingFeeForGov(govName?: string): number {
-  if (!govName) return 120;
-  const trimmed = String(govName).trim();
-  if (EGYPT_SHIPPING_RATES[trimmed] !== undefined) {
-    return EGYPT_SHIPPING_RATES[trimmed];
-  }
-  const lower = trimmed.toLowerCase();
-  for (const [key, fee] of Object.entries(EGYPT_SHIPPING_RATES)) {
-    if (key.toLowerCase() === lower) {
-      return fee;
-    }
-  }
-  return 120;
+  return getShippingFeeForGovernorate(govName);
 }
 
 /**
@@ -447,7 +381,7 @@ export function formatEGP(amount: number | string | null | undefined): string {
  * Order financial calculation model ensuring exact financial integrity:
  * - Reads exact saved financial fields from the order when present.
  * - Safely recalculates missing or 0 values from line items.
- * - Strictly enforces Cairo / governorate shipping rules (free shipping ONLY if subtotal > 2000).
+ * - Delegates governorate shipping rates and free-shipping eligibility to `src/config/store-policy.ts`.
  */
 export interface CalculatedFinancials {
   products: any[];
@@ -561,18 +495,14 @@ export function calculateOrderFinancials(order: any): CalculatedFinancials {
 
   // 2. Resolve shipping fee:
   // If explicitly specified in order, preserve it.
-  // Otherwise apply the standard business rule: Free shipping ONLY if subtotal > 2000, else governorate rate.
+  // Otherwise apply the centralized shipping policy from `src/config/store-policy.ts`.
   const rawShipping = parseNumOrNull(order.shippingFee);
   let shippingFee = 0;
 
   if (rawShipping !== null) {
     shippingFee = rawShipping;
   } else {
-    if (subtotal > 2000) {
-      shippingFee = 0;
-    } else {
-      shippingFee = getShippingFeeForGov(order.governorate);
-    }
+    shippingFee = calculateShippingFee(order.governorate, subtotal);
   }
 
   // 3. Resolve totalAmount:
