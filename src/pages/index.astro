@@ -1,29 +1,91 @@
 ---
 /**
- * DANDY COSMETICS — BOTANICAL EDITORIAL HOMEPAGE (PHASE 3)
- * SSR-first architecture: immediate above-the-fold editorial content, real catalog data,
- * unified ProductCard showcase, grounded brand story, and conditional Pink Friday banner.
+ * DANDY COSMETICS — BOTANICAL EDITORIAL HOMEPAGE (STUDIO SYNCHRONIZED)
+ * SSR-first architecture synchronized cleanly with Firebase RTDB (`homepage` & `categories`)
+ * and live Admin Studio (`/dashboard-index`) postMessage preview protocol.
  */
 import BaseLayout from '../layouts/BaseLayout.astro';
 import HeroEditorial from '../components/home/HeroEditorial.astro';
+import TrustStripSection from '../components/home/TrustStripSection.astro';
 import CategoryDiscovery from '../components/home/CategoryDiscovery.astro';
 import FeaturedProducts from '../components/home/FeaturedProducts.astro';
 import PinkFridayHomeSection from '../components/home/PinkFridayHomeSection.astro';
 import EditorialBrandStory from '../components/home/EditorialBrandStory.astro';
+import BlogHomeSection from '../components/home/BlogHomeSection.astro';
+import ReviewsHomeSection from '../components/home/ReviewsHomeSection.astro';
+import CustomStudioSection from '../components/home/CustomStudioSection.astro';
 import { getAllProducts } from '../utils/products';
+import { getAllArticles } from '../utils/articles';
+import { getHomepageStudioData } from '../utils/homepage';
 import {
+  calculatePinkFridayPricing,
   getPublishedPinkFridayCampaign,
   shouldDisplayCampaignToCustomers,
+  type CampaignPricingResult,
 } from '../utils/pink-friday-server';
-import { selectFeaturedProducts } from '../scripts/product-card';
+import {
+  resolveCategoriesForShowcase,
+  resolveDynamicProductSection,
+  resolveHeroSlides,
+  resolveOrderedHomepageEntries,
+  resolvePromoBanner,
+  resolveTrustItems,
+  selectProductsForStudioSection,
+} from '../scripts/homepage-studio';
 
-const [allProducts, publishedPfCampaign] = await Promise.all([
+const isStudioPreview = Astro.url.searchParams.get('studio_preview') === '1';
+
+const [allProducts, publishedPfCampaign, studioData, allArticles] = await Promise.all([
   getAllProducts(),
   getPublishedPinkFridayCampaign(),
+  getHomepageStudioData({ forceFresh: isStudioPreview }),
+  getAllArticles(isStudioPreview),
 ]);
 
-const featuredProducts = selectFeaturedProducts(allProducts, 8);
 const showPfSection = shouldDisplayCampaignToCustomers(publishedPfCampaign);
+const orderedEntries = resolveOrderedHomepageEntries(studioData, showPfSection);
+
+const renderedEntries = isStudioPreview
+  ? orderedEntries
+  : orderedEntries.filter((entry) => entry.visible);
+
+const heroSlides = resolveHeroSlides(studioData.hero);
+const trustItems = resolveTrustItems(studioData.trust);
+const resolvedCategories = resolveCategoriesForShowcase(studioData.categories);
+const promoBanner = resolvePromoBanner(studioData.promoBanner);
+
+const offersConfig = resolveDynamicProductSection(studioData, 'offers');
+const offersProducts = selectProductsForStudioSection(allProducts, {
+  source: offersConfig.type,
+  manualProducts: offersConfig.manualProducts,
+  limit: offersConfig.limit,
+});
+
+const newArrivalsConfig = resolveDynamicProductSection(studioData, 'newArrivals');
+const newArrivalsProducts = selectProductsForStudioSection(allProducts, {
+  source: newArrivalsConfig.type,
+  manualProducts: newArrivalsConfig.manualProducts,
+  limit: newArrivalsConfig.limit,
+});
+
+// Compact preview bootstrap payload strictly for Admin Studio live iframe preview
+const studioBootstrapJson = isStudioPreview
+  ? JSON.stringify({
+      state: studioData,
+      showPinkFriday: showPfSection,
+      products: allProducts.filter((p) => !p.isHidden),
+      pinkFridayPricingMap: publishedPfCampaign
+        ? Object.fromEntries(
+            allProducts
+              .filter((p) => !p.isHidden)
+              .map((p): [string, CampaignPricingResult | null] => [
+                p.id,
+                calculatePinkFridayPricing(p, publishedPfCampaign),
+              ])
+          )
+        : {},
+    }).replace(/<\/script>/gi, '<\\/script>')
+  : null;
 ---
 
 <BaseLayout
@@ -75,6 +137,10 @@ const showPfSection = shouldDisplayCampaignToCustomers(publishedPfCampaign);
       .dandy-home-main {
         background-color: var(--dandy-bg-page);
         overflow-x: clip;
+      }
+
+      .dandy-home-main > [hidden] {
+        display: none !important;
       }
 
       .dandy-home-section {
@@ -134,6 +200,44 @@ const showPfSection = shouldDisplayCampaignToCustomers(publishedPfCampaign);
         border-color: var(--dandy-accent-primary);
       }
 
+      html.dandy-studio-preview .dandy-consent-banner,
+      html.dandy-studio-preview dandy-bab-widget {
+        display: none !important;
+      }
+
+      /* Studio Edit Mode Visual Affordances inside /?studio_preview=1 */
+      html.dandy-studio-edit-mode [data-studio-section] {
+        position: relative;
+        cursor: pointer;
+        transition: outline-color 150ms ease;
+      }
+
+      html.dandy-studio-edit-mode [data-studio-section]:hover {
+        outline: 2px dashed rgba(157, 27, 77, 0.55);
+        outline-offset: -3px;
+      }
+
+      html.dandy-studio-edit-mode [data-studio-section].is-studio-selected {
+        outline: 2px solid var(--dandy-accent-primary);
+        outline-offset: -3px;
+      }
+
+      html.dandy-studio-edit-mode [data-studio-section].is-studio-selected::before {
+        content: attr(data-studio-label);
+        position: absolute;
+        top: 8px;
+        inset-inline-start: 12px;
+        z-index: 30;
+        padding: 3px 10px;
+        border-radius: var(--dandy-radius-xs);
+        background-color: var(--dandy-accent-primary);
+        color: #ffffff;
+        font-family: var(--dandy-font-ar-sans);
+        font-size: 0.72rem;
+        font-weight: 700;
+        pointer-events: none;
+      }
+
       @media (max-width: 767px) {
         .dandy-home-section {
           padding-block: var(--dandy-section-py-mobile);
@@ -150,15 +254,94 @@ const showPfSection = shouldDisplayCampaignToCustomers(publishedPfCampaign);
   </slot>
 
   <main class="dandy-home-main" id="main-content">
-    <HeroEditorial />
-    <CategoryDiscovery />
-    <FeaturedProducts
-      products={featuredProducts}
-      pinkFridayCampaign={publishedPfCampaign}
-    />
-    {showPfSection && (
-      <PinkFridayHomeSection campaign={publishedPfCampaign} />
-    )}
-    <EditorialBrandStory />
+    {renderedEntries.map((entry) => {
+      const hidden = !entry.visible;
+
+      if (entry.kind === 'custom' && entry.customSection) {
+        return (
+          <CustomStudioSection
+            section={entry.customSection}
+            allProducts={allProducts}
+            pinkFridayCampaign={publishedPfCampaign}
+            hidden={hidden}
+          />
+        );
+      }
+
+      if (entry.kind === 'pink-friday' && showPfSection) {
+        return <PinkFridayHomeSection campaign={publishedPfCampaign} />;
+      }
+
+      switch (entry.id) {
+        case 'hero':
+          return <HeroEditorial slides={heroSlides} hidden={hidden} />;
+        case 'trust':
+          return <TrustStripSection sectionId="trust" items={trustItems} hidden={hidden} />;
+        case 'categories':
+          return <CategoryDiscovery categories={resolvedCategories} hidden={hidden} />;
+        case 'offers':
+          return (
+            <FeaturedProducts
+              sectionId="offers"
+              kicker={offersConfig.subtitle}
+              heading={offersConfig.title}
+              viewAllHref={offersConfig.viewAllHref}
+              viewAllLabel={offersConfig.viewAllLabel}
+              alternateSurface={true}
+              products={offersProducts}
+              pinkFridayCampaign={publishedPfCampaign}
+              hidden={hidden}
+            />
+          );
+        case 'promo':
+          return (
+            <EditorialBrandStory
+              sectionId="promo"
+              eyebrow={promoBanner.eyebrow}
+              title={promoBanner.title}
+              desc={promoBanner.desc}
+              ctaText={promoBanner.ctaText}
+              ctaLink={promoBanner.ctaLink}
+              image={promoBanner.image}
+              isCustomized={promoBanner.isCustomized}
+              hidden={hidden}
+            />
+          );
+        case 'newArrivals':
+          return (
+            <FeaturedProducts
+              sectionId="newArrivals"
+              kicker={newArrivalsConfig.subtitle}
+              heading={newArrivalsConfig.title}
+              viewAllHref={newArrivalsConfig.viewAllHref}
+              viewAllLabel={newArrivalsConfig.viewAllLabel}
+              alternateSurface={false}
+              products={newArrivalsProducts}
+              pinkFridayCampaign={publishedPfCampaign}
+              hidden={hidden}
+            />
+          );
+        case 'blog':
+          return <BlogHomeSection articles={allArticles} hidden={hidden} />;
+        case 'reviews':
+          return <ReviewsHomeSection reviews={studioData.reviews} hidden={hidden} />;
+        default:
+          return null;
+      }
+    })}
   </main>
+
+  {studioBootstrapJson && (
+    <script
+      type="application/json"
+      id="dandy-home-studio-bootstrap"
+      is:inline
+      set:html={studioBootstrapJson}
+    />
+  )}
+
+  <script>
+    import { initHomepageStudio } from '../scripts/homepage-studio-client';
+    initHomepageStudio();
+  </script>
 </BaseLayout>

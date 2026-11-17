@@ -1,1699 +1,1516 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
+import Icon from '../components/ui/Icon.astro';
+import CheckoutPageHeader from '../components/commerce/CheckoutPageHeader.astro';
+import CheckoutStepper from '../components/commerce/CheckoutStepper.astro';
+import CartRemoveDialog from '../components/commerce/CartRemoveDialog.astro';
+import { GOVERNORATES } from '../scripts/purchase-flow';
+
 const turnstileSiteKey = process.env.PUBLIC_TURNSTILE_SITE_KEY || '';
+const canonicalUrl = 'https://dandy-ebon.vercel.app/cart';
+const pageTitle = 'حقيبة التسوق وإتمام الطلب | Dandy Cosmetics';
+const pageDescription =
+  'راجعي محتويات حقيبة التسوق، احسبي تكلفة الشحن حسب المحافظة، وأكّدي طلبكِ من منتجات داندي الطبيعية مع الدفع عند الاستلام.';
 ---
 
 <BaseLayout
-  title="Shopping Cart & Secure Checkout | Dandy"
-  description="View your cart status, configure your governorate-based shipping option, and secure your organic purity order at Dandy Egypt."
-  keywords="Cart Dandy, Secure Checkout Egypt, Skincare Order Cairo"
-  canonical="https://dandy-ebon.vercel.app/cart"
+  title={pageTitle}
+  description={pageDescription}
+  keywords="حقيبة التسوق، إتمام الطلب، داندي للتجميل، الدفع عند الاستلام"
+  canonical={canonicalUrl}
+  robots="noindex, nofollow"
 >
-  <slot name="head" slot="head">
+  <Fragment slot="head">
     <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
-    <meta name="robots" content="noindex, nofollow" />
     <meta property="og:type" content="website" />
-    <meta property="og:url" content="https://dandy-ebon.vercel.app/cart" />
-    <meta property="og:title" content="Shopping Cart & Secure Checkout | Dandy" />
-    <meta property="og:description" content="Securely finalize your purchase of premium organic botanical items." />
-    <meta property="og:image" content="https://res.cloudinary.com/dogk78w9z/image/upload/v1789152384/WhatsApp_Image_2026-06-18_at_5.55.06_PM.jpg" />
-
-    <style is:global>
-      .cart-section {
-        padding: 120px 0 80px;
-        min-height: 80vh;
-      }
-
-      .cart-checkout-container {
-        max-width: 1060px;
-        margin: 0 auto;
-      }
-
-      /* Modern Minimal Stepper */
-      .checkout-stepper {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 24px;
-        position: relative;
-        background: var(--color-surface);
-        border: 1px solid var(--border-light);
-        border-radius: var(--border-radius-md);
-        padding: 18px 28px;
-      }
-
-      .stepper-line {
-        position: absolute;
-        top: 50%;
-        left: 14%;
-        right: 14%;
-        height: 2px;
-        background: var(--border-light);
-        z-index: 1;
-        transform: translateY(-50%);
-      }
-
-      .stepper-line-progress {
-        position: absolute;
-        top: 50%;
-        left: 14%;
-        height: 2px;
-        background: var(--color-blush);
-        z-index: 2;
-        transform: translateY(-50%);
-        transition: width 0.35s ease;
-        width: 0%;
-      }
-
-      .stepper-step {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: 6px;
-        position: relative;
-        z-index: 3;
-        background: var(--color-surface);
-        padding: 0 12px;
-        flex: 1;
-        text-align: center;
-      }
-
-      .step-num-icon {
-        width: 38px;
-        height: 38px;
-        border-radius: 50%;
-        background: var(--color-surface-soft);
-        border: 1.5px solid var(--border-light);
-        color: var(--color-muted);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-weight: 700;
-        font-size: 0.95rem;
-        transition: all 0.2s ease;
-      }
-
-      .stepper-step.active .step-num-icon {
-        background: var(--color-blush);
-        border-color: var(--color-blush);
-        color: #fff;
-        box-shadow: 0 4px 14px rgba(219, 39, 119, 0.25);
-      }
-
-      .stepper-step.completed .step-num-icon {
-        background: #059669;
-        border-color: #059669;
-        color: #fff;
-      }
-
-      .step-text {
-        font-size: 0.88rem;
-        font-weight: 700;
-        color: var(--color-muted);
-        transition: color 0.2s;
-      }
-
-      .stepper-step.active .step-text {
-        color: var(--color-primary);
-      }
-
-      /* Clean Trust Info Bar */
-      .info-bubbles-container {
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        flex-wrap: wrap;
-        gap: 10px;
-        margin-bottom: 28px;
-      }
-
-      .info-bubble {
-        display: inline-flex;
-        align-items: center;
-        gap: 7px;
-        background: var(--color-surface);
-        color: var(--color-primary);
-        border: 1px solid var(--border-light);
-        padding: 6px 14px;
-        border-radius: 99px;
-        font-size: 0.82rem;
-        font-weight: 600;
-      }
-
-      .info-bubble i {
-        color: var(--color-blush);
-        font-size: 0.85rem;
-      }
-
-      /* Step Panels Transition */
-      .checkout-step-panel {
-        display: none;
-      }
-
-      .checkout-step-panel.active {
-        display: block;
-        animation: fadeIn 0.3s ease;
-      }
-
-      @keyframes fadeIn {
-        from { opacity: 0; transform: translateY(6px); }
-        to { opacity: 1; transform: translateY(0); }
-      }
-
-      /* 2-Column Responsive Layout */
-      .catalog-checkout-grid {
-        display: grid;
-        grid-template-columns: 1.85fr 1.15fr;
-        gap: 24px;
-        align-items: start;
-      }
-
-      @media (max-width: 900px) {
-        .catalog-checkout-grid {
-          grid-template-columns: 1fr;
-          gap: 20px;
-        }
-      }
-
-      .panel-main-card {
-        background: var(--color-surface);
-        border: 1px solid var(--border-light);
-        border-radius: var(--border-radius-md);
-        padding: 24px;
-      }
-
-      .panel-side-summary {
-        background: var(--color-surface);
-        border: 1px solid var(--border-light);
-        border-radius: var(--border-radius-md);
-        padding: 24px;
-        position: sticky;
-        top: 100px;
-      }
-
-      /* Modern Minimal Product Row */
-      .cart-product-list-item {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        border-bottom: 1px solid var(--border-light);
-        padding: 16px 0;
-        gap: 16px;
-        transition: background-color 0.2s;
-      }
-
-      .cart-product-list-item:first-child {
-        padding-top: 4px;
-      }
-
-      .cart-product-list-item:last-child {
-        border-bottom: none;
-        padding-bottom: 4px;
-      }
-
-      .cart-item-info {
-        display: flex;
-        align-items: center;
-        gap: 16px;
-        flex: 1 1 auto;
-        min-width: 0;
-      }
-
-      .cart-item-info img {
-        width: 76px;
-        height: 76px;
-        object-fit: cover;
-        border-radius: 12px;
-        border: 1px solid var(--border-light);
-        background: #fdf2f8;
-        flex-shrink: 0;
-        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
-      }
-
-      .cart-item-meta {
-        display: flex;
-        flex-direction: column;
-        gap: 4px;
-        min-width: 0;
-        flex: 1;
-        text-align: right;
-      }
-
-      .cart-item-meta h3 {
-        font-size: 0.98rem;
-        font-weight: 700;
-        color: var(--color-primary);
-        margin: 0;
-        line-height: 1.45;
-        word-break: break-word;
-      }
-
-      .cart-item-scent-badge {
-        display: inline-flex;
-        align-items: center;
-        gap: 5px;
-        font-size: 0.78rem;
-        font-weight: 600;
-        color: var(--color-blush);
-        background: rgba(254, 93, 159, 0.1);
-        border: 1px solid rgba(254, 93, 159, 0.2);
-        padding: 2px 10px;
-        border-radius: 99px;
-        width: fit-content;
-      }
-
-      .cart-item-scent-badge i {
-        font-size: 0.72rem;
-      }
-
-      .cart-item-unit-price {
-        font-size: 0.85rem;
-        color: var(--color-muted);
-        font-weight: 500;
-      }
-
-      .cart-item-actions {
-        display: flex;
-        align-items: center;
-        gap: 16px;
-        flex-shrink: 0;
-      }
-
-      .cart-item-actions-left {
-        display: flex;
-        align-items: center;
-        gap: 14px;
-      }
-
-      /* Tactile +/- Quantity Selector */
-      .qty-tactile-selector {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        border: 1px solid var(--border-light);
-        border-radius: 99px;
-        padding: 3px 5px;
-        background: var(--color-surface-soft);
-        box-shadow: 0 1px 3px rgba(0,0,0,0.03);
-        flex-shrink: 0;
-        user-select: none;
-      }
-
-      .qty-btn-adjust {
-        width: 28px;
-        height: 28px;
-        min-width: 28px;
-        border-radius: 50%;
-        border: 1px solid var(--border-light);
-        background: #fff;
-        color: var(--color-primary);
-        font-weight: 800;
-        font-size: 1rem;
-        line-height: 1;
-        cursor: pointer;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        box-shadow: 0 1px 2px rgba(0,0,0,0.06);
-        transition: all 0.15s ease;
-        padding: 0;
-      }
-
-      .qty-btn-adjust:hover {
-        background: var(--color-blush);
-        color: #fff;
-        border-color: var(--color-blush);
-      }
-
-      .qty-btn-adjust:active {
-        transform: scale(0.92);
-      }
-
-      /* Strict sizing and reset to prevent global foundation.css input overrides */
-      .qty-tactile-selector .qty-display-box,
-      .qty-display-box {
-        width: 32px !important;
-        min-width: 32px !important;
-        max-width: 32px !important;
-        height: 28px !important;
-        min-height: 28px !important;
-        max-height: 28px !important;
-        text-align: center !important;
-        font-weight: 700 !important;
-        font-size: 0.95rem !important;
-        border: none !important;
-        background: transparent !important;
-        outline: none !important;
-        color: var(--color-primary) !important;
-        padding: 0 !important;
-        margin: 0 !important;
-        display: inline-flex !important;
-        align-items: center !important;
-        justify-content: center !important;
-        line-height: 28px !important;
-        box-shadow: none !important;
-        appearance: none !important;
-        -webkit-appearance: none !important;
-      }
-
-      .cart-item-subtotal {
-        font-weight: 800;
-        color: var(--color-primary);
-        font-size: 1.05rem;
-        min-width: 75px;
-        text-align: left;
-        white-space: nowrap;
-        font-variant-numeric: tabular-nums;
-      }
-
-      .action-btn-delete {
-        color: var(--color-muted);
-        border: 1px solid transparent;
-        background: none;
-        cursor: pointer;
-        font-size: 0.95rem;
-        width: 36px;
-        height: 36px;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        border-radius: 8px;
-        transition: color 0.2s, background-color 0.2s, border-color 0.2s;
-        flex-shrink: 0;
-        padding: 0;
-      }
-
-      .action-btn-delete:hover {
-        color: #dc2626;
-        background: #fee2e2;
-        border-color: #fecaca;
-      }
-
-      /* Step 3 Review Products List */
-      .rev-products-container {
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
-        margin-bottom: 20px;
-      }
-
-      .rev-product-item {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 12px 14px;
-        background: var(--color-surface-soft);
-        border: 1px solid var(--border-light);
-        border-radius: 12px;
-        gap: 14px;
-        transition: all 0.2s ease;
-      }
-
-      .rev-product-item:hover {
-        background: #fff;
-        border-color: rgba(254, 93, 159, 0.25);
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
-      }
-
-      .rev-product-start {
-        display: flex;
-        align-items: center;
-        gap: 14px;
-        flex: 1;
-        min-width: 0;
-      }
-
-      .rev-product-img {
-        width: 56px;
-        height: 56px;
-        object-fit: cover;
-        border-radius: 10px;
-        border: 1px solid var(--border-light);
-        background: #fff;
-        flex-shrink: 0;
-      }
-
-      .rev-product-details {
-        display: flex;
-        flex-direction: column;
-        gap: 4px;
-        min-width: 0;
-        flex: 1;
-        text-align: right;
-      }
-
-      .rev-product-name {
-        font-weight: 700;
-        font-size: 0.95rem;
-        color: var(--color-primary);
-        margin: 0;
-        line-height: 1.4;
-      }
-
-      .rev-product-meta-row {
-        display: flex;
-        align-items: center;
-        flex-wrap: wrap;
-        gap: 8px;
-        font-size: 0.82rem;
-      }
-
-      .rev-product-variant {
-        display: inline-flex;
-        align-items: center;
-        gap: 4px;
-        font-size: 0.78rem;
-        font-weight: 600;
-        color: var(--color-blush);
-        background: rgba(254, 93, 159, 0.1);
-        border: 1px solid rgba(254, 93, 159, 0.2);
-        padding: 2px 8px;
-        border-radius: 99px;
-      }
-
-      .rev-product-qty-badge {
-        color: var(--color-muted);
-        font-size: 0.82rem;
-      }
-
-      .rev-product-qty-badge strong {
-        color: var(--color-primary);
-      }
-
-      .rev-product-subtotal {
-        font-weight: 800;
-        color: var(--color-primary);
-        font-size: 1.05rem;
-        white-space: nowrap;
-        font-variant-numeric: tabular-nums;
-        flex-shrink: 0;
-      }
-
-      /* Step 2 Inputs */
-      .form-group-checkout {
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
-        margin-bottom: 18px;
-      }
-
-      .form-group-checkout label {
-        font-weight: 700;
-        font-size: 0.88rem;
-        color: var(--color-primary);
-      }
-
-      .form-group-checkout input, .form-group-checkout select {
-        padding: 12px 14px;
-        border: 1px solid var(--border-light);
-        border-radius: 8px;
-        outline: none;
-        font-size: 0.92rem;
-        background: var(--color-surface-soft);
-        transition: border-color 0.2s, background-color 0.2s;
-        width: 100%;
-        font-family: inherit;
-        box-sizing: border-box;
-      }
-
-      .form-group-checkout input:focus, .form-group-checkout select:focus {
-        border-color: var(--color-blush);
-        background: #fff;
-        box-shadow: 0 0 0 3px rgba(219, 39, 119, 0.1);
-      }
-
-      .form-row-double {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 14px;
-      }
-
-      @media (max-width: 600px) {
-        .checkout-stepper {
-          padding: 12px 8px;
-          margin-bottom: 18px;
-        }
-        .stepper-step {
-          padding: 0 4px;
-          gap: 4px;
-        }
-        .step-num-icon {
-          width: 32px;
-          height: 32px;
-          font-size: 0.82rem;
-        }
-        .step-text {
-          font-size: 0.72rem;
-        }
-        .form-row-double {
-          grid-template-columns: 1fr;
-          gap: 0;
-        }
-        .checkout-nav-row {
-          flex-direction: column-reverse;
-          gap: 10px;
-        }
-        .btn-checkout-primary, .btn-checkout-secondary {
-          width: 100%;
-          justify-content: center;
-          padding: 11px 18px;
-          font-size: 0.9rem;
-        }
-        .cart-product-list-item {
-          flex-direction: column;
-          align-items: stretch;
-          gap: 12px;
-          padding: 14px 0;
-        }
-        .cart-item-info {
-          width: 100%;
-          gap: 12px;
-        }
-        .cart-item-info img {
-          width: 66px;
-          height: 66px;
-        }
-        .cart-item-meta h3 {
-          font-size: 0.94rem;
-        }
-        .cart-item-actions {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          width: 100%;
-          padding-top: 10px;
-          border-top: 1px dashed var(--border-light);
-          gap: 12px;
-        }
-        .cart-item-actions-left {
-          display: flex;
-          align-items: center;
-          gap: 14px;
-        }
-        .cart-item-subtotal {
-          min-width: auto;
-          font-size: 1rem;
-        }
-        .rev-product-item {
-          padding: 10px 12px;
-          gap: 10px;
-        }
-        .rev-product-img {
-          width: 48px;
-          height: 48px;
-        }
-        .rev-product-name {
-          font-size: 0.88rem;
-        }
-        .rev-product-subtotal {
-          font-size: 0.95rem;
-        }
-        .cart-section {
-          padding: 100px 0 60px;
-        }
-      }
-
-      /* Step 3 Review Blocks */
-      .final-review-section-header {
-        font-size: 0.95rem;
-        color: var(--color-primary);
-        font-weight: 800;
-        margin-bottom: 10px;
-        padding-bottom: 6px;
-        border-bottom: 1px solid var(--border-light);
-        display: flex;
-        align-items: center;
-        gap: 8px;
-      }
-
-      .final-review-block {
-        background: var(--color-surface-soft);
-        border: 1px solid var(--border-light);
-        border-radius: 8px;
-        padding: 16px;
-        margin-bottom: 20px;
-        font-size: 0.9rem;
-        line-height: 1.6;
-      }
-
-      .final-review-block p {
-        margin: 0 0 6px;
-      }
-
-      .final-review-block p:last-child {
-        margin-bottom: 0;
-      }
-
-      .final-review-block p strong {
-        color: var(--color-primary);
-      }
-
-      /* Navigation CTA Buttons */
-      .checkout-nav-row {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-top: 24px;
-        gap: 14px;
-      }
-
-      .btn-checkout-primary {
-        background: var(--color-blush);
-        color: #fff;
-        border: none;
-        border-radius: 99px;
-        padding: 13px 30px;
-        font-weight: 700;
-        font-size: 0.98rem;
-        cursor: pointer;
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        transition: all 0.2s ease;
-        box-shadow: 0 4px 14px rgba(219, 39, 119, 0.2);
-        font-family: inherit;
-        text-decoration: none;
-      }
-
-      .btn-checkout-primary:hover:not(:disabled) {
-        background: var(--color-primary);
-        transform: translateY(-1px);
-        box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12);
-      }
-
-      .btn-checkout-secondary {
-        background: var(--color-surface);
-        border: 1px solid var(--border-light);
-        color: var(--color-text);
-        border-radius: 99px;
-        padding: 12px 24px;
-        font-weight: 700;
-        font-size: 0.92rem;
-        cursor: pointer;
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        transition: all 0.2s ease;
-        font-family: inherit;
-      }
-
-      .btn-checkout-secondary:hover {
-        border-color: var(--color-primary);
-        color: var(--color-primary);
-      }
-
-      .trust-checkout-tag {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        font-size: 0.8rem;
-        color: var(--color-muted);
-        margin-top: 16px;
-        border-top: 1px solid var(--border-light);
-        padding-top: 12px;
-      }
-
-      .trust-checkout-tag i {
-        color: #059669;
-      }
-    </style>
-  </slot>
-
-  <section class="cart-section container">
-    <div class="cart-checkout-container" id="cartCheckoutContainer">
-      
-      <div class="checkout-stepper">
-        <div class="stepper-line"></div>
-        <div class="stepper-line-progress" id="stepperLineProgress"></div>
-
-        <div class="stepper-step active" id="stepper-step-1">
-          <div class="step-num-icon"><i class="fas fa-shopping-bag"></i></div>
-          <span class="step-text">حقيبة التسوق</span>
-        </div>
-        
-        <div class="stepper-step" id="stepper-step-2">
-          <div class="step-num-icon"><i class="fas fa-truck"></i></div>
-          <span class="step-text">بيانات الشحن</span>
-        </div>
-        
-        <div class="stepper-step" id="stepper-step-3">
-          <div class="step-num-icon"><i class="fas fa-check-circle"></i></div>
-          <span class="step-text">المراجعة والتأكيد</span>
-        </div>
-      </div>
-
-      <div class="info-bubbles-container" dir="rtl">
-        <span class="info-bubble"><i class="fas fa-truck"></i> شحن مجاني للطلبات فوق 2000 ج.م</span>
-        <span class="info-bubble"><i class="fas fa-money-bill-wave"></i> الدفع عند الاستلام</span>
-        <span class="info-bubble"><i class="fas fa-shield-alt"></i> منتجات طبيعية أصلية 100%</span>
-        <span class="info-bubble"><i class="fas fa-bolt"></i> شحن سريع لجميع المحافظات</span>
-      </div>
-
-      <div id="checkoutFlowViews">
-        
-        <div id="step-panel-1" class="checkout-step-panel active">
-          <div class="catalog-checkout-grid">
-            
-            <div class="panel-main-card">
-              <h2 style="font-size:1.15rem; font-weight:800; border-bottom:1px solid var(--border-light); padding-bottom:12px; margin-bottom:16px; color:var(--color-primary); text-align: right;" dir="rtl">
-                <i class="fas fa-shopping-bag" style="color:var(--color-blush); margin-left:8px;"></i> المنتجات في حقيبتك
-              </h2>
-              
-              <div id="cartItemsList">
-              </div>
-            </div>
-
-            <div class="panel-side-summary">
-              <h3 style="font-size:1.05rem; font-weight:800; margin-bottom:16px; color:var(--color-primary); text-align: right;" dir="rtl">
-                <i class="fas fa-receipt" style="color:var(--color-blush); margin-left:6px;"></i> ملخص الحساب
-              </h3>
-              
-              <div style="display:flex; justify-content:space-between; margin-bottom:10px; font-size:0.92rem;">
-                <span style="color:var(--color-muted);">المجموع الفرعي:</span>
-                <span id="subtotalValSummary" style="font-weight:700; color:var(--color-primary);">00.00 ج.م</span>
-              </div>
-              
-              <div style="display:flex; justify-content:space-between; margin-bottom:6px; font-size:0.88rem;">
-                <span style="color:var(--color-muted);">تكلفة الشحن:</span>
-                <span style="color:var(--color-muted);" id="shippingCostSummary1">تُحدد في الخطوة التالية</span>
-              </div>
-
-              <div style="border-top:1px solid var(--border-light); margin:14px 0; padding-top:14px; display:flex; justify-content:space-between; align-items:center;">
-                <span style="font-weight:800; font-size:1rem; color:var(--color-primary);">الإجمالي التقديري:</span>
-                <strong style="font-size:1.35rem; color:var(--color-blush);" id="grandTotalSummaryValue1">00 ج.م</strong>
-              </div>
-
-              <button class="btn-checkout-primary" style="width:100%; justify-content:center;" onclick="goToStep(2)">
-                <span>متابعة لبيانات الشحن</span>
-                <i class="fas fa-arrow-left"></i>
-              </button>
-              
-              <div class="trust-checkout-tag">
-                <i class="fas fa-shield-alt"></i>
-                <span>تسوق آمن 100% وتشفير كامل للبيانات</span>
-              </div>
-            </div>
-
+    <meta property="og:url" content={canonicalUrl} />
+    <meta property="og:title" content={pageTitle} />
+    <meta property="og:description" content={pageDescription} />
+    <meta
+      property="og:image"
+      content="https://res.cloudinary.com/dogk78w9z/image/upload/v1789152384/WhatsApp_Image_2026-06-18_at_5.55.06_PM.jpg"
+    />
+  </Fragment>
+
+  <CheckoutPageHeader
+    eyebrow="مسار الشراء الآمن"
+    title="حقيبة التسوق وإتمام الطلب"
+    description="راجعي منتجاتكِ المختارة وأدخلي بيانات التوصيل بخطوات واضحة مع الدفع عند الاستلام لجميع محافظات مصر."
+    currentCrumb="حقيبة التسوق"
+  />
+
+  <main class="dandy-page-band dandy-cart-page">
+    <div class="dandy-container">
+      <div class="dandy-cart-shell" id="cartCheckoutContainer">
+        <!-- Empty Cart State -->
+        <section
+          id="cartEmptyState"
+          class="dandy-cart-empty-card"
+          aria-labelledby="emptyCartHeading"
+          hidden
+        >
+          <div class="dandy-cart-empty-icon" aria-hidden="true">
+            <Icon name="shopping-bag" size={28} strokeWidth={1.65} />
           </div>
-        </div>
-
-        <div id="step-panel-2" class="checkout-step-panel" dir="rtl">
-          <div class="catalog-checkout-grid">
-            
-            <div class="panel-main-card">
-              <h2 style="font-size:1.15rem; font-weight:800; border-bottom:1px solid var(--border-light); padding-bottom:12px; margin-bottom:18px; color:var(--color-primary);">
-                <i class="fas fa-map-marker-alt" style="color:var(--color-blush); margin-left:8px;"></i> عنوان وتفاصيل التوصيل
-              </h2>
-              
-              <!-- اختيار العنوان للعملاء المسجلين ذوي العناوين المحفوظة -->
-              <div id="savedAddressesSection" style="display:none; margin-bottom:20px; padding:16px; background:var(--color-surface-soft); border:1px solid var(--border-light); border-radius:8px;">
-                <div style="font-weight:700; color:var(--color-primary); margin-bottom:10px; font-size:0.92rem; display:flex; align-items:center; gap:8px;">
-                  <i class="fas fa-address-book" style="color:var(--color-blush);"></i>
-                  <span>العناوين المحفوظة في حسابكِ</span>
-                </div>
-                <div style="display:flex; gap:18px; margin-bottom:12px; font-size:0.88rem;">
-                  <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-weight:600;">
-                    <input type="radio" name="addressMode" id="addrModeSaved" value="saved" checked onchange="window.toggleAddressMode('saved')">
-                    <span>استخدام عنوان محفوظ</span>
-                  </label>
-                  <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-weight:600;">
-                    <input type="radio" name="addressMode" id="addrModeNew" value="new" onchange="window.toggleAddressMode('new')">
-                    <span>إدخال عنوان جديد</span>
-                  </label>
-                </div>
-                <div id="savedSelectWrap">
-                  <label for="savedAddressSelect" style="display:block; font-size:0.82rem; color:var(--color-muted); margin-bottom:5px;">اختاري العنوان المحفوظ:</label>
-                  <select id="savedAddressSelect" style="width:100%; padding:10px 14px; border-radius:8px; border:1px solid var(--border-light); font-family:inherit; background:#fff;" onchange="window.applySavedAddress(this.value)">
-                    <option value="">-- اختاري عنواناً محفوظاً --</option>
-                  </select>
-                </div>
-              </div>
-
-              <form id="shippingFormElement" onsubmit="event.preventDefault();">
-                <div class="form-group-checkout">
-                  <label for="f-name">الاسم بالكامل <span style="color:var(--color-blush);">*</span></label>
-                  <input type="text" id="f-name" placeholder="اكتب اسمك بالكامل لضمان دقة التوصيل" required>
-                </div>
-
-                <div class="form-row-double">
-                  <div class="form-group-checkout">
-                    <label for="f-phone">رقم الهاتف (للتواصل مع المندوب) <span style="color:var(--color-blush);">*</span></label>
-                    <input type="tel" id="f-phone" placeholder="مثال: 01012345678" required style="text-align: right;" dir="ltr">
-                  </div>
-                  <div class="form-group-checkout">
-                    <label for="f-email">البريد الإلكتروني (اختياري)</label>
-                    <input type="email" id="f-email" placeholder="لاستلام تفاصيل الشحن والتتبع" style="text-align: right;" dir="ltr">
-                  </div>
-                </div>
-
-                <div class="form-row-double">
-                  <div class="form-group-checkout">
-                    <label for="f-gov">المحافظة <span style="color:var(--color-blush);">*</span></label>
-                    <select id="f-gov" required onchange="handleGovChange()">
-                      <option value="">اختر المحافظة</option>
-                      <option value="Cairo">القاهرة</option>
-                      <option value="Giza">الجيزة</option>
-                      <option value="Alexandria">الإسكندرية</option>
-                      <option value="Gharbia">الغربية</option>
-                      <option value="Dakahlia">الدقهلية</option>
-                      <option value="Sharqia">الشرقية</option>
-                      <option value="Kafr El Sheikh">كفر الشيخ</option>
-                      <option value="Qalyubia">القليوبية</option>
-                      <option value="Port Said">بورسعيد</option>
-                      <option value="Damietta">دمياط</option>
-                      <option value="Suez">السويس</option>
-                      <option value="Ismailia">الإسماعيلية</option>
-                      <option value="Beheira">البحيرة</option>
-                      <option value="Monufia">المنوفية</option>
-                      <option value="Fayoum">الفيوم</option>
-                      <option value="Beni Suef">بني سويف</option>
-                      <option value="Minya">المنيا</option>
-                      <option value="Luxor">الأقصر</option>
-                      <option value="Aswan">أسوان</option>
-                      <option value="Assiut">أسيوط</option>
-                      <option value="Sohag">سوهاج</option>
-                      <option value="Qena">قنا</option>
-                      <option value="North Sinai">شمال سيناء</option>
-                      <option value="South Sinai">جنوب سيناء</option>
-                      <option value="New Valley">الوادي الجديد</option>
-                      <option value="Red Sea">البحر الأحمر</option>
-                      <option value="Matrouh">مطروح</option>
-                    </select>
-                  </div>
-                  <div class="form-group-checkout">
-                    <label for="f-city">المدينة / المنطقة <span style="color:var(--color-blush);">*</span></label>
-                    <input type="text" id="f-city" placeholder="مثال: مدينة نصر، الدقي، سموحة" required>
-                  </div>
-                </div>
-
-                <div class="form-group-checkout">
-                  <label for="f-address">العنوان بالتفصيل (اسم الشارع، رقم العقار، الشقة، علامة مميزة) <span style="color:var(--color-blush);">*</span></label>
-                  <input type="text" id="f-address" placeholder="اكتب العنوان بالتفصيل لسرعة الوصول..." required>
-                </div>
-              </form>
-
-              <div class="checkout-nav-row">
-                <button class="btn-checkout-secondary" onclick="goToStep(1)">
-                  <i class="fas fa-arrow-right"></i>
-                  <span>العودة للحقيبة</span>
-                </button>
-                <button class="btn-checkout-primary" onclick="validateAndGoToReview()">
-                  <span>الانتقال للمراجعة النهائية</span>
-                  <i class="fas fa-arrow-left"></i>
-                </button>
-              </div>
-            </div>
-
-            <div class="panel-side-summary">
-              <h3 style="font-size:1.05rem; font-weight:800; margin-bottom:14px; color:var(--color-primary); text-align: right;" dir="rtl">
-                <i class="fas fa-receipt" style="color:var(--color-blush); margin-left:6px;"></i> ملخص الطلب
-              </h3>
-              
-              <div style="display:flex; justify-content:space-between; margin-bottom:10px; font-size:0.92rem;">
-                <span style="color:var(--color-muted);">المجموع الفرعي:</span>
-                <span id="subtotalValSummary2" style="font-weight:700; color:var(--color-primary);">00.00 ج.م</span>
-              </div>
-
-              <div style="display:flex; justify-content:space-between; margin-bottom:10px; align-items: center; font-size:0.88rem;">
-                <span style="color:var(--color-muted);">مصاريف الشحن:</span>
-                <span id="shippingCostSummary2" style="font-weight:700; color:var(--color-blush);">شحن مجاني عند الشراء بأكثر من 2000 ج.م</span>
-              </div>
-
-              <div style="border-top:1px solid var(--border-light); margin:14px 0; padding-top:14px; display:flex; justify-content:space-between; align-items:center;">
-                <span style="font-weight:800; font-size:1rem; color:var(--color-primary);">الإجمالي الكلي:</span>
-                <strong style="font-size:1.35rem; color:var(--color-blush);" id="grandTotalSummaryValue2">00 ج.م</strong>
-              </div>
-
-              <div style="background:var(--color-surface-soft); font-size:0.8rem; padding:12px; border-radius:8px; margin-top:14px; border:1px solid var(--border-light); color:var(--color-text); line-height:1.5;">
-                <i class="fas fa-shipping-fast" style="color:var(--color-blush); margin-left:4px;"></i> يصلكِ الطلب خلال 2 إلى 5 أيام عمل من تاريخ التأكيد.
-              </div>
-            </div>
-
-          </div>
-        </div>
-
-        <div id="step-panel-3" class="checkout-step-panel" dir="rtl">
-          <div class="catalog-checkout-grid">
-            
-            <div class="panel-main-card">
-              <h2 style="font-size:1.15rem; font-weight:800; border-bottom:1px solid var(--border-light); padding-bottom:12px; margin-bottom:18px; color:var(--color-primary);">
-                <i class="fas fa-clipboard-check" style="color:var(--color-blush); margin-left:8px;"></i> المراجعة وتأكيد الطلب
-              </h2>
-              
-              <div class="final-review-section-header">
-                <i class="fas fa-user-check" style="color:var(--color-blush);"></i> تفاصيل الشحن والمستلم
-              </div>
-              <div class="final-review-block">
-                <p>اسم المستلم: <strong id="revCustName">...</strong></p>
-                <p>رقم التواصل: <strong id="revCustPhone" style="direction:ltr; display:inline-block;">...</strong></p>
-                <p>البريد الإلكتروني: <span id="revCustEmail">...</span></p>
-                <p style="margin-top:8px; border-top:1px solid var(--border-light); padding-top:8px;">المدينة والمحافظة: <strong id="revCustLocation">...</strong></p>
-                <p>العنوان بالتفصيل: <strong id="revCustAddress">...</strong></p>
-              </div>
-
-              <div class="final-review-section-header">
-                <i class="fas fa-shopping-bag" style="color:var(--color-blush);"></i> المنتجات المطلوبة
-              </div>
-              <div id="revProductsList" style="margin-bottom:24px;">
-              </div>
-
-              <!-- التحقق الأمني التلقائي عبر Cloudflare Turnstile -->
-              <div class="cart-turnstile-wrap" style="margin: 20px 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;">
-                <div class="cf-turnstile" data-sitekey={turnstileSiteKey} data-theme="light"></div>
-                <small style="color:var(--color-muted); font-size:0.75rem;">حماية أمنية مشددة لمنع الطلبات الوهمية</small>
-              </div>
-
-              <div class="checkout-nav-row">
-                <button class="btn-checkout-secondary" onclick="goToStep(2)">
-                  <i class="fas fa-arrow-right"></i>
-                  <span>تعديل العنوان</span>
-                </button>
-                <button class="btn-checkout-primary" style="background:#059669; box-shadow: 0 4px 14px rgba(5, 150, 105, 0.25);" id="finalPlaceOrderBtn" onclick="submitFinalOrder()">
-                  <i class="fas fa-check"></i>
-                  <span>تأكيد وإتمام الطلب</span>
-                </button>
-              </div>
-            </div>
-
-            <div class="panel-side-summary">
-              <h3 style="font-size:1.05rem; font-weight:800; margin-bottom:14px; color:var(--color-primary); text-align: right;" dir="rtl">
-                <i class="fas fa-money-bill-wave" style="color:#059669; margin-left:6px;"></i> طريقة الدفع
-              </h3>
-              
-              <div style="background:rgba(5, 150, 105, 0.06); color:#065f46; padding:14px; border-radius:8px; font-weight:700; font-size:0.88rem; line-height:1.6; margin-bottom:18px; border:1px solid rgba(5, 150, 105, 0.15);">
-                <i class="fas fa-hand-holding-usd"></i> الدفع عند الاستلام (COD)
-                <p style="font-weight:normal; font-size:0.8rem; color:var(--color-text); margin-top:4px; margin-bottom:0;">يمكنكِ فحص وتأكيد المنتجات عند استلام الشحنة قبل الدفع.</p>
-              </div>
-
-              <div style="margin-bottom:12px; line-height:1.6;">
-                <div style="display:flex; justify-content:space-between; margin-bottom:6px; font-size: 0.9rem;">
-                  <span style="color:var(--color-muted);">المجموع الفرعي:</span>
-                  <span id="summSubtotal" style="font-weight:700; color:var(--color-primary);">00 ج.م</span>
-                </div>
-                <div style="display:flex; justify-content:space-between; margin-bottom:6px; font-size: 0.9rem;">
-                  <span style="color:var(--color-muted);">مصاريف الشحن:</span>
-                  <span id="summShipping" style="font-weight:700; color:#059669;">00 ج.م</span>
-                </div>
-                <div style="border-top:1px solid var(--border-light); margin-top:10px; padding-top:10px; display:flex; justify-content:space-between; align-items:center;">
-                  <span style="color:var(--color-primary); font-size:0.92rem; font-weight:800;">الإجمالي الكلي:</span>
-                  <strong style="font-size: 1.4rem; color:var(--color-blush);" id="finalSummaryTotal">00 ج.م</strong>
-                </div>
-              </div>
-              
-              <p style="font-size:0.78rem; color:var(--color-muted); margin-top:10px; margin-bottom:0;" id="savingTextLoader">
-                <i class="fas fa-lock" style="color:#059669; margin-left:4px;"></i> تأكيد الطلب يسجله بأمان ويوفر لك كود تتبع فوري.
-              </p>
-            </div>
-
-          </div>
-        </div>
-
-      </div>
-
-    </div>
-  </section>
-
-  <script is:inline>
-    const db = firebase.database();
-
-    let cart = JSON.parse(localStorage.getItem('cart')) || [];
-    let currentStep = 1;
-
-    // Reconcile cart items with current Pink Friday campaign state
-    function reconcileCartWithCampaign() {
-      let modified = false;
-      cart.forEach(item => {
-        // Preserve and handle Collection Bundles safely
-        if (item.type === 'collection' || item.isCollection || item.collectionId) {
-          if (window.DandyPinkFriday && typeof window.DandyPinkFriday.isActive === 'function') {
-            if (!window.DandyPinkFriday.isActive()) {
-              item.isPinkFriday = false;
-              if (item.regularPrice) item.price = item.regularPrice;
-              modified = true;
-            } else {
-              item.isPinkFriday = true;
-              if (!item.badgeText) item.badgeText = 'كوليكشن Pink Friday';
-            }
-          }
-          return;
-        }
-
-        const rawId = item.productId || (item.id ? String(item.id).split('::')[0] : '');
-        if (window.DandyPinkFriday && typeof window.DandyPinkFriday.getPricing === 'function') {
-          const pf = window.DandyPinkFriday.getPricing({ id: rawId, price: item.regularPrice || item.price });
-          if (pf.isEligible) {
-            if (!item.isPinkFriday || item.price !== pf.campaignPrice) {
-              item.isPinkFriday = true;
-              item.campaignPrice = pf.campaignPrice;
-              item.regularPrice = pf.regularPrice;
-              item.price = pf.campaignPrice;
-              item.badgeText = pf.badgeText;
-              modified = true;
-            }
-          } else if (item.isPinkFriday) {
-            item.isPinkFriday = false;
-            if (item.regularPrice) {
-              item.price = item.regularPrice;
-            }
-            delete item.campaignPrice;
-            delete item.regularPrice;
-            delete item.badgeText;
-            modified = true;
-          }
-        }
-      });
-      if (modified) {
-        localStorage.setItem('cart', JSON.stringify(cart));
-      }
-    }
-    reconcileCartWithCampaign();
-
-    // English shipping fees mapped to Egyptian governorate zones
-    const shippingRates = {
-      "Gharbia": 70,
-      "Dakahlia": 85,
-      "Sharqia": 85,
-      "Kafr El Sheikh": 85,
-      "Qalyubia": 85,
-      "Port Said": 85,
-      "Damietta": 85,
-      "Suez": 85,
-      "Ismailia": 85,
-      "Cairo": 85,
-      "Giza": 85,
-      "Beheira": 85,
-      "Monufia": 85,
-      "Alexandria": 85,
-      "Fayoum": 100,
-      "Beni Suef": 100,
-      "Minya": 100,
-      "Luxor": 120,
-      "Aswan": 120,
-      "Assiut": 120,
-      "Sohag": 120,
-      "North Sinai": 120,
-      "South Sinai": 120,
-      "Qena": 120,
-      "New Valley": 120,
-      "Red Sea": 120,
-      "Matrouh": 120
-    };
-
-    function getShippingFeeForGov(govName) {
-      if (!govName) return null;
-      return shippingRates[govName] || 120;
-    }
-
-    // Render elements references
-    const cartItemsList = document.getElementById('cartItemsList');
-    const subtotalValSummary = document.getElementById('subtotalValSummary');
-    const subtotalValSummary2 = document.getElementById('subtotalValSummary2');
-    const grandTotalSummaryValue1 = document.getElementById('grandTotalSummaryValue1');
-    const grandTotalSummaryValue2 = document.getElementById('grandTotalSummaryValue2');
-    const finalSummaryTotal = document.getElementById('finalSummaryTotal');
-
-    const shippingCostSummary2 = document.getElementById('shippingCostSummary2');
-
-    // Final review text references
-    const revCustName = document.getElementById('revCustName');
-    const revCustPhone = document.getElementById('revCustPhone');
-    const revCustEmail = document.getElementById('revCustEmail');
-    const revCustLocation = document.getElementById('revCustLocation');
-    const revCustAddress = document.getElementById('revCustAddress');
-    const revProductsList = document.getElementById('revProductsList');
-
-    const summSubtotal = document.getElementById('summSubtotal');
-    const summShipping = document.getElementById('summShipping');
-
-    function calculateCartSubtotal() {
-      let subtotal = 0;
-      cart.forEach(item => {
-        const unitPrice = typeof getEffectiveUnitPrice === 'function'
-          ? getEffectiveUnitPrice(item)
-          : (Number(item.price) || 0);
-        const qtyVal = parseInt(item.quantity) || 1;
-        subtotal += unitPrice * qtyVal;
-      });
-      return subtotal;
-    }
-
-    // Handle live updates on Governorates dropdown change
-    window.handleGovChange = function() {
-      const govDropdown = document.getElementById('f-gov');
-      if (!govDropdown) return; // Prevent TypeError if the cart is empty and the DOM is replaced
-
-      const selectedGov = govDropdown.value;
-      const subtotal = calculateCartSubtotal();
-      
-      if (selectedGov) {
-        let fee = getShippingFeeForGov(selectedGov);
-        if (subtotal > 2000) {
-          fee = 0;
-          shippingCostSummary2.textContent = "شحن مجاني";
-          shippingCostSummary2.style.color = "var(--color-success)";
-        } else {
-          shippingCostSummary2.textContent = fee + " ج.م";
-          shippingCostSummary2.style.color = "var(--color-primary)";
-        }
-        grandTotalSummaryValue2.textContent = (subtotal + fee).toFixed(0) + " ج.م";
-      } else {
-        if (subtotal > 2000) {
-          shippingCostSummary2.textContent = "شحن مجاني";
-          shippingCostSummary2.style.color = "var(--color-success)";
-        } else {
-          shippingCostSummary2.textContent = "شحن مجاني عندما تتخطى القيمة 2000 جنيه";
-          shippingCostSummary2.style.color = "var(--color-blush)";
-        }
-        grandTotalSummaryValue2.textContent = subtotal.toFixed(0) + " ج.م";
-      }
-    };
-
-    // Update Cart Badge inside Navbar
-    function updateCartBadge() {
-      if (typeof window.updateSharedCartCount === 'function') {
-        window.updateSharedCartCount();
-      } else {
-        const badge = document.getElementById('cart-count');
-        if (badge) {
-          const totalQty = cart.reduce((sum, item) => sum + item.quantity, 0);
-          badge.textContent = totalQty;
-        }
-      }
-    }
-
-    function renderStep1CartItems() {
-      updateCartBadge(); // Ensure badge is always up to date
-
-      if (cart.length === 0) {
-        document.getElementById('cartCheckoutContainer').innerHTML = `
-          <div style="text-align:center; padding:64px 24px; background:var(--color-surface); border:1px solid var(--border-light); border-radius:var(--border-radius-md); margin:0 auto; max-width:540px;" dir="rtl">
-            <div style="width:64px; height:64px; border-radius:50%; background:var(--color-surface-soft); display:flex; align-items:center; justify-content:center; margin:0 auto 18px; color:var(--color-blush); font-size:1.6rem; border:1px solid var(--border-light);">
-              <i class="fas fa-shopping-bag"></i>
-            </div>
-            <h2 style="font-size:1.35rem; font-weight:800; margin-bottom:8px; color:var(--color-primary);">حقيبة التسوق فارغة</h2>
-            <p style="color:var(--color-muted); font-size:0.92rem; margin-bottom:24px; line-height:1.6;">لم تقومي بإضافة أي منتجات إلى حقيبتكِ بعد. تصفحي مجموعاتنا الطبيعية الآن!</p>
-            <a href="/all-products" class="btn-checkout-primary" style="display:inline-flex; border-radius:99px; text-decoration:none;">
-              <i class="fas fa-shopping-bag"></i>
+          <h2 id="emptyCartHeading" class="dandy-cart-empty-title dandy-font-ar-display">
+            حقيبة التسوق فارغة حالياً
+          </h2>
+          <p class="dandy-cart-empty-desc">
+            لم تضيفي أي مستحضرات إلى حقيبتكِ بعد. تصفحي تشكيلة داندي الطبيعية للعناية بالبشرة والشعر والجسم.
+          </p>
+          <div class="dandy-cart-empty-actions">
+            <a href="/all-products" class="dandy-btn dandy-btn--primary">
+              <Icon name="shopping-bag" size={17} strokeWidth={1.85} />
               <span>تصفح جميع المنتجات</span>
             </a>
+            <a href="/special-offers" class="dandy-btn dandy-btn--outline">
+              <span>اكتشفي العروض الخاصة</span>
+            </a>
           </div>
-        `;
-        return;
-      }
+        </section>
 
-      cartItemsList.innerHTML = '';
-      cart.forEach((item, index) => {
-        const qtyVal = parseInt(item.quantity) || 1;
-        const unitPrice = typeof getEffectiveUnitPrice === 'function'
-          ? getEffectiveUnitPrice(item)
-          : (Number(item.price) || 0);
-        const rowSubtotal = unitPrice * qtyVal;
-        
-        const varInfo = typeof getVariantsDisplayInfo === 'function' 
-          ? getVariantsDisplayInfo(item) 
-          : (item.selectedVariant && item.selectedVariant.name ? { count: 1, label: 'الرائحة', text: item.selectedVariant.name } : null);
-        
-        // إذا كان المنتج لا يحتوي variants: لا تعرض أي سطر متعلق بالرائحة
-        const variantHtml = (varInfo && varInfo.text)
-          ? `<div class="cart-item-scent-badge">
-               <i class="fas fa-sparkles"></i>
-               <span>${varInfo.label}: <strong>${varInfo.text}</strong></span>
-             </div>`
-          : '';
+        <!-- Active Checkout Flow -->
+        <div id="checkoutFlowViews">
+          <CheckoutStepper />
 
-        let collectionHtml = '';
-        if (item.isCollection && Array.isArray(item.selectedItems) && item.selectedItems.length > 0) {
-          collectionHtml = `
-            <div class="cart-col-breakdown" style="margin-top:6px; padding:6px 10px; background:#fdf2f8; border-radius:6px; font-size:0.75rem; border:1px solid #fbcfe8;">
-              <div style="font-weight:700; color:#be185d; margin-bottom:3px;"><i class="fas fa-boxes" style="margin-left:4px;"></i> محتويات الكوليكشن:</div>
-              <ul style="margin:0; padding-right:16px; list-style-type:circle; color:#374151;">
-                ${item.selectedItems.map(si => {
-                  const scentName = si.selectedVariant && (si.selectedVariant.name || si.selectedVariant.id) ? (si.selectedVariant.name || si.selectedVariant.id) : '';
-                  return `<li>${si.productName || 'منتج'}${scentName ? ` <span style="color:#9d174d; font-weight:600;">(الرائحة: ${scentName})</span>` : ''}</li>`;
-                }).join('')}
-              </ul>
+          <!-- Restrained Unboxed Storefront Guarantees -->
+          <div class="dandy-cart-trust-strip" aria-label="ضمانات الشراء من داندي">
+            <div class="dandy-cart-trust-item">
+              <Icon name="truck" size={16} strokeWidth={1.85} />
+              <span>شحن مجاني فوق 2,000 ج.م</span>
             </div>
-          `;
-        }
-
-        const pfBadgeHtml = item.isPinkFriday
-          ? `<div class="cart-item-pf-badge" style="display:inline-flex; align-items:center; gap:6px; background:#fe5d9f; color:#ffffff; font-size:0.75rem; font-weight:700; padding:2px 8px; border-radius:99px; margin-bottom:4px;">
-               <span>${item.badgeText || (item.isCollection ? 'كوليكشن Pink Friday' : 'Pink Friday')}</span>
-               ${item.regularPrice ? `<span style="text-decoration:line-through; opacity:0.85;">${Number(item.regularPrice).toFixed(0)} ج.م</span>` : ''}
-             </div>`
-          : '';
-
-        const itemCard = document.createElement('div');
-        itemCard.className = 'cart-product-list-item';
-        itemCard.innerHTML = `
-          <div class="cart-item-info">
-            <img loading="lazy" src="${item.image}" alt="${item.name}" onerror="this.onerror=null;this.src='https://images.unsplash.com/photo-1608248597481-496100c80836?auto=format&fit=crop&w=100&q=80';">
-            <div class="cart-item-meta">
-              <h3>${item.name}</h3>
-              ${pfBadgeHtml}
-              ${variantHtml}
-              ${collectionHtml}
-              <div class="cart-item-unit-price">${Number(unitPrice).toFixed(0)} ج.م للقطعة</div>
+            <div class="dandy-cart-trust-item">
+              <Icon name="banknote" size={16} strokeWidth={1.85} />
+              <span>الدفع عند الاستلام (COD)</span>
+            </div>
+            <div class="dandy-cart-trust-item">
+              <Icon name="leaf" size={16} strokeWidth={1.85} />
+              <span>تركيبات طبيعية أصلية 100%</span>
+            </div>
+            <div class="dandy-cart-trust-item">
+              <Icon name="shield-check" size={16} strokeWidth={1.85} />
+              <span>تتبع فوري لحالة الطلب</span>
             </div>
           </div>
 
-          <div class="cart-item-actions">
-            <div class="qty-tactile-selector">
-              <button type="button" class="qty-btn-adjust" onclick="changeQty(${index}, -1)" aria-label="تقليل الكمية">−</button>
-              <span class="qty-display-box" aria-label="الكمية">${qtyVal}</span>
-              <button type="button" class="qty-btn-adjust" onclick="changeQty(${index}, 1)" aria-label="زيادة الكمية">+</button>
-            </div>
+          <!-- STEP 1: CART REVIEW -->
+          <section
+            id="step-panel-1"
+            class="checkout-step-panel active"
+            aria-labelledby="step1Heading"
+          >
+            <div class="dandy-checkout-grid">
+              <div class="dandy-checkout-main-col">
+                <!-- Free Shipping Progress Indicator (> 2000 EGP) -->
+                <div class="dandy-shipping-meter" id="freeShippingProgressBox">
+                  <div class="dandy-shipping-meter-top">
+                    <span class="dandy-shipping-meter-label">
+                      <Icon name="truck" size={16} strokeWidth={1.85} />
+                      <span id="freeShippingText">جاري حساب قيمة الشحن المجاني...</span>
+                    </span>
+                    <span class="dandy-shipping-meter-pct dandy-tabular" id="freeShippingPctLabel">0%</span>
+                  </div>
+                  <div class="dandy-shipping-meter-rail" aria-hidden="true">
+                    <div class="dandy-shipping-meter-fill" id="freeShippingFill"></div>
+                  </div>
+                </div>
 
-            <div class="cart-item-actions-left">
-              <div class="cart-item-subtotal">
-                ${Number(rowSubtotal).toFixed(0)} ج.م
+                <div class="dandy-checkout-card">
+                  <div class="dandy-checkout-card-head">
+                    <h2 id="step1Heading" class="dandy-checkout-card-title">
+                      <Icon name="shopping-bag" size={18} strokeWidth={1.85} />
+                      <span>المنتجات في حقيبتكِ</span>
+                    </h2>
+                    <span class="dandy-cart-count-pill dandy-tabular" id="cartItemsCountBadge">0 منتج</span>
+                  </div>
+
+                  <ul id="cartItemsList" class="dandy-cart-items-list"></ul>
+
+                  <div class="dandy-cart-continue-row">
+                    <a href="/all-products" class="dandy-cart-continue-link">
+                      <Icon name="arrow-right" size={15} strokeWidth={1.85} directional={true} />
+                      <span>مواصلة التسوق وإضافة منتجات أخرى</span>
+                    </a>
+                  </div>
+                </div>
               </div>
 
-              <button type="button" class="action-btn-delete" onclick="removeItemFromCart(${index})" title="حذف من السلة" aria-label="حذف المنتج">
-                <i class="fas fa-trash-alt"></i>
-              </button>
+              <aside class="dandy-checkout-summary-card" aria-label="ملخص الحقيبة">
+                <h3 class="dandy-summary-heading">
+                  <Icon name="receipt" size={17} strokeWidth={1.85} />
+                  <span>ملخص الحساب</span>
+                </h3>
+
+                <div class="dandy-summary-rows">
+                  <div class="dandy-summary-row">
+                    <span class="dandy-sum-label">المجموع الفرعي</span>
+                    <span class="dandy-sum-value dandy-tabular" id="subtotalValSummary">0 ج.م</span>
+                  </div>
+                  <div class="dandy-summary-row">
+                    <span class="dandy-sum-label">تكلفة الشحن</span>
+                    <span class="dandy-sum-value dandy-sum-value--muted" id="shippingCostSummary1">
+                      تُحدد عند اختيار المحافظة
+                    </span>
+                  </div>
+                </div>
+
+                <div class="dandy-summary-total-row">
+                  <span>الإجمالي التقديري</span>
+                  <strong class="dandy-summary-grand dandy-tabular" id="grandTotalSummaryValue1">0 ج.م</strong>
+                </div>
+
+                <button
+                  type="button"
+                  id="btnProceedToShipping"
+                  class="dandy-btn dandy-btn--primary dandy-btn-full"
+                >
+                  <span>متابعة لبيانات الشحن</span>
+                  <Icon name="arrow-left" size={17} strokeWidth={1.9} directional={true} />
+                </button>
+
+                <p class="dandy-summary-footnote">
+                  <Icon name="shield-check" size={15} strokeWidth={1.85} />
+                  <span>لا يلزم إنشاء حساب — إتمام الطلب متاح كضيفة بأمان كامل.</span>
+                </p>
+              </aside>
             </div>
-          </div>
-        `;
-        cartItemsList.appendChild(itemCard);
-      });
+          </section>
 
-      const sub = calculateCartSubtotal();
-      subtotalValSummary.textContent = sub.toFixed(0) + ' ج.م';
-      subtotalValSummary2.textContent = sub.toFixed(0) + ' ج.م';
-      grandTotalSummaryValue1.textContent = sub.toFixed(0) + ' ج.م';
-      grandTotalSummaryValue2.textContent = sub.toFixed(0) + ' ج.م';
+          <!-- STEP 2: SHIPPING DETAILS -->
+          <section
+            id="step-panel-2"
+            class="checkout-step-panel"
+            aria-labelledby="step2Heading"
+          >
+            <div class="dandy-checkout-grid">
+              <div class="dandy-checkout-card">
+                <div class="dandy-checkout-card-head">
+                  <h2 id="step2Heading" class="dandy-checkout-card-title">
+                    <Icon name="map-pin" size={18} strokeWidth={1.85} />
+                    <span>بيانات المستلمة وعنوان التوصيل</span>
+                  </h2>
+                  <span class="dandy-guest-note">طلب ضيفة سريع</span>
+                </div>
 
-      const shippingCostSummary1 = document.getElementById('shippingCostSummary1');
-      if (shippingCostSummary1) {
-        if (sub > 2000) {
-          shippingCostSummary1.textContent = 'شحن مجاني';
-          shippingCostSummary1.style.color = 'var(--color-success)';
-          shippingCostSummary1.style.fontWeight = 'bold';
-        } else {
-          shippingCostSummary1.textContent = 'تُحدد في الخطوة التالية';
-          shippingCostSummary1.style.color = 'var(--color-muted)';
-          shippingCostSummary1.style.fontWeight = 'normal';
-        }
-      }
-    }
+                <!-- Optional Saved Addresses for Authenticated Customers -->
+                <div id="savedAddressesSection" class="dandy-saved-addresses" style="display:none;">
+                  <div class="dandy-saved-addresses-title">
+                    <Icon name="user" size={16} strokeWidth={1.85} />
+                    <span>العناوين المحفوظة في حسابكِ</span>
+                  </div>
+                  <div class="dandy-saved-mode-radios">
+                    <label class="dandy-radio-choice">
+                      <input type="radio" name="addressMode" id="addrModeSaved" value="saved" checked />
+                      <span>استخدام عنوان محفوظ</span>
+                    </label>
+                    <label class="dandy-radio-choice">
+                      <input type="radio" name="addressMode" id="addrModeNew" value="new" />
+                      <span>إدخال عنوان جديد</span>
+                    </label>
+                  </div>
+                  <div id="savedSelectWrap" class="dandy-field">
+                    <label for="savedAddressSelect">اختاري العنوان المحفوظ</label>
+                    <select id="savedAddressSelect" class="dandy-control">
+                      <option value="">-- اختاري عنواناً محفوظاً --</option>
+                    </select>
+                  </div>
+                </div>
 
-    window.changeQty = function(index, delta) {
-      if (cart[index]) {
-        cart[index].quantity = (parseInt(cart[index].quantity) || 1) + delta;
-        if (cart[index].quantity < 1) cart[index].quantity = 1;
-        localStorage.setItem('cart', JSON.stringify(cart));
-        renderStep1CartItems();
-        handleGovChange();
-        if (typeof window.updateSharedCartCount === 'function') window.updateSharedCartCount();
-      }
-    };
+                <div
+                  id="checkoutErrorSummary"
+                  class="dandy-inline-alert dandy-inline-alert--error"
+                  role="alert"
+                  hidden
+                ></div>
 
-    window.removeItemFromCart = function(index) {
-      cart.splice(index, 1);
-      localStorage.setItem('cart', JSON.stringify(cart));
-      renderStep1CartItems();
-      handleGovChange();
-      if (typeof window.updateSharedCartCount === 'function') window.updateSharedCartCount();
-    };
+                <form id="shippingFormElement" class="dandy-checkout-form" novalidate>
+                  <div class="dandy-field">
+                    <label for="f-name">
+                      الاسم بالكامل <span class="dandy-req" aria-hidden="true">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      id="f-name"
+                      name="name"
+                      autocomplete="name"
+                      class="dandy-control"
+                      placeholder="اكتبي اسمكِ بالكامل (كلمتين على الأقل)"
+                      required
+                    />
+                    <p id="err-f-name" class="dandy-field-error" hidden></p>
+                  </div>
 
-    // --- تكامل حساب العميل والعناوين المحفوظة في الـ Checkout ---
-    let customerSavedAddresses = {};
+                  <div class="dandy-form-row">
+                    <div class="dandy-field">
+                      <label for="f-phone">
+                        رقم الهاتف <span class="dandy-req" aria-hidden="true">*</span>
+                      </label>
+                      <input
+                        type="tel"
+                        id="f-phone"
+                        name="phone"
+                        autocomplete="tel"
+                        inputmode="tel"
+                        dir="ltr"
+                        class="dandy-control dandy-control--ltr dandy-tabular"
+                        placeholder="01012345678"
+                        required
+                      />
+                      <p id="err-f-phone" class="dandy-field-error" hidden></p>
+                    </div>
 
-    function initCustomerCheckoutAddresses() {
-      const auth = window.auth || (typeof firebase !== 'undefined' ? firebase.auth() : null);
-      if (!auth) return;
+                    <div class="dandy-field">
+                      <label for="f-email">البريد الإلكتروني (اختياري)</label>
+                      <input
+                        type="email"
+                        id="f-email"
+                        name="email"
+                        autocomplete="email"
+                        dir="ltr"
+                        class="dandy-control dandy-control--ltr"
+                        placeholder="name@example.com"
+                      />
+                      <p id="err-f-email" class="dandy-field-error" hidden></p>
+                    </div>
+                  </div>
 
-      auth.onAuthStateChanged(async (user) => {
-        const sec = document.getElementById('savedAddressesSection');
-        if (!user) {
-          if (sec) sec.style.display = 'none';
-          return;
-        }
+                  <div class="dandy-form-row">
+                    <div class="dandy-field">
+                      <label for="f-gov">
+                        المحافظة <span class="dandy-req" aria-hidden="true">*</span>
+                      </label>
+                      <select id="f-gov" name="governorate" class="dandy-control" required>
+                        <option value="">اختاري المحافظة</option>
+                        {GOVERNORATES.map((gov) => (
+                          <option value={gov.value}>{gov.labelAr}</option>
+                        ))}
+                      </select>
+                      <p id="err-f-gov" class="dandy-field-error" hidden></p>
+                    </div>
 
-        try {
-          const snap = await db.ref('customers/' + user.uid + '/addresses').once('value');
-          if (snap.exists()) {
-            customerSavedAddresses = snap.val() || {};
-            const keys = Object.keys(customerSavedAddresses);
-            if (keys.length > 0) {
-              const select = document.getElementById('savedAddressSelect');
-              if (sec) sec.style.display = 'block';
+                    <div class="dandy-field">
+                      <label for="f-city">
+                        المدينة / المنطقة <span class="dandy-req" aria-hidden="true">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        id="f-city"
+                        name="city"
+                        autocomplete="address-level2"
+                        class="dandy-control"
+                        placeholder="مثال: مدينة نصر، الدقي، سموحة"
+                        required
+                      />
+                      <p id="err-f-city" class="dandy-field-error" hidden></p>
+                    </div>
+                  </div>
 
-              if (select) {
-                select.innerHTML = '<option value="">-- اختاري عنواناً محفوظاً --</option>';
-                let defaultKey = null;
+                  <div class="dandy-field">
+                    <label for="f-address">
+                      العنوان بالتفصيل <span class="dandy-req" aria-hidden="true">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      id="f-address"
+                      name="address"
+                      autocomplete="street-address"
+                      class="dandy-control"
+                      placeholder="اسم الشارع، رقم العقار، الدور/الشقة، وعلامة مميزة"
+                      required
+                    />
+                    <p id="err-f-address" class="dandy-field-error" hidden></p>
+                  </div>
+                </form>
 
-                const govSelect = document.getElementById('f-gov');
-                keys.forEach(k => {
-                  const addr = customerSavedAddresses[k];
-                  let govArabic = addr.governorate || '';
-                  if (govSelect) {
-                    const opt = Array.from(govSelect.options).find(o => o.value === addr.governorate);
-                    if (opt) govArabic = opt.text;
-                  }
-
-                  const opt = document.createElement('option');
-                  opt.value = k;
-                  opt.textContent = `${addr.label || 'عنوان'} (${govArabic} - ${addr.city || ''}) ${addr.isDefault ? '★ (افتراضي)' : ''}`;
-                  select.appendChild(opt);
-                  if (addr.isDefault) defaultKey = k;
-                });
-
-                // تطبيق العنوان الافتراضي تلقائياً إن وجد
-                const targetKey = defaultKey || keys[0];
-                select.value = targetKey;
-                window.applySavedAddress(targetKey);
-              }
-            } else {
-              if (sec) sec.style.display = 'none';
-            }
-          } else {
-            if (sec) sec.style.display = 'none';
-          }
-
-          // ملء الاسم ورقم الهاتف والبريد من بروفايل العميل إن كانا فارغين
-          const custSnap = await db.ref('customers/' + user.uid).once('value');
-          if (custSnap.exists()) {
-            const cData = custSnap.val();
-            const nameInput = document.getElementById('f-name');
-            const phoneInput = document.getElementById('f-phone');
-            const emailInput = document.getElementById('f-email');
-            if (nameInput && !nameInput.value && cData.name) nameInput.value = cData.name;
-            if (phoneInput && !phoneInput.value && cData.phone) phoneInput.value = cData.phone;
-            if (emailInput && !emailInput.value && (cData.email || user.email)) emailInput.value = cData.email || user.email;
-          }
-        } catch (e) {
-          console.warn('Error loading customer checkout addresses:', e);
-        }
-      });
-    }
-
-    window.toggleAddressMode = function(mode) {
-      const selectWrap = document.getElementById('savedSelectWrap');
-      const govInput = document.getElementById('f-gov');
-      const cityInput = document.getElementById('f-city');
-      const addrInput = document.getElementById('f-address');
-
-      if (mode === 'saved') {
-        if (selectWrap) selectWrap.style.display = 'block';
-        const select = document.getElementById('savedAddressSelect');
-        if (select && select.value) {
-          window.applySavedAddress(select.value);
-        }
-      } else {
-        if (selectWrap) selectWrap.style.display = 'none';
-        if (govInput) govInput.value = '';
-        if (cityInput) cityInput.value = '';
-        if (addrInput) addrInput.value = '';
-        if (typeof handleGovChange === 'function') handleGovChange();
-      }
-    };
-
-    window.applySavedAddress = function(key) {
-      if (!key || !customerSavedAddresses[key]) return;
-      const addr = customerSavedAddresses[key];
-      const govInput = document.getElementById('f-gov');
-      const cityInput = document.getElementById('f-city');
-      const addrInput = document.getElementById('f-address');
-
-      if (govInput && addr.governorate) {
-        govInput.value = addr.governorate;
-      }
-      if (cityInput && addr.city) {
-        cityInput.value = addr.city;
-      }
-      if (addrInput && addr.address) {
-        addrInput.value = addr.address;
-      }
-      if (typeof handleGovChange === 'function') handleGovChange();
-    };
-
-    initCustomerCheckoutAddresses();
-
-    var hasFiredInitiateCheckout = false;
-
-    window.goToStep = function(step) {
-      currentStep = step;
-
-      // Meta Pixel InitiateCheckout Event: Fire ONLY when the user actually starts the checkout process (Step 2: Shipping Details)
-      if (step === 2 && !hasFiredInitiateCheckout && cart && cart.length > 0) {
-        hasFiredInitiateCheckout = true;
-        var cartVal = calculateCartSubtotal();
-        if (window.DandyMeta && typeof window.DandyMeta.trackInitiateCheckout === 'function') {
-          window.DandyMeta.trackInitiateCheckout(cart, cartVal);
-        } else if (typeof fbq === 'function') {
-          fbq('track', 'InitiateCheckout', {
-            value: cartVal,
-            currency: 'EGP',
-            num_items: cart.reduce(function(sum, item) { return sum + (item.quantity ? parseInt(item.quantity) : 1); }, 0)
-          });
-        }
-      }
-
-      document.querySelectorAll('.checkout-step-panel').forEach(panel => panel.classList.remove('active'));
-      document.querySelectorAll('.stepper-step').forEach((s, idx) => {
-        s.classList.remove('active', 'completed');
-        if (idx + 1 < step) {
-          s.classList.add('completed');
-        } else if (idx + 1 === step) {
-          s.classList.add('active');
-        }
-      });
-
-      const pct = ((step - 1) / 2) * 100;
-      document.getElementById('stepperLineProgress').style.width = pct + '%';
-      document.getElementById(`step-panel-${step}`).classList.add('active');
-      
-      window.scrollTo({ top: 40, behavior: 'smooth' });
-    };
-
-    window.validateAndGoToReview = function() {
-      const name = document.getElementById('f-name').value.trim();
-      const phone = document.getElementById('f-phone').value.trim();
-      const email = document.getElementById('f-email').value.trim();
-      
-      const govSelect = document.getElementById('f-gov');
-      const governorate = govSelect.value;
-      const govText = governorate ? govSelect.options[govSelect.selectedIndex].text : '';
-      
-      const city = document.getElementById('f-city').value.trim();
-      const address = document.getElementById('f-address').value.trim();
-
-      if (!name || name.length < 5) {
-        alert('يرجى إدخال الاسم بالكامل (كلمتين على الأقل) لضمان دقة الشحن.');
-        return;
-      }
-      if (!/^01[0125][0-9]{8}$/.test(phone)) {
-        alert('يرجى كتابة رقم هاتف مصري صحيح (11 رقم، يبدأ بـ 010, 011, 012, أو 015)');
-        return;
-      }
-      if (!governorate || !city || !address) {
-        alert('يرجى ملء جميع التفاصيل، واختيار المحافظة، والمدينة، وعنوان الشارع بدقة.');
-        return;
-      }
-
-      const subtotal = calculateCartSubtotal();
-      let fee = getShippingFeeForGov(governorate);
-      if (subtotal > 2000) fee = 0;
-      const orderTotal = subtotal + fee;
-
-      revCustName.textContent = name;
-      revCustPhone.textContent = phone;
-      revCustEmail.textContent = email || 'لا يوجد';
-      revCustLocation.textContent = city + '، محافظة ' + govText;
-      revCustAddress.textContent = address;
-
-      revProductsList.innerHTML = '';
-      const revContainer = document.createElement('div');
-      revContainer.className = 'rev-products-container';
-
-      cart.forEach(item => {
-        const qtyVal = parseInt(item.quantity) || 1;
-        const unitPrice = typeof getEffectiveUnitPrice === 'function'
-          ? getEffectiveUnitPrice(item)
-          : (Number(item.price) || 0);
-        const sub = unitPrice * qtyVal;
-        
-        const varInfo = typeof getVariantsDisplayInfo === 'function'
-          ? getVariantsDisplayInfo(item)
-          : (item.selectedVariant && item.selectedVariant.name ? { count: 1, label: 'الرائحة', text: item.selectedVariant.name } : null);
-
-        const divItem = document.createElement('div');
-        divItem.className = 'rev-product-item';
-
-        const variantBadgeHtml = (varInfo && varInfo.text)
-          ? `<span class="rev-product-variant"><i class="fas fa-sparkles" style="font-size:0.7rem;"></i> ${varInfo.label}: <strong>${varInfo.text}</strong></span>`
-          : '';
-
-        let revCollectionHtml = '';
-        if (item.isCollection && Array.isArray(item.selectedItems) && item.selectedItems.length > 0) {
-          revCollectionHtml = `
-            <div style="margin-top:4px; font-size:0.73rem; color:#be185d; line-height:1.4;">
-              <span style="font-weight:700;">محتويات الكوليكشن:</span>
-              ${item.selectedItems.map(si => {
-                const sName = si.selectedVariant && (si.selectedVariant.name || si.selectedVariant.id) ? (si.selectedVariant.name || si.selectedVariant.id) : '';
-                return `• ${si.productName || 'منتج'}${sName ? ` (${sName})` : ''}`;
-              }).join(' | ')}
-            </div>
-          `;
-        }
-
-        divItem.innerHTML = `
-          <div class="rev-product-start">
-            <img class="rev-product-img" loading="lazy" src="${item.image}" alt="${item.name}" onerror="this.onerror=null;this.src='https://images.unsplash.com/photo-1608248597481-496100c80836?auto=format&fit=crop&w=100&q=80';">
-            <div class="rev-product-details">
-              <h4 class="rev-product-name">${item.name}</h4>
-              <div class="rev-product-meta-row">
-                ${variantBadgeHtml}
-                <span class="rev-product-qty-badge">الكمية: <strong>${qtyVal}</strong> × ${unitPrice.toFixed(0)} ج.م</span>
+                <div class="dandy-checkout-actions-bar">
+                  <button type="button" id="btnBackToCart" class="dandy-btn dandy-btn--outline">
+                    <Icon name="arrow-right" size={16} strokeWidth={1.85} directional={true} />
+                    <span>العودة للحقيبة</span>
+                  </button>
+                  <button type="button" id="btnProceedToReview" class="dandy-btn dandy-btn--primary">
+                    <span>الانتقال للمراجعة النهائية</span>
+                    <Icon name="arrow-left" size={16} strokeWidth={1.85} directional={true} />
+                  </button>
+                </div>
               </div>
-              ${revCollectionHtml}
+
+              <aside class="dandy-checkout-summary-card" aria-label="ملخص الشحن والطلب">
+                <h3 class="dandy-summary-heading">
+                  <Icon name="receipt" size={17} strokeWidth={1.85} />
+                  <span>ملخص الطلب</span>
+                </h3>
+
+                <div class="dandy-summary-rows">
+                  <div class="dandy-summary-row">
+                    <span class="dandy-sum-label">المجموع الفرعي</span>
+                    <span class="dandy-sum-value dandy-tabular" id="subtotalValSummary2">0 ج.م</span>
+                  </div>
+                  <div class="dandy-summary-row">
+                    <span class="dandy-sum-label">مصاريف الشحن</span>
+                    <span class="dandy-sum-value dandy-sum-value--muted dandy-tabular" id="shippingCostSummary2">
+                      اختاري المحافظة لحساب الشحن
+                    </span>
+                  </div>
+                </div>
+
+                <div class="dandy-summary-total-row">
+                  <span>الإجمالي الكلي</span>
+                  <strong class="dandy-summary-grand dandy-tabular" id="grandTotalSummaryValue2">0 ج.م</strong>
+                </div>
+
+                <div class="dandy-summary-note-box">
+                  <Icon name="truck" size={16} strokeWidth={1.8} />
+                  <span>تُحسب تكلفة الشحن تلقائياً وفق المحافظة المختارة، وتصبح مجانية عند تجاوز 2,000 ج.م.</span>
+                </div>
+              </aside>
             </div>
-          </div>
-          <div class="rev-product-subtotal">
-            ${sub.toFixed(0)} ج.م
-          </div>
-        `;
-        revContainer.appendChild(divItem);
-      });
-      revProductsList.appendChild(revContainer);
+          </section>
 
-      summSubtotal.textContent = subtotal.toFixed(0) + " ج.م";
-      summShipping.textContent = fee === 0 ? "شحن مجاني" : fee.toFixed(0) + " ج.م";
-      finalSummaryTotal.textContent = orderTotal.toFixed(0) + " ج.م";
+          <!-- STEP 3: FINAL REVIEW & CONFIRM -->
+          <section
+            id="step-panel-3"
+            class="checkout-step-panel"
+            aria-labelledby="step3Heading"
+          >
+            <div class="dandy-checkout-grid">
+              <div class="dandy-checkout-card">
+                <div class="dandy-checkout-card-head">
+                  <h2 id="step3Heading" class="dandy-checkout-card-title">
+                    <Icon name="clipboard-check" size={18} strokeWidth={1.85} />
+                    <span>المراجعة النهائية وتأكيد الطلب</span>
+                  </h2>
+                </div>
 
-      goToStep(3);
-    };
+                <div class="dandy-review-block">
+                  <div class="dandy-review-block-head">
+                    <h3>بيانات الشحن والمستلمة</h3>
+                    <button type="button" class="dandy-link-btn" data-step-target="2">
+                      تعديل البيانات
+                    </button>
+                  </div>
+                  <dl class="dandy-review-dl">
+                    <div>
+                      <dt>اسم المستلمة</dt>
+                      <dd id="revCustName">—</dd>
+                    </div>
+                    <div>
+                      <dt>رقم التواصل</dt>
+                      <dd id="revCustPhone" dir="ltr" class="dandy-tabular">—</dd>
+                    </div>
+                    <div>
+                      <dt>البريد الإلكتروني</dt>
+                      <dd id="revCustEmail" dir="ltr">—</dd>
+                    </div>
+                    <div>
+                      <dt>المدينة والمحافظة</dt>
+                      <dd id="revCustLocation">—</dd>
+                    </div>
+                    <div class="dandy-review-dl--full">
+                      <dt>العنوان بالتفصيل</dt>
+                      <dd id="revCustAddress">—</dd>
+                    </div>
+                  </dl>
+                </div>
 
-    window.submitFinalOrder = async function() {
-      const finalBtn = document.getElementById('finalPlaceOrderBtn');
-      const savingTextLoader = document.getElementById('savingTextLoader');
+                <div class="dandy-review-block">
+                  <div class="dandy-review-block-head">
+                    <h3>المنتجات المطلوبة</h3>
+                    <button type="button" class="dandy-link-btn" data-step-target="1">
+                      تعديل الحقيبة
+                    </button>
+                  </div>
+                  <div id="revProductsList"></div>
+                </div>
 
-      finalBtn.disabled = true;
-      finalBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري تنفيذ طلبك...';
-      savingTextLoader.innerHTML = '<span style="color:var(--color-blush); font-weight:700;"><i class="fas fa-cloud-upload-alt"></i> جاري رفع تفاصيل الفاتورة وحجز منتجاتك...</span>';
+                <!-- Cloudflare Turnstile Security Verification (preserved intact) -->
+                <div class="dandy-turnstile-wrap">
+                  <div class="cf-turnstile" data-sitekey={turnstileSiteKey} data-theme="light"></div>
+                  <small class="dandy-turnstile-note">
+                    <Icon name="lock" size={13} strokeWidth={1.9} />
+                    <span>تحقق أمني لحماية الطلبات</span>
+                  </small>
+                </div>
 
-      const name = document.getElementById('f-name').value.trim();
-      const phone = document.getElementById('f-phone').value.trim();
-      const email = document.getElementById('f-email').value.trim();
-      const governorate = document.getElementById('f-gov').value;
-      const city = document.getElementById('f-city').value.trim();
-      const address = document.getElementById('f-address').value.trim();
+                <div
+                  id="reviewSubmitError"
+                  class="dandy-inline-alert dandy-inline-alert--error"
+                  role="alert"
+                  hidden
+                ></div>
 
-      // تجهيز قائمة المنتجات والكميات والروائح فقط دون إرسال أي أسعار من المتصفح
-      const items = cart.map(item => {
-        if (item.type === 'collection' || item.isCollection || item.collectionId) {
-          return {
-            type: 'collection',
-            isCollection: true,
-            isPinkFriday: true,
-            collectionId: item.collectionId || item.id,
-            name: item.name,
-            image: item.image || '',
-            quantity: parseInt(item.quantity) || 1,
-            selectedItems: Array.isArray(item.selectedItems) ? item.selectedItems : []
-          };
-        }
+                <div class="dandy-checkout-actions-bar">
+                  <button type="button" id="btnBackToShipping" class="dandy-btn dandy-btn--outline">
+                    <Icon name="arrow-right" size={16} strokeWidth={1.85} directional={true} />
+                    <span>العودة لبيانات الشحن</span>
+                  </button>
+                  <button type="button" id="finalPlaceOrderBtn" class="dandy-btn dandy-btn--botanical">
+                    <Icon name="check" size={17} strokeWidth={2.1} />
+                    <span>تأكيد وإتمام الطلب</span>
+                  </button>
+                </div>
+              </div>
 
-        const rawVariants = (Array.isArray(item.selectedVariants) && item.selectedVariants.length > 0)
-          ? item.selectedVariants
-          : (item.selectedVariant ? [item.selectedVariant] : (item.variantName ? [{ id: item.variantId || 'scent-variant', name: item.variantName }] : []));
+              <aside class="dandy-checkout-summary-card" aria-label="طريقة الدفع والإجمالي">
+                <h3 class="dandy-summary-heading">
+                  <Icon name="banknote" size={17} strokeWidth={1.85} />
+                  <span>طريقة الدفع</span>
+                </h3>
 
-        return {
-          productId: item.productId || String(item.id).split('::')[0],
-          name: item.name,
-          image: item.image || '',
-          quantity: parseInt(item.quantity) || 1,
-          selectedVariants: rawVariants.map(v => ({
-            id: v.id || 'scent-variant',
-            name: v.name || String(v)
-          }))
-        };
-      });
+                <div class="dandy-cod-box">
+                  <div class="dandy-cod-title">
+                    <Icon name="banknote" size={17} strokeWidth={1.85} />
+                    <strong>الدفع عند الاستلام (COD)</strong>
+                  </div>
+                  <p>يمكنكِ مراجعة المنتجات والتأكد منها عند استلام الشحنة قبل الدفع.</p>
+                </div>
 
-      // جلب توكن العميل إن كان مسجل دخول لربط الطلب بحسابه بأمان عبر السيرفر
-      let idToken = null;
-      const currentAuthUser = (typeof firebase !== 'undefined' && firebase.auth) ? firebase.auth().currentUser : null;
-      if (currentAuthUser) {
-        try {
-          idToken = await currentAuthUser.getIdToken();
-        } catch(e) {
-          console.warn('Could not retrieve idToken:', e);
-        }
-      }
+                <div class="dandy-summary-rows">
+                  <div class="dandy-summary-row">
+                    <span class="dandy-sum-label">المجموع الفرعي</span>
+                    <span class="dandy-sum-value dandy-tabular" id="summSubtotal">0 ج.م</span>
+                  </div>
+                  <div class="dandy-summary-row">
+                    <span class="dandy-sum-label">مصاريف الشحن</span>
+                    <span class="dandy-sum-value dandy-tabular" id="summShipping">0 ج.م</span>
+                  </div>
+                </div>
 
-      // جلب توكن التحقق الأمني من كابتشا Cloudflare Turnstile
-      let turnstileToken = '';
-      if (typeof turnstile !== 'undefined') {
-        try {
-          turnstileToken = turnstile.getResponse() || '';
-        } catch(e) {}
-      }
-      if (!turnstileToken) {
-        const turnstileInput = document.querySelector('[name="cf-turnstile-response"]');
-        if (turnstileInput) turnstileToken = turnstileInput.value;
-      }
+                <div class="dandy-summary-total-row">
+                  <span>الإجمالي المستحق</span>
+                  <strong class="dandy-summary-grand dandy-tabular" id="finalSummaryTotal">0 ج.م</strong>
+                </div>
 
-      if (!turnstileToken) {
-        alert('يرجى إكمال اختبار التحقق الأمني (CAPTCHA) قبل تأكيد الطلب.');
-        finalBtn.disabled = false;
-        finalBtn.innerHTML = '<i class="fas fa-check"></i> تأكيد وإتمام الطلب';
-        return;
-      }
+                <p class="dandy-summary-footnote" id="savingTextLoader">
+                  <Icon name="lock" size={14} strokeWidth={1.9} />
+                  <span>تأكيد الطلب يحفظ فاتورتكِ ويمنحكِ كود تتبع فوري.</span>
+                </p>
+              </aside>
+            </div>
+          </section>
+        </div>
 
+        <CartRemoveDialog />
+      </div>
+    </div>
+  </main>
+
+  <script is:inline>
+    (function () {
       try {
-        const response = await fetch('/api/create-order', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            customer: {
-              name,
-              phone,
-              email: email || 'N/A',
-              governorate,
-              city,
-              address
-            },
-            items,
-            idToken,
-            turnstileToken
-          })
-        });
-
-        const result = await response.json().catch(() => ({}));
-        if (!response.ok || !result.success) {
-          if (typeof turnstile !== 'undefined') {
-            try { turnstile.reset(); } catch(e) {}
-          }
-          throw new Error(result.message || 'حدث خطأ أثناء معالجة الطلب.');
+        var primary = JSON.parse(localStorage.getItem('cart') || '[]');
+        var legacy = JSON.parse(localStorage.getItem('dandy_cart') || '[]');
+        var hasItems =
+          (Array.isArray(primary) && primary.length > 0) ||
+          (Array.isArray(legacy) && legacy.length > 0);
+        if (!hasItems) {
+          var flow = document.getElementById('checkoutFlowViews');
+          var empty = document.getElementById('cartEmptyState');
+          if (flow) flow.hidden = true;
+          if (empty) empty.hidden = false;
         }
+      } catch (_err) {}
+    })();
+  </script>
 
-        const generatedKey = result.orderId;
-        const invoiceCode = result.invoiceCode;
-
-        localStorage.removeItem('cart');
-
-        let recent = JSON.parse(localStorage.getItem('dandy_recent_lookups')) || [];
-        recent.unshift({ code: invoiceCode, phone: phone, time: new Date().getTime() });
-        localStorage.setItem('dandy_recent_lookups', JSON.stringify(recent));
-
-        window.location.href = `/invoice?id=${encodeURIComponent(generatedKey)}&invoice=${encodeURIComponent(invoiceCode)}`;
-
-      } catch(err) {
-        console.error('Order submission error:', err);
-        if (typeof turnstile !== 'undefined') {
-          try { turnstile.reset(); } catch(e) {}
-        }
-        alert(err.message || 'حدث خطأ أثناء الاتصال بقاعدة البيانات. يرجى المحاولة مرة أخرى.');
-        finalBtn.disabled = false;
-        finalBtn.innerHTML = '<i class="fas fa-check"></i> تأكيد وإتمام الطلب';
-        savingTextLoader.innerHTML = '<i class="fas fa-exclamation-circle" style="color:var(--color-danger);"></i> حدث خطأ. يرجى المحاولة مرة أخرى.';
-      }
-    };
-
-    renderStep1CartItems();
+  <script>
+    import { initCartCheckoutPage } from '../scripts/cart-client';
+    initCartCheckoutPage();
   </script>
 </BaseLayout>
+
+<style is:global>
+  .dandy-cart-page {
+    min-height: 70vh;
+    background-color: var(--dandy-bg-page);
+  }
+
+  .dandy-cart-shell {
+    max-width: 1120px;
+    margin-inline: auto;
+    scroll-margin-top: 92px;
+  }
+
+  /* Empty Cart */
+  .dandy-cart-empty-card {
+    max-width: 560px;
+    margin-inline: auto;
+    padding: clamp(36px, 5vw, 56px) 24px;
+    background-color: var(--dandy-bg-editorial);
+    border: 1px solid var(--dandy-border-subtle);
+    border-radius: var(--dandy-radius-md);
+    text-align: center;
+  }
+
+  .dandy-cart-empty-card[hidden],
+  #checkoutFlowViews[hidden] {
+    display: none;
+  }
+
+  .dandy-cart-empty-icon {
+    width: 60px;
+    height: 60px;
+    margin-inline: auto;
+    margin-bottom: 16px;
+    border-radius: var(--dandy-radius-pill);
+    background-color: var(--dandy-bg-elevated);
+    border: 1px solid var(--dandy-border-default);
+    color: var(--dandy-accent-text);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .dandy-cart-empty-title {
+    margin: 0 0 8px 0;
+    font-size: clamp(1.35rem, 2.5vw, 1.75rem);
+    color: var(--dandy-ink-primary);
+  }
+
+  .dandy-cart-empty-desc {
+    margin: 0 auto 24px auto;
+    max-width: 44ch;
+    font-size: var(--dandy-text-sm);
+    line-height: 1.7;
+    color: var(--dandy-ink-secondary);
+  }
+
+  .dandy-cart-empty-actions {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  /* Trust Strip (Unboxed clean grid) */
+  .dandy-cart-trust-strip {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+    margin-bottom: 22px;
+    padding-block: 12px;
+    padding-inline: 14px;
+    background-color: var(--dandy-bg-editorial);
+    border: 1px solid var(--dandy-border-subtle);
+    border-radius: var(--dandy-radius-md);
+  }
+
+  .dandy-cart-trust-item {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--dandy-ink-secondary);
+    text-align: center;
+  }
+
+  .dandy-cart-trust-item .dandy-icon {
+    color: var(--dandy-botanical-deep);
+  }
+
+  /* Step Panels */
+  .checkout-step-panel {
+    display: none;
+  }
+
+  .checkout-step-panel.active {
+    display: block;
+    animation: dandyStepFade 220ms var(--dandy-ease-out);
+  }
+
+  @keyframes dandyStepFade {
+    from {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  /* Main 2-Column Checkout Grid */
+  .dandy-checkout-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.68fr) minmax(0, 1fr);
+    gap: 24px;
+    align-items: start;
+  }
+
+  .dandy-checkout-main-col {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .dandy-checkout-card,
+  .dandy-checkout-summary-card {
+    background-color: var(--dandy-bg-elevated);
+    border: 1px solid var(--dandy-border-default);
+    border-radius: var(--dandy-radius-md);
+    padding: clamp(18px, 2.5vw, 24px);
+    min-width: 0;
+  }
+
+  .dandy-checkout-summary-card {
+    position: sticky;
+    top: 92px;
+  }
+
+  .dandy-checkout-card-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding-bottom: 14px;
+    margin-bottom: 16px;
+    border-bottom: 1px solid var(--dandy-border-subtle);
+  }
+
+  .dandy-checkout-card-title {
+    margin: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 1.0625rem;
+    font-weight: 700;
+    color: var(--dandy-ink-primary);
+  }
+
+  .dandy-checkout-card-title .dandy-icon {
+    color: var(--dandy-botanical-deep);
+  }
+
+  .dandy-cart-count-pill {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--dandy-ink-secondary);
+    background-color: var(--dandy-bg-editorial);
+    border: 1px solid var(--dandy-border-subtle);
+    padding: 4px 10px;
+    border-radius: var(--dandy-radius-sm);
+  }
+
+  .dandy-guest-note {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--dandy-botanical-deep);
+    background-color: var(--dandy-botanical-soft);
+    padding: 4px 10px;
+    border-radius: var(--dandy-radius-sm);
+  }
+
+  /* Free Shipping Progress Meter */
+  .dandy-shipping-meter {
+    background-color: var(--dandy-bg-editorial);
+    border: 1px solid var(--dandy-border-subtle);
+    border-radius: var(--dandy-radius-md);
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .dandy-shipping-meter.is-qualified {
+    background-color: var(--dandy-botanical-soft);
+    border-color: #C7D7C8;
+  }
+
+  .dandy-shipping-meter-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    font-size: 0.84375rem;
+    font-weight: 600;
+    color: var(--dandy-ink-primary);
+  }
+
+  .dandy-shipping-meter-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
+
+  .dandy-shipping-meter.is-qualified .dandy-shipping-meter-label .dandy-icon {
+    color: var(--dandy-botanical-deep);
+  }
+
+  .dandy-shipping-meter-pct {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--dandy-ink-secondary);
+    flex-shrink: 0;
+  }
+
+  .dandy-shipping-meter-rail {
+    height: 6px;
+    border-radius: var(--dandy-radius-pill);
+    background-color: var(--dandy-border-subtle);
+    overflow: hidden;
+  }
+
+  .dandy-shipping-meter-fill {
+    height: 100%;
+    width: 0%;
+    background-color: var(--dandy-accent-primary);
+    border-radius: var(--dandy-radius-pill);
+    transition: width 320ms var(--dandy-ease-out), background-color 220ms ease;
+  }
+
+  .dandy-shipping-meter.is-qualified .dandy-shipping-meter-fill {
+    background-color: var(--dandy-botanical-deep);
+  }
+
+  /* Cart Line Items */
+  .dandy-cart-items-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .dandy-cart-item-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding-block: 16px;
+    border-bottom: 1px solid var(--dandy-border-subtle);
+  }
+
+  .dandy-cart-item-row:first-child {
+    padding-top: 4px;
+  }
+
+  .dandy-cart-item-row:last-child {
+    border-bottom: none;
+    padding-bottom: 4px;
+  }
+
+  .dandy-cart-item-main {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .dandy-cart-item-img {
+    width: 80px;
+    height: 80px;
+    object-fit: cover;
+    border-radius: var(--dandy-radius-sm);
+    border: 1px solid var(--dandy-border-subtle);
+    background-color: var(--dandy-bg-stage);
+    flex-shrink: 0;
+  }
+
+  .dandy-cart-item-img[src$='logo.png'],
+  .dandy-rev-product-img[src$='logo.png'] {
+    object-fit: contain;
+    padding: 6px;
+    background-color: var(--dandy-bg-editorial);
+  }
+
+  .dandy-cart-item-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    min-width: 0;
+    flex: 1;
+  }
+
+  .dandy-cart-item-title {
+    margin: 0;
+    font-size: 0.96rem;
+    font-weight: 700;
+    line-height: 1.45;
+    color: var(--dandy-ink-primary);
+    word-break: break-word;
+  }
+
+  .dandy-cart-badge-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .dandy-cart-offer-tag {
+    display: inline-block;
+    font-size: 0.72rem;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: var(--dandy-radius-xs);
+    background-color: var(--dandy-accent-soft);
+    color: var(--dandy-accent-text);
+    border: 1px solid var(--dandy-border-accent);
+  }
+
+  .dandy-cart-old-price {
+    font-size: 0.78rem;
+    color: var(--dandy-ink-muted);
+    text-decoration: line-through;
+  }
+
+  .dandy-cart-variant-line {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.8125rem;
+    color: var(--dandy-ink-secondary);
+  }
+
+  .dandy-cart-variant-line .dandy-icon {
+    color: var(--dandy-botanical-deep);
+  }
+
+  .dandy-cart-col-box {
+    margin-top: 4px;
+    padding: 8px 10px;
+    background-color: var(--dandy-bg-editorial);
+    border: 1px solid var(--dandy-border-subtle);
+    border-radius: var(--dandy-radius-sm);
+    font-size: 0.76rem;
+  }
+
+  .dandy-cart-col-title {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-weight: 700;
+    color: var(--dandy-botanical-deep);
+    margin-bottom: 4px;
+  }
+
+  .dandy-cart-col-list {
+    margin: 0;
+    padding-inline-start: 16px;
+    color: var(--dandy-ink-secondary);
+    line-height: 1.55;
+  }
+
+  .dandy-cart-col-scent {
+    color: var(--dandy-accent-text);
+    font-weight: 600;
+  }
+
+  .dandy-cart-unit-price {
+    font-size: 0.8125rem;
+    color: var(--dandy-ink-muted);
+  }
+
+  .dandy-cart-item-controls {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-shrink: 0;
+  }
+
+  .dandy-qty-stepper {
+    display: inline-flex;
+    align-items: center;
+    border: 1px solid var(--dandy-border-default);
+    border-radius: var(--dandy-radius-sm);
+    background-color: var(--dandy-bg-elevated);
+    overflow: hidden;
+  }
+
+  .dandy-qty-btn {
+    appearance: none;
+    width: 34px;
+    height: 36px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--dandy-ink-primary);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background-color var(--dandy-transition-fast), color var(--dandy-transition-fast);
+  }
+
+  .dandy-qty-btn:hover:not(:disabled) {
+    background-color: var(--dandy-bg-editorial);
+  }
+
+  .dandy-qty-btn:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+  }
+
+  .dandy-qty-value {
+    min-width: 30px;
+    text-align: center;
+    font-size: 0.875rem;
+    font-weight: 700;
+    color: var(--dandy-ink-primary);
+    border-inline: 1px solid var(--dandy-border-subtle);
+    padding-inline: 4px;
+    line-height: 36px;
+  }
+
+  .dandy-cart-item-end {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .dandy-cart-row-total {
+    min-width: 72px;
+    text-align: end;
+    font-size: 0.96rem;
+    font-weight: 700;
+    color: var(--dandy-ink-primary);
+    white-space: nowrap;
+  }
+
+  .dandy-cart-remove-btn {
+    appearance: none;
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border-radius: var(--dandy-radius-sm);
+    border: 1px solid var(--dandy-border-subtle);
+    background-color: transparent;
+    color: var(--dandy-ink-muted);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background-color var(--dandy-transition-fast),
+                border-color var(--dandy-transition-fast),
+                color var(--dandy-transition-fast);
+  }
+
+  .dandy-cart-remove-btn:hover {
+    background-color: var(--dandy-danger-soft);
+    border-color: #F4C7D2;
+    color: var(--dandy-danger);
+  }
+
+  .dandy-cart-continue-row {
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid var(--dandy-border-subtle);
+  }
+
+  .dandy-cart-continue-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.84375rem;
+    font-weight: 600;
+    color: var(--dandy-ink-secondary);
+    text-decoration: none;
+  }
+
+  .dandy-cart-continue-link:hover {
+    color: var(--dandy-ink-primary);
+    text-decoration: underline;
+    text-underline-offset: 4px;
+  }
+
+  /* Summary Card */
+  .dandy-summary-heading {
+    margin: 0 0 16px 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--dandy-ink-primary);
+  }
+
+  .dandy-summary-heading .dandy-icon {
+    color: var(--dandy-botanical-deep);
+  }
+
+  .dandy-summary-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .dandy-summary-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    font-size: 0.875rem;
+  }
+
+  .dandy-sum-label {
+    color: var(--dandy-ink-secondary);
+  }
+
+  .dandy-sum-value {
+    font-weight: 700;
+    color: var(--dandy-ink-primary);
+    text-align: end;
+  }
+
+  .dandy-sum-value--muted {
+    font-weight: 500;
+    color: var(--dandy-ink-muted);
+    font-size: 0.8125rem;
+  }
+
+  .dandy-sum-value--free {
+    color: var(--dandy-success);
+    font-weight: 700;
+  }
+
+  .dandy-summary-total-row {
+    margin-block: 16px;
+    padding-top: 14px;
+    border-top: 1px solid var(--dandy-border-subtle);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    font-weight: 700;
+    color: var(--dandy-ink-primary);
+  }
+
+  .dandy-summary-grand {
+    font-size: 1.35rem;
+    font-weight: 800;
+    color: var(--dandy-accent-text);
+  }
+
+  .dandy-btn-full {
+    width: 100%;
+  }
+
+  .dandy-btn--botanical {
+    background-color: var(--dandy-botanical-deep);
+    color: #FFFFFF;
+  }
+
+  .dandy-btn--botanical:hover:not(:disabled) {
+    background-color: #1F2B20;
+    color: #FFFFFF;
+  }
+
+  .dandy-summary-footnote {
+    margin: 14px 0 0 0;
+    padding-top: 12px;
+    border-top: 1px solid var(--dandy-border-subtle);
+    display: flex;
+    align-items: flex-start;
+    gap: 7px;
+    font-size: 0.78rem;
+    line-height: 1.55;
+    color: var(--dandy-ink-muted);
+  }
+
+  .dandy-summary-footnote .dandy-icon {
+    color: var(--dandy-botanical-deep);
+    margin-top: 2px;
+  }
+
+  .dandy-summary-note-box {
+    margin-top: 12px;
+    padding: 11px 12px;
+    border-radius: var(--dandy-radius-sm);
+    background-color: var(--dandy-bg-editorial);
+    border: 1px solid var(--dandy-border-subtle);
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    font-size: 0.8rem;
+    line-height: 1.55;
+    color: var(--dandy-ink-secondary);
+  }
+
+  /* Shipping Form & Validation */
+  .dandy-saved-addresses {
+    margin-bottom: 18px;
+    padding: 14px 16px;
+    background-color: var(--dandy-bg-editorial);
+    border: 1px solid var(--dandy-border-subtle);
+    border-radius: var(--dandy-radius-sm);
+  }
+
+  .dandy-saved-addresses-title {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 0.875rem;
+    font-weight: 700;
+    color: var(--dandy-ink-primary);
+    margin-bottom: 10px;
+  }
+
+  .dandy-saved-mode-radios {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+    font-size: 0.84375rem;
+  }
+
+  .dandy-radio-choice {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    font-weight: 600;
+    color: var(--dandy-ink-primary);
+  }
+
+  .dandy-checkout-form {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .dandy-form-row {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+  }
+
+  .dandy-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+  }
+
+  .dandy-field label {
+    font-size: 0.84375rem;
+    font-weight: 600;
+    color: var(--dandy-ink-primary);
+  }
+
+  .dandy-req {
+    color: var(--dandy-accent-primary);
+  }
+
+  .dandy-control {
+    width: 100%;
+    min-height: 44px;
+    padding: 10px 13px;
+    border-radius: var(--dandy-radius-sm);
+    border: 1px solid var(--dandy-border-default);
+    background-color: var(--dandy-bg-elevated);
+    color: var(--dandy-ink-primary);
+    font-family: inherit;
+    font-size: 0.9rem;
+    line-height: 1.4;
+    transition: border-color var(--dandy-transition-fast), box-shadow var(--dandy-transition-fast);
+  }
+
+  .dandy-control--ltr {
+    text-align: start;
+  }
+
+  .dandy-control:focus {
+    outline: none;
+    border-color: var(--dandy-ink-primary);
+    box-shadow: 0 0 0 3px rgba(26, 23, 21, 0.08);
+  }
+
+  .dandy-field.has-error .dandy-control {
+    border-color: var(--dandy-danger);
+    background-color: #FFF9FA;
+  }
+
+  .dandy-field-error {
+    margin: 0;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--dandy-danger);
+    line-height: 1.45;
+  }
+
+  .dandy-field-error[hidden] {
+    display: none;
+  }
+
+  .dandy-inline-alert {
+    padding: 11px 14px;
+    border-radius: var(--dandy-radius-sm);
+    font-size: 0.84375rem;
+    font-weight: 600;
+    line-height: 1.5;
+    margin-bottom: 16px;
+  }
+
+  .dandy-inline-alert[hidden] {
+    display: none;
+  }
+
+  .dandy-inline-alert--error {
+    background-color: var(--dandy-danger-soft);
+    border: 1px solid #F4C7D2;
+    color: var(--dandy-danger);
+  }
+
+  .dandy-checkout-actions-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-top: 22px;
+    padding-top: 18px;
+    border-top: 1px solid var(--dandy-border-subtle);
+    flex-wrap: wrap;
+  }
+
+  /* Review Step */
+  .dandy-review-block {
+    background-color: var(--dandy-bg-editorial);
+    border: 1px solid var(--dandy-border-subtle);
+    border-radius: var(--dandy-radius-sm);
+    padding: 16px;
+    margin-bottom: 18px;
+  }
+
+  .dandy-review-block-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding-bottom: 10px;
+    margin-bottom: 12px;
+    border-bottom: 1px solid var(--dandy-border-subtle);
+  }
+
+  .dandy-review-block-head h3 {
+    margin: 0;
+    font-size: 0.9375rem;
+    font-weight: 700;
+    color: var(--dandy-ink-primary);
+  }
+
+  .dandy-link-btn {
+    appearance: none;
+    background: transparent;
+    border: 0;
+    padding: 4px 6px;
+    color: var(--dandy-accent-text);
+    font-family: inherit;
+    font-size: 0.8125rem;
+    font-weight: 700;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    cursor: pointer;
+  }
+
+  .dandy-review-dl {
+    margin: 0;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px 16px;
+  }
+
+  .dandy-review-dl > div {
+    min-width: 0;
+  }
+
+  .dandy-review-dl--full {
+    grid-column: 1 / -1;
+  }
+
+  .dandy-review-dl dt {
+    font-size: 0.75rem;
+    color: var(--dandy-ink-muted);
+    margin-bottom: 2px;
+  }
+
+  .dandy-review-dl dd {
+    margin: 0;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--dandy-ink-primary);
+    word-break: break-word;
+  }
+
+  .dandy-rev-products {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .dandy-rev-product-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--dandy-border-subtle);
+  }
+
+  .dandy-rev-product-item:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
+  }
+
+  .dandy-rev-product-start {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    flex: 1;
+  }
+
+  .dandy-rev-product-img {
+    width: 52px;
+    height: 52px;
+    object-fit: cover;
+    border-radius: var(--dandy-radius-sm);
+    border: 1px solid var(--dandy-border-subtle);
+    background-color: var(--dandy-bg-stage);
+    flex-shrink: 0;
+  }
+
+  .dandy-rev-product-info {
+    min-width: 0;
+  }
+
+  .dandy-rev-product-name {
+    margin: 0 0 3px 0;
+    font-size: 0.875rem;
+    font-weight: 700;
+    color: var(--dandy-ink-primary);
+  }
+
+  .dandy-rev-product-meta {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    font-size: 0.78rem;
+    color: var(--dandy-ink-secondary);
+  }
+
+  .dandy-rev-variant {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--dandy-botanical-deep);
+  }
+
+  .dandy-rev-col-sub {
+    margin-top: 4px;
+    font-size: 0.75rem;
+    color: var(--dandy-ink-secondary);
+    line-height: 1.45;
+  }
+
+  .dandy-rev-col-sub span {
+    font-weight: 700;
+    color: var(--dandy-ink-primary);
+  }
+
+  .dandy-rev-product-total {
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: var(--dandy-ink-primary);
+    white-space: nowrap;
+  }
+
+  .dandy-turnstile-wrap {
+    margin-block: 16px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .dandy-turnstile-note {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.75rem;
+    color: var(--dandy-ink-muted);
+  }
+
+  .dandy-cod-box {
+    padding: 13px 14px;
+    margin-bottom: 16px;
+    border-radius: var(--dandy-radius-sm);
+    background-color: var(--dandy-botanical-soft);
+    border: 1px solid #C7D7C8;
+    color: var(--dandy-botanical-deep);
+  }
+
+  .dandy-cod-title {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 0.875rem;
+    margin-bottom: 4px;
+  }
+
+  .dandy-cod-box p {
+    margin: 0;
+    font-size: 0.78rem;
+    line-height: 1.5;
+    color: var(--dandy-ink-secondary);
+  }
+
+  /* Responsive Breakpoints */
+  @media (max-width: 960px) {
+    .dandy-checkout-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .dandy-checkout-summary-card {
+      position: static;
+    }
+  }
+
+  @media (max-width: 767px) {
+    .dandy-cart-trust-strip {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px 12px;
+      padding: 10px 12px;
+    }
+
+    .dandy-cart-trust-item {
+      justify-content: flex-start;
+      text-align: start;
+      font-size: 0.75rem;
+    }
+
+    .dandy-form-row,
+    .dandy-review-dl {
+      grid-template-columns: 1fr;
+    }
+
+    .dandy-cart-item-row {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 12px;
+    }
+
+    .dandy-cart-item-controls {
+      justify-content: space-between;
+      padding-inline-start: 0;
+    }
+
+    .dandy-checkout-actions-bar {
+      flex-direction: column-reverse;
+      align-items: stretch;
+    }
+
+    .dandy-checkout-actions-bar .dandy-btn {
+      width: 100%;
+    }
+  }
+</style>

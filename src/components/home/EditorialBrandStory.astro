@@ -1,72 +1,106 @@
 ---
 /**
- * DANDY COSMETICS — EDITORIAL BRAND STORY SECTION (PHASE 3)
- * Strictly grounded in verified facts from src/pages/about-us.astro.
+ * DANDY COSMETICS — EDITORIAL PROMO & BRAND STORY SECTION (STUDIO SYNCHRONIZED)
+ * Synchronized directly with Studio `promo` (`promoBanner`: eyebrow, title, desc, ctaText, ctaLink, image)
+ * while preserving the Botanical Editorial pharmaceutical philosophy as verified default content.
  */
 import Icon from '../ui/Icon.astro';
+import { DEFAULT_PROMO_BANNER } from '../../scripts/homepage-studio';
+
+export interface Props {
+  sectionId?: string;
+  eyebrow?: string;
+  title?: string;
+  desc?: string;
+  ctaText?: string;
+  ctaLink?: string;
+  image?: string;
+  isCustomized?: boolean;
+  hidden?: boolean;
+}
+
+const {
+  sectionId = 'promo',
+  eyebrow = DEFAULT_PROMO_BANNER.eyebrow,
+  title = DEFAULT_PROMO_BANNER.title,
+  desc = DEFAULT_PROMO_BANNER.desc,
+  ctaText = DEFAULT_PROMO_BANNER.ctaText,
+  ctaLink = DEFAULT_PROMO_BANNER.ctaLink,
+  image = DEFAULT_PROMO_BANNER.image,
+  isCustomized = false,
+  hidden = false,
+} = Astro.props;
+
+const headingId = `home-story-heading-${sectionId}`;
 ---
 
 <section
   class="dandy-home-section dandy-story-section"
-  aria-labelledby="home-story-heading"
-  data-studio-section="brand-story"
+  aria-labelledby={headingId}
+  data-studio-section={sectionId}
+  hidden={hidden || undefined}
 >
   <div class="dandy-container dandy-story-grid">
     <div class="dandy-story-media">
       <figure class="dandy-story-frame">
         <img
-          src="/assets/images/editorial/story-botanical.jpg"
-          alt="مكونات طبيعية وزبدات نباتية في تركيبات داندي"
+          src={image}
+          alt={title}
           width="900"
           height="1200"
           loading="lazy"
           decoding="async"
+          referrerpolicy="no-referrer"
           class="dandy-story-img"
+          data-promo-image
+          onerror={`this.onerror=null;this.src='${DEFAULT_PROMO_BANNER.image}';`}
         />
       </figure>
     </div>
 
     <div class="dandy-story-copy">
-      <p class="dandy-section-kicker">قصتنا وفلسفة التصنيع</p>
-      <h2 id="home-story-heading" class="dandy-story-title">
-        تركيبات صيدلانية متطورة تجمع بين نقاء الطبيعة والفاعلية العلمية
+      <p class="dandy-section-kicker" data-promo-eyebrow dir="auto">{eyebrow}</p>
+      <h2 id={headingId} class="dandy-story-title" data-promo-title dir="auto">
+        {title}
       </h2>
 
-      <p class="dandy-story-text">
-        تأسست <strong>DANDY</strong> برؤية صيدلانية متخصصة في علم تصنيع مستحضرات التجميل،
-        لتقديم منتجات للعناية بالبشرة والشعر والجسم تعتمد على الاختيار الدقيق للزيوت النباتية
-        والزبدات المغذية والفيتامينات، بتركيبات متوازنة خالية من الإضافات الكيميائية القاسية.
+      <p class="dandy-story-text" data-promo-desc dir="auto">
+        {desc}
       </p>
 
-      <blockquote class="dandy-story-quote">
-        «مهمتنا هي جعل منتجات الجمال عالية الجودة في متناول الجميع، بتركيبات تنافس المعايير العالمية وبقيمة محلية عادلة.»
-      </blockquote>
+      {!isCustomized && (
+        <>
+          <blockquote class="dandy-story-quote" data-promo-default-extra>
+            «مهمتنا هي جعل منتجات الجمال عالية الجودة في متناول الجميع، بتركيبات تنافس المعايير العالمية وبقيمة محلية عادلة.»
+          </blockquote>
 
-      <ul class="dandy-story-pillars">
-        <li>
-          <Icon name="leaf" size={18} strokeWidth={1.75} class="dandy-story-icon" />
-          <span>زيوت نباتية وزبدات مغذية مختارة بعناية للاستخدام اليومي اللطيف</span>
-        </li>
-        <li>
-          <Icon name="truck" size={18} strokeWidth={1.75} class="dandy-story-icon" />
-          <span>القاهرة، مصر — شحن وتوصيل موثوق لجميع المحافظات</span>
-        </li>
-      </ul>
+          <ul class="dandy-story-pillars" data-promo-default-pillars>
+            <li>
+              <Icon name="leaf" size={18} strokeWidth={1.75} class="dandy-story-icon" />
+              <span>زيوت نباتية وزبدات مغذية مختارة بعناية للاستخدام اليومي اللطيف</span>
+            </li>
+            <li>
+              <Icon name="truck" size={18} strokeWidth={1.75} class="dandy-story-icon" />
+              <span>القاهرة، مصر — شحن وتوصيل موثوق لجميع المحافظات</span>
+            </li>
+          </ul>
+        </>
+      )}
 
       <div class="dandy-story-actions">
-        <a href="/about-us" class="dandy-btn dandy-btn--editorial">
-          <span>اقرئي قصة داندي</span>
+        <a href={ctaLink} class="dandy-btn dandy-btn--editorial" data-promo-cta>
+          <span data-promo-cta-text dir="auto">{ctaText}</span>
           <Icon name="arrow-left" size={16} strokeWidth={1.8} />
         </a>
-        <a href="/blog" class="dandy-btn dandy-btn--outline">
-          <span>مدونة العناية والجمال</span>
+        <a href="/about-us" class="dandy-btn dandy-btn--outline">
+          <span>اقرئي قصة داندي</span>
         </a>
       </div>
     </div>
   </div>
 </section>
 
-<style>
+<style is:global>
   .dandy-story-section {
     background-color: var(--dandy-bg-page);
   }
@@ -80,6 +114,7 @@ import Icon from '../ui/Icon.astro';
 
   .dandy-story-media {
     width: 100%;
+    min-width: 0;
   }
 
   .dandy-story-frame {
@@ -105,6 +140,7 @@ import Icon from '../ui/Icon.astro';
     flex-direction: column;
     align-items: flex-start;
     gap: 16px;
+    min-width: 0;
   }
 
   .dandy-story-title {

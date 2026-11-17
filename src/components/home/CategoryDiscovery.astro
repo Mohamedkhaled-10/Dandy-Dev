@@ -1,12 +1,23 @@
 ---
 /**
- * DANDY COSMETICS — CATEGORY DISCOVERY SECTION (PHASE 3)
- * Renders strictly the 4 canonical categories from src/utils/categories.ts.
+ * DANDY COSMETICS — CATEGORY DISCOVERY SECTION (STUDIO SYNCHRONIZED)
+ * Renders categories mapped cleanly onto canonical /category/<slug> SEO routes
+ * while honoring Studio overrides for responsive images, taglines, counts, and layouts.
  */
 import Icon from '../ui/Icon.astro';
-import { getAllCategories } from '../../utils/categories';
+import {
+  resolveCategoriesForShowcase,
+  type ResolvedCategoryCard,
+} from '../../scripts/homepage-studio';
 
-const categories = getAllCategories();
+export interface Props {
+  categories?: ResolvedCategoryCard[];
+  hidden?: boolean;
+}
+
+const { categories, hidden = false } = Astro.props;
+const activeCategories =
+  categories && categories.length > 0 ? categories : resolveCategoriesForShowcase();
 const fallbackCatImg = '/assets/images/index-products/product-2.jpg';
 ---
 
@@ -14,6 +25,7 @@ const fallbackCatImg = '/assets/images/index-products/product-2.jpg';
   class="dandy-home-section dandy-categories-section"
   aria-labelledby="home-categories-heading"
   data-studio-section="categories"
+  hidden={hidden || undefined}
 >
   <div class="dandy-container">
     <header class="dandy-section-header">
@@ -29,28 +41,45 @@ const fallbackCatImg = '/assets/images/index-products/product-2.jpg';
       </a>
     </header>
 
-    <div class="dandy-cat-grid">
-      {categories.map((cat) => (
-        <a href={`/category/${cat.slug}`} class="dandy-cat-card">
+    <div class="dandy-cat-grid" data-categories-grid>
+      {activeCategories.map((cat) => (
+        <a
+          href={cat.href}
+          class={`dandy-cat-card dandy-cat-variant-${cat.layoutVariant}`}
+        >
           <div class="dandy-cat-media">
-            <img
-              src={cat.image || fallbackCatImg}
-              alt={`${cat.arabicName} — Dandy Cosmetics`}
-              width="600"
-              height="450"
-              loading="lazy"
-              decoding="async"
-              referrerpolicy="no-referrer"
-              class="dandy-cat-img"
-              onerror={`this.onerror=null;this.src='${fallbackCatImg}';`}
-            />
+            <picture>
+              {cat.mobileImage && (
+                <source media="(max-width: 767px)" srcset={cat.mobileImage} />
+              )}
+              <img
+                src={cat.desktopImage || fallbackCatImg}
+                alt={`${cat.name} — Dandy Cosmetics`}
+                width="600"
+                height="450"
+                loading="lazy"
+                decoding="async"
+                referrerpolicy="no-referrer"
+                class="dandy-cat-img"
+                onerror={`this.onerror=null;this.src='${fallbackCatImg}';`}
+              />
+            </picture>
           </div>
           <div class="dandy-cat-body">
             <div class="dandy-cat-title-row">
-              <h3 class="dandy-cat-title">{cat.arabicName}</h3>
-              <span class="dandy-cat-en" dir="ltr">{cat.name}</span>
+              <h3 class="dandy-cat-title" dir="auto">{cat.name}</h3>
+              {cat.englishName && cat.englishName !== cat.name && (
+                <span class="dandy-cat-en" dir="ltr">{cat.englishName}</span>
+              )}
             </div>
-            <p class="dandy-cat-desc">{cat.introText}</p>
+            {(cat.tagline || cat.count) && (
+              <p class="dandy-cat-meta-line" dir="auto">
+                {cat.tagline && <span dir="auto">{cat.tagline}</span>}
+                {cat.tagline && cat.count && <span aria-hidden="true"> · </span>}
+                {cat.count && <span class="dandy-tabular">{cat.count}</span>}
+              </p>
+            )}
+            <p class="dandy-cat-desc">{cat.description}</p>
             <span class="dandy-cat-link">
               <span>تصفحي القسم</span>
               <Icon name="chevron-left" size={14} strokeWidth={2} />
@@ -62,7 +91,7 @@ const fallbackCatImg = '/assets/images/index-products/product-2.jpg';
   </div>
 </section>
 
-<style>
+<style is:global>
   .dandy-cat-grid {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -96,6 +125,12 @@ const fallbackCatImg = '/assets/images/index-products/product-2.jpg';
     overflow: hidden;
   }
 
+  .dandy-cat-media picture {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
   .dandy-cat-img {
     width: 100%;
     height: 100%;
@@ -108,12 +143,30 @@ const fallbackCatImg = '/assets/images/index-products/product-2.jpg';
     transform: scale(1.03);
   }
 
+  @media (min-width: 1100px) {
+    .dandy-cat-variant-wide {
+      grid-column: span 2;
+    }
+
+    .dandy-cat-variant-wide .dandy-cat-media {
+      aspect-ratio: 16 / 9;
+    }
+
+    .dandy-cat-variant-large {
+      grid-column: span 2;
+    }
+
+    .dandy-cat-variant-tall .dandy-cat-media {
+      aspect-ratio: 4 / 3;
+    }
+  }
+
   .dandy-cat-body {
     display: flex;
     flex-direction: column;
     flex: 1 1 auto;
     padding: 16px;
-    gap: 8px;
+    gap: 6px;
   }
 
   .dandy-cat-title-row {
@@ -137,6 +190,14 @@ const fallbackCatImg = '/assets/images/index-products/product-2.jpg';
     font-weight: 500;
     color: var(--dandy-ink-muted);
     white-space: nowrap;
+  }
+
+  .dandy-cat-meta-line {
+    margin: 0;
+    font-size: var(--dandy-text-xs);
+    font-weight: 600;
+    color: var(--dandy-botanical-deep);
+    line-height: 1.4;
   }
 
   .dandy-cat-desc {
@@ -180,7 +241,7 @@ const fallbackCatImg = '/assets/images/index-products/product-2.jpg';
 
     .dandy-cat-body {
       padding: 12px;
-      gap: 6px;
+      gap: 5px;
     }
 
     .dandy-cat-title {

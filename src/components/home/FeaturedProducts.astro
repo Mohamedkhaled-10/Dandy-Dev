@@ -1,7 +1,8 @@
 ---
 /**
- * DANDY COSMETICS — FEATURED PRODUCTS SHOWCASE (PHASE 3)
- * SSR-first balanced catalog showcase using the unified ProductCard component.
+ * DANDY COSMETICS — DYNAMIC PRODUCTS SHOWCASE (STUDIO SYNCHRONIZED)
+ * Powers Studio built-in sections (`offers` and `newArrivals`) as well as custom product grids,
+ * reusing the unified ProductCard component.
  */
 import Icon from '../ui/Icon.astro';
 import ProductCard from '../product/ProductCard.astro';
@@ -12,62 +13,90 @@ import {
 } from '../../utils/pink-friday-server';
 
 export interface Props {
+  sectionId?: string;
+  kicker?: string;
+  heading?: string;
+  viewAllHref?: string;
+  viewAllLabel?: string;
+  alternateSurface?: boolean;
   products: Product[];
   pinkFridayCampaign?: PinkFridayCampaignData | null;
+  hidden?: boolean;
 }
 
-const { products = [], pinkFridayCampaign = null } = Astro.props;
+const {
+  sectionId = 'offers',
+  kicker = 'مختارات داندي',
+  heading = 'مستحضرات مختارة لروتينكِ اليومي',
+  viewAllHref = '/all-products',
+  viewAllLabel = 'عرض المتجر بالكامل',
+  alternateSurface = true,
+  products = [],
+  pinkFridayCampaign = null,
+  hidden = false,
+} = Astro.props;
+
+const headingId = `home-products-heading-${sectionId}`;
 ---
 
 <section
-  class="dandy-home-section dandy-featured-section"
-  aria-labelledby="home-featured-heading"
-  data-studio-section="featured-products"
+  class:list={[
+    'dandy-home-section',
+    'dandy-featured-section',
+    { 'is-plain-surface': !alternateSurface },
+  ]}
+  aria-labelledby={headingId}
+  data-studio-section={sectionId}
+  hidden={hidden || undefined}
 >
   <div class="dandy-container">
     <header class="dandy-section-header">
       <div class="dandy-section-titles">
-        <p class="dandy-section-kicker">مختارات داندي</p>
-        <h2 id="home-featured-heading" class="dandy-section-heading">
-          مستحضرات مختارة لروتينكِ اليومي
+        <p class="dandy-section-kicker" data-sec-subtitle dir="auto">{kicker}</p>
+        <h2 id={headingId} class="dandy-section-heading" data-sec-title dir="auto">
+          {heading}
         </h2>
       </div>
-      <a href="/all-products" class="dandy-section-more">
-        <span>عرض المتجر بالكامل</span>
+      <a href={viewAllHref} class="dandy-section-more" data-sec-more-link>
+        <span data-sec-more-label dir="auto">{viewAllLabel}</span>
         <Icon name="arrow-left" size={15} strokeWidth={1.8} />
       </a>
     </header>
 
-    {products.length > 0 ? (
-      <div class="dandy-featured-grid">
-        {products.map((product, index) => {
-          const pfPricing = pinkFridayCampaign
-            ? calculatePinkFridayPricing(product, pinkFridayCampaign)
-            : null;
-          return (
-            <ProductCard
-              product={product}
-              pinkFridayPricing={pfPricing}
-              priority={index < 4}
-            />
-          );
-        })}
-      </div>
-    ) : (
-      <div class="dandy-featured-empty">
-        <p>يمكنكِ تصفح جميع منتجات داندي المتاحة عبر صفحة المتجر.</p>
-        <a href="/all-products" class="dandy-btn dandy-btn--outline">
-          <span>زيارة المتجر</span>
-        </a>
-      </div>
-    )}
+    <div class="dandy-featured-grid" data-products-grid hidden={products.length === 0 || undefined}>
+      {products.map((product, index) => {
+        const pfPricing = pinkFridayCampaign
+          ? calculatePinkFridayPricing(product, pinkFridayCampaign)
+          : null;
+        return (
+          <ProductCard
+            product={product}
+            pinkFridayPricing={pfPricing}
+            priority={index < 4}
+          />
+        );
+      })}
+    </div>
+
+    <div class="dandy-featured-empty" data-products-empty hidden={products.length > 0 || undefined}>
+      <p>يمكنكِ تصفح جميع منتجات داندي المتاحة عبر صفحة المتجر.</p>
+      <a href="/all-products" class="dandy-btn dandy-btn--outline">
+        <span>زيارة المتجر</span>
+      </a>
+    </div>
   </div>
 </section>
 
-<style>
+<style is:global>
   .dandy-featured-section {
     background-color: var(--dandy-bg-editorial);
     border-top: 1px solid var(--dandy-border-subtle);
+    border-bottom: 1px solid var(--dandy-border-subtle);
+  }
+
+  .dandy-featured-section.is-plain-surface {
+    background-color: var(--dandy-bg-page);
+    border-top: none;
     border-bottom: 1px solid var(--dandy-border-subtle);
   }
 
@@ -75,6 +104,11 @@ const { products = [], pinkFridayCampaign = null } = Astro.props;
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 20px;
+  }
+
+  .dandy-featured-grid[hidden],
+  .dandy-featured-empty[hidden] {
+    display: none;
   }
 
   .dandy-featured-empty {
