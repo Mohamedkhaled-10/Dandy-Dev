@@ -242,3 +242,49 @@
     min-height: 36px;
   }
 }
+
+/* ============================================================================
+   DANDY CATALOG GRID & PAGE BANDS (PHASE 5)
+   ============================================================================ */
+.dandy-page-band {
+  padding-block: clamp(24px, 4vw, 44px) clamp(56px, 7vw, 88px);
+}
+
+.dandy-catalog-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 20px;
+}
+
+.dandy-catalog-grid[hidden] {
+  display: none;
+}
+
+.dandy-catalog-slot {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.dandy-catalog-slot[hidden] {
+  display: none;
+}
+
+.dandy-catalog-slot > .dandy-pcard {
+  flex: 1 1 auto;
+}
+
+@media (max-width: 1099px) {
+  .dandy-catalog-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 16px;
+  }
+}
+
+@media (max-width: 767px) {
+  .dandy-catalog-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+}
+

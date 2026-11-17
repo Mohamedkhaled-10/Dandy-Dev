@@ -1,0 +1,1184 @@
+# DANDY — BOTANICAL EDITORIAL COMMERCE
+# PHASE 5 — CATALOG, CATEGORIES & CAMPAIGNS RECONSTRUCTION
+
+## Complete Catalog Experience · Category Editorial Pages · Filtering & Sorting · Promotional Campaigns
+
+---
+
+# 1. ROLE & PROJECT CONTEXT
+
+Act as a Principal Frontend Architect, Senior Astro Engineer, and Premium Beauty E-commerce UX Specialist.
+
+You are continuing the complete UI/UX reconstruction of:
+
+**DANDY Cosmetics**
+
+The approved design direction:
+
+**BOTANICAL EDITORIAL COMMERCE**
+
+The previous phases are:
+
+- Phase 0 — UI/UX Architecture Audit & Master Blueprint.
+- Phase 1 — Design System Foundation.
+- Phase 2 — Global Storefront Shell Reconstruction.
+- Phase 3 — Product Card & Homepage Reconstruction.
+- Phase 4 — Product Detail Page Reconstruction.
+
+Read the following documents from the current workspace before implementation:
+
+- `DANDY_COMPLETE_UI_UX_BLUEPRINT_AR.md`
+- `DANDY_PHASE_1_FINAL_REPORT_AR.md`
+- `DANDY_PHASE_2_FINAL_REPORT_AR.md`
+- `DANDY_PHASE_3_FINAL_REPORT_AR.md`
+- `DANDY_PHASE_4_FINAL_REPORT_AR.md`
+
+The current working environment is the authoritative source of truth.
+
+Do not search GitHub for newer versions or assume that the remote repository contains the current implementation.
+
+## Main Objective
+
+Reconstruct the catalog, category, and promotional campaign experiences into a coherent premium beauty e-commerce system.
+
+The design should combine:
+
+**Editorial Luxury**
+- Sophisticated category introductions.
+- High-quality visual hierarchy.
+- Generous whitespace.
+- Refined typography.
+- Image-led category discovery.
+
+**Premium E-commerce**
+- Consistent product grids.
+- Practical filtering and sorting.
+- Clear product prices and discounts.
+- Easy product discovery.
+- Excellent mobile shopping experience.
+
+The result must look and feel like a single professionally designed international beauty brand.
+
+---
+
+# 2. MANDATORY PRE-IMPLEMENTATION AUDIT
+
+Before modifying any source files, inspect the current workspace thoroughly.
+
+Do not assume previous phase reports represent the current state without verification.
+
+## 2.1 Previous Phase Integration
+
+Verify:
+
+- Phase 1 design tokens and styles.
+- Phase 2 global storefront shell.
+- Phase 3 ProductCard implementation.
+- Phase 3 product-card pricing utilities.
+- Phase 3 product-card client interaction system.
+- Phase 4 product page and pricing behavior.
+- Existing DandyToast integration.
+- Existing Icon component.
+- Current Header and Footer integration.
+
+Identify shared components and dependencies that could be affected.
+
+## 2.2 Catalog and Category Architecture
+
+Inspect:
+
+- `src/pages/all-products.astro`
+- `src/pages/category/[category].astro`
+- `src/pages/special-offers.astro`
+- `src/pages/pink-friday.astro`
+- `src/utils/products.ts`
+- `src/utils/categories.ts`
+- Phase 3 `ProductCard.astro`
+- Phase 3 product-card utilities and client scripts.
+
+Inspect every product-grid implementation, including any HTML generated dynamically with JavaScript.
+
+Determine:
+
+- How products are loaded.
+- How categories are resolved.
+- How products are filtered.
+- How product sorting currently works.
+- How product URLs are generated.
+- How discounts are determined.
+- How campaign pricing is applied.
+- How the current product-card interaction is initialized.
+- How pagination or incremental loading works, if present.
+
+Do not create a second product retrieval or pricing system.
+
+## 2.3 Category Image Audit
+
+Inspect the existing:
+
+`src/utils/categories.ts`
+
+Pay special attention to:
+
+`categoryConfig.image`
+
+Determine which real category images are currently available.
+
+The new category pages must use actual category imagery where available.
+
+Do not use arbitrary external images or invent category photography.
+
+## 2.4 Existing Campaign Architecture
+
+Inspect:
+
+- `public/assets/js/pink-friday.js`
+- Existing published campaign configuration.
+- Server-side campaign loading.
+- `window.__PINK_FRIDAY_CONFIG`
+- Existing campaign-specific pricing.
+- Campaign countdown logic.
+- Product promotion logic.
+- Existing promotional image configuration.
+
+Map all existing campaign behavior before redesigning the presentation.
+
+## 2.5 Historical Mobile Overflow Issue
+
+An important known issue was documented in earlier testing:
+
+At a viewport width of 390px:
+
+- `/category/skin-care` previously reached a `scrollWidth` of approximately 441px.
+- `/category/hair-care` previously reached a `scrollWidth` of approximately 414px.
+
+The homepage and global shell were subsequently rebuilt, but these category routes had not yet received their dedicated redesign.
+
+**Fixing these category-page overflow issues is a mandatory objective of Phase 5.**
+
+Do not merely apply `overflow-x: hidden` to the page or body.
+
+Identify the actual overflowing elements and correct their layout.
+
+---
+
+# 3. STRICT PHASE SCOPE
+
+This phase authorizes changes to:
+
+- All-products catalog page.
+- Category page template.
+- Special offers page.
+- Pink Friday campaign page.
+- Supporting catalog and category presentation components.
+- Necessary filtering, sorting, and responsive styles.
+- Supporting frontend tests.
+
+The following remain outside this phase:
+
+- Homepage reconstruction.
+- Product detail page reconstruction.
+- Cart and checkout.
+- Header and Footer redesign.
+- Account and authentication.
+- Blog and article redesign.
+- Admin dashboard.
+- Firebase schema modifications.
+- Backend changes.
+- Payment or order processing changes.
+
+Do not start Phase 6.
+
+---
+
+# 4. CRITICAL PROTECTED BUILD & DEPLOYMENT CONFIGURATION
+
+**THIS SECTION IS MANDATORY AND OVERRIDES ANY OTHER IMPLEMENTATION INSTRUCTION.**
+
+The existing DANDY build and deployment environment must remain unchanged throughout Phase 5.
+
+## 4.1 Protected Files
+
+Never edit, replace, delete, rename, regenerate, reformat, or modify:
+
+### Astro
+
+- `astro.config.mjs`
+- `astro.config.js`
+- Any Astro configuration variants.
+
+### Vercel and Deployment
+
+- `vercel.json`
+- `.vercelignore`
+- Deployment configuration files.
+- Existing deployment scripts.
+
+### Package Management
+
+- `package.json`
+- `package-lock.json`
+- `npm-shrinkwrap.json`
+- `pnpm-lock.yaml`
+- `yarn.lock`
+
+### TypeScript and Build
+
+- `tsconfig.json`
+- `jsconfig.json`
+- `vite.config.ts`
+- `vite.config.js`
+- Existing compiler and build configuration files.
+
+### Environment and Automation
+
+- `.npmrc`
+- `.nvmrc`
+- `.node-version`
+- Existing CI/CD configuration.
+- Existing GitHub workflow files.
+- Existing environment configuration files.
+- Existing build and deployment automation.
+
+This list is not exhaustive.
+
+Any file whose primary purpose is framework configuration, dependency management, compilation, or deployment is protected.
+
+## 4.2 No Dependency Changes
+
+Do not:
+
+- Install packages.
+- Uninstall packages.
+- Upgrade dependencies.
+- Downgrade dependencies.
+- Modify dependency versions.
+- Regenerate lockfiles.
+- Change npm scripts.
+- Modify Node.js requirements.
+
+Use the existing project capabilities.
+
+No new UI framework is required.
+
+## 4.3 Baseline Snapshot
+
+Before implementation:
+
+1. Inspect all protected files that exist.
+2. Record their original contents.
+3. Calculate SHA-256 checksums where available.
+4. Preserve an immutable baseline snapshot.
+
+At the end of Phase 5:
+
+- Recalculate the protected file checksums.
+- Compare them against the baseline.
+- Confirm exact integrity.
+
+## 4.4 Mandatory Restoration
+
+If any protected file is accidentally modified:
+
+- Immediately restore its exact original pre-phase contents.
+- Never reconstruct it from memory.
+- Never replace it with a default configuration.
+- Verify its SHA-256 checksum after restoration.
+
+If exact restoration cannot be guaranteed, stop the affected implementation and report the problem clearly.
+
+**Do not leave any build, Astro, Vercel, package, dependency, or deployment configuration modified.**
+
+---
+
+# 5. UNIFIED PRODUCT CATALOG ARCHITECTURE
+
+The Phase 3 ProductCard is now the authoritative product presentation component.
+
+Its existing design and behavior should be reused throughout Phase 5.
+
+Do not create another competing product-card implementation.
+
+## 5.1 ProductCard Reuse
+
+Use:
+
+`src/components/product/ProductCard.astro`
+
+Inspect its actual API and supported props before integration.
+
+Reuse the existing component for:
+
+- All products.
+- Category product grids.
+- Special offers.
+- Pink Friday promotional products.
+
+Preserve:
+
+- Product image presentation.
+- Product names.
+- Existing verified pricing.
+- Discount display.
+- Product availability.
+- Variant-dependent purchase behavior.
+- Add-to-cart integration.
+- DandyToast.
+- Product URLs.
+- Cart count synchronization.
+
+## 5.2 SSR and Dynamic Rendering
+
+The existing project may render product cards through Astro SSR or generate certain product elements dynamically in JavaScript.
+
+Establish a consistent architecture for both pathways.
+
+If a JavaScript-rendered card is required:
+
+- Reuse the Phase 3 product-card view-model logic.
+- Reuse existing formatting utilities.
+- Reuse the existing delegated interaction mechanism.
+- Keep the generated markup visually consistent with ProductCard.astro.
+- Avoid duplicating pricing and business logic.
+
+Do not introduce a second unrelated product-card design.
+
+## 5.3 Product Grid Standards
+
+Recommended desktop grid:
+
+- Four columns on large desktop.
+- Three columns on intermediate desktop/tablet.
+- Two columns on mobile.
+
+Adjust column counts based on actual available width.
+
+Use:
+
+- Consistent image aspect ratios.
+- Consistent card spacing.
+- Predictable image containers.
+- Proper product-name line wrapping.
+- Consistent pricing placement.
+- Adequate touch targets.
+
+Avoid forcing fixed card heights when they produce unwanted empty spaces or clipped product titles.
+
+---
+
+# 6. ALL PRODUCTS PAGE — COMPLETE RECONSTRUCTION
+
+Target:
+
+`src/pages/all-products.astro`
+
+Rebuild the catalog experience.
+
+The page should be organized around a clean editorial introduction followed by an efficient shopping interface.
+
+## 6.1 Editorial Page Header
+
+Create a refined page introduction containing:
+
+- Arabic page title.
+- Short supporting description based on existing verified brand information.
+- Product count based on the actual filtered dataset.
+- Optional subtle visual accent.
+
+Avoid excessively large banners that push the product grid too far below the fold.
+
+## 6.2 Search and Sorting
+
+Preserve the existing catalog search behavior.
+
+Improve the sorting interface with readable Arabic labels.
+
+Possible sorting options may include:
+
+- الترتيب الافتراضي.
+- السعر: من الأقل للأعلى.
+- السعر: من الأعلى للأقل.
+- الاسم: أبجديًا.
+- الأحدث، only if a valid creation or publication date exists.
+
+Do not invent sorting based on nonexistent data.
+
+Preserve any existing URL query parameters where the current catalog depends on them.
+
+If practical, synchronize selected sorting and filter states with the URL so the current catalog state can be shared and restored.
+
+Do not break existing search URLs.
+
+## 6.3 Desktop Filters
+
+Create a refined desktop filtering interface.
+
+Evaluate whether a compact horizontal filter toolbar is more appropriate than the previous sidebar.
+
+Potential filter categories:
+
+- Product category.
+- Price range.
+- Product availability.
+- Verified promotion status.
+
+Only add filters supported by actual data.
+
+Design requirements:
+
+- Clear labels.
+- Clearly selected options.
+- Reset filters action.
+- Accurate active-filter count.
+- Predictable results count.
+- Subtle borders.
+- Consistent alignment.
+
+Do not overload the page with too many controls.
+
+## 6.4 Mobile Filter Drawer
+
+Create an accessible mobile filter experience.
+
+Use a drawer or bottom sheet consistent with the Phase 2 navigation language.
+
+Requirements:
+
+- Open and close controls.
+- Clear heading.
+- Filter groups.
+- Selected filter indicators.
+- Reset all filters.
+- Apply filters action.
+- Escape-key support where applicable.
+- Focus management.
+- Prevent background scrolling when open.
+- Correct RTL placement.
+
+The drawer must not introduce horizontal page overflow.
+
+The results grid must update according to the currently selected filters.
+
+## 6.5 Empty and Loading States
+
+Design polished states for:
+
+- No products found.
+- No filter results.
+- Loading, if asynchronous loading is genuinely used.
+- Product loading failure where an existing error state is required.
+
+Do not show infinite loaders when the page uses SSR and the products are already available.
+
+Avoid fake product data or placeholder product cards.
+
+---
+
+# 7. CATEGORY PAGES — COMPLETE EDITORIAL RECONSTRUCTION
+
+Target:
+
+`src/pages/category/[category].astro`
+
+This page is one of the most important priorities of Phase 5.
+
+## 7.1 Editorial Category Header
+
+Use the existing category configuration as the data source.
+
+The header should contain:
+
+- Category name.
+- Existing category description.
+- Actual category image from `categoryConfig.image`, when available.
+- Product count.
+- A subtle breadcrumb.
+
+Create a premium editorial composition inspired by ELIXIR.
+
+Possible composition:
+
+- Category image on one side.
+- Category title and description on the other.
+- Warm neutral background.
+- Restrained typography.
+- Generous but controlled spacing.
+
+The image should enhance discovery without occupying an excessive portion of the first viewport.
+
+Do not invent category descriptions.
+
+Do not duplicate category metadata manually.
+
+## 7.2 Category Product Grid
+
+Use the unified Phase 3 ProductCard.
+
+Ensure:
+
+- Products belong to the actual requested category.
+- Existing category relationships remain intact.
+- Product links are correct.
+- Pricing is accurate.
+- Discounts reflect the current campaign state.
+- Product ordering follows existing business rules.
+
+## 7.3 Category Filtering and Sorting
+
+If the current category page supports filtering or sorting, preserve and improve those interactions.
+
+Use the same filtering design language as All Products.
+
+Avoid having unrelated filter implementations on different catalog pages.
+
+A common reusable catalog-control pattern is preferred.
+
+## 7.4 Category Empty States
+
+Provide an appropriate empty state when:
+
+- No products exist in a category.
+- All products are filtered out.
+- A category does not resolve to a valid route.
+
+Preserve existing HTTP status and route behavior.
+
+Do not silently redirect invalid categories to unrelated product collections.
+
+---
+
+# 8. CRITICAL MOBILE OVERFLOW REPAIR
+
+Fix the previously documented horizontal overflow issues.
+
+Target routes:
+
+- `/category/skin-care`
+- `/category/hair-care`
+
+Also test every other category that currently exists.
+
+## 8.1 Root-Cause Investigation
+
+At 390px and 430px:
+
+Inspect:
+
+- Actual document scroll width.
+- Offending DOM elements.
+- Computed widths.
+- Grid minimum widths.
+- Flex item intrinsic sizing.
+- Fixed-width images.
+- Absolute positioning.
+- Large headings.
+- Category hero compositions.
+- Filter toolbars.
+- Product cards.
+- Pseudo-elements.
+- Box sizing.
+
+Record the exact element or rule responsible for overflow before correcting it.
+
+## 8.2 Required Fixes
+
+Use appropriate solutions such as:
+
+- `min-width: 0` where necessary.
+- Responsive grid definitions.
+- `minmax(0, 1fr)`.
+- Correct image constraints.
+- CSS logical properties.
+- Responsive typography.
+- Appropriate flex wrapping.
+- Controlled absolute positioning.
+- Safe container sizing.
+
+Do not apply global `overflow-x: hidden` as a way to conceal the problem.
+
+Do not clip product images or category hero content to force a passing overflow measurement.
+
+The intended visible design must remain intact.
+
+## 8.3 Acceptance
+
+For all tested category routes:
+
+`document.documentElement.scrollWidth === document.documentElement.clientWidth`
+
+must hold at:
+
+- 390px.
+- 430px.
+- 768px.
+- 1024px.
+- 1440px.
+
+Report any remaining exception explicitly.
+
+---
+
+# 9. SPECIAL OFFERS PAGE
+
+Target:
+
+`src/pages/special-offers.astro`
+
+Rebuild the presentation into a premium promotional catalog.
+
+Requirements:
+
+- Refined editorial title.
+- Clear explanation of currently available offers.
+- Product grid using the unified ProductCard.
+- Genuine discount information.
+- Clear distinction between normal and discounted prices.
+- Appropriate empty state when no products qualify.
+- Responsive layout.
+
+Do not display inactive, expired, or hypothetical promotions.
+
+Use the current verified discount data and pricing utilities.
+
+Do not calculate a new discount formula.
+
+Do not invent countdown timers.
+
+The page must not appear to have an active sale when there are no qualifying products.
+
+---
+
+# 10. PINK FRIDAY CAMPAIGN PAGE
+
+Target:
+
+`src/pages/pink-friday.astro`
+
+Maintain a distinct campaign identity while preserving the overall DANDY design system.
+
+This page is a campaign experience, so it may use a stronger visual treatment than ordinary catalog pages.
+
+However, it must remain elegant and consistent with DANDY.
+
+## 10.1 Campaign Hero
+
+Preserve and use the actual campaign configuration.
+
+Where available, present:
+
+- Campaign headline.
+- Campaign description.
+- Campaign image.
+- Campaign badge.
+- CTA.
+- Countdown.
+
+Do not invent campaign content.
+
+Avoid cropping important text or visual details inside campaign images.
+
+If the existing image contains promotional text, use appropriate `object-fit: contain` or another verified presentation method.
+
+## 10.2 Campaign Status
+
+The page must respect the current campaign state.
+
+Inspect:
+
+- Published campaign configuration.
+- Start and end dates.
+- Active status.
+- Customer visibility conditions.
+- Existing countdown logic.
+
+Do not independently determine campaign activity using a new conflicting rule.
+
+If the existing campaign is inactive or not published, follow the current route's established inactive-state behavior.
+
+## 10.3 Campaign Product Grid
+
+Use the Phase 3 ProductCard.
+
+Preserve:
+
+- Existing product eligibility.
+- Real discounted prices.
+- Pink Friday pricing integration.
+- Product availability.
+- Variant-dependent purchase behavior.
+- Add-to-cart behavior.
+
+Do not calculate another pricing system.
+
+Do not apply campaign pricing to products that are not eligible.
+
+## 10.4 Campaign Countdown
+
+Preserve the existing countdown logic.
+
+Ensure:
+
+- Correct remaining time.
+- No negative countdown values.
+- Proper inactive or expired states.
+- Accessible numerical presentation.
+- Responsive layout.
+
+Do not create an arbitrary deadline.
+
+## 10.5 Campaign Testing
+
+Test the actual active campaign state available in the current workspace.
+
+If inactive and expired campaign states cannot be reproduced without altering production data, cover those cases with appropriate unit tests or isolated test fixtures.
+
+Do not modify live campaign data to test visual states.
+
+---
+
+# 11. SHARED CATALOG COMPONENT ARCHITECTURE
+
+Where genuine reuse is required, consider creating:
+
+```text
+src/
+├── components/
+│   └── catalog/
+│       ├── CatalogHeader.astro
+│       ├── CatalogToolbar.astro
+│       ├── CatalogFilters.astro
+│       ├── MobileFilterDrawer.astro
+│       ├── CategoryEditorialHeader.astro
+│       ├── CatalogProductGrid.astro
+│       └── CatalogEmptyState.astro
+```
+
+This is a proposed architecture, not a mandatory list of files.
+
+Reuse existing components when they already satisfy the requirement.
+
+Do not fragment the implementation into unnecessary tiny components.
+
+The objective is a consistent catalog experience with maintainable code.
+
+---
+
+# 12. DESIGN SYSTEM REQUIREMENTS
+
+Use the established Phase 1 design system.
+
+Use existing tokens for:
+
+- Backgrounds.
+- Typography.
+- Commercial accent.
+- Borders.
+- Shadows.
+- Spacing.
+- Border radii.
+- Z-index.
+- Transitions.
+
+Use the existing:
+
+- Icon.astro.
+- DandyToast.
+- ProductCard.astro.
+- Phase 3 product utilities.
+- Phase 4 pricing and product presentation logic where appropriate.
+
+Do not introduce new color variables that duplicate existing tokens.
+
+Maintain a clear distinction between:
+
+- Editorial surfaces.
+- Product image stages.
+- Main text.
+- Secondary text.
+- Commercial actions.
+- Genuine discount states.
+
+Avoid excessive pink backgrounds, decorative gradients, and crowded layouts.
+
+The campaign page may have its own visual emphasis, but it must not become visually disconnected from DANDY.
+
+---
+
+# 13. EXISTING FUNCTIONAL CONTRACTS
+
+Preserve all relevant existing behavior.
+
+## Product and Catalog
+
+- Existing product retrieval.
+- Existing category mapping.
+- Existing product identifiers.
+- Existing product slugs.
+- Existing product URLs.
+- Existing product filtering data.
+- Existing product ordering.
+
+## ProductCard
+
+- `ProductCard.astro`
+- `product-card.ts`
+- `product-card-client.ts`
+- Existing add-to-cart behavior.
+- Existing DandyToast notifications.
+- Existing cart counter synchronization.
+
+## Pricing
+
+- `resolveProductPricing()`
+- Pink Friday pricing.
+- Existing discount eligibility.
+- Existing price formatting.
+- Existing variant-related pricing behavior.
+
+## Campaign
+
+- `window.__PINK_FRIDAY_CONFIG`
+- Existing campaign configuration.
+- Existing server-side campaign loading.
+- Existing client-side campaign hooks.
+- Existing countdown behavior.
+
+## Global Storefront
+
+Preserve:
+
+- Header.
+- Footer.
+- Search.
+- Mobile navigation.
+- Bottom mobile navigation.
+- DandyToast.
+- BAB assistant.
+- Consent interface.
+
+Do not break any existing public functions or selectors.
+
+If a required DOM contract must change, map all consumers and migrate them carefully.
+
+---
+
+# 14. SEO, ACCESSIBILITY & PERFORMANCE
+
+Preserve existing page-specific:
+
+- Titles.
+- Meta descriptions.
+- Canonical URLs.
+- OpenGraph metadata.
+- Twitter metadata.
+- Breadcrumb structured data.
+- Existing structured data where applicable.
+
+Do not replace valid metadata with generic descriptions.
+
+## Accessibility
+
+Ensure:
+
+- Keyboard-accessible filters.
+- Visible focus states.
+- Proper button and link semantics.
+- Correct `aria-expanded`.
+- Clear dialog and drawer labels.
+- Screen-reader-friendly filter counts.
+- Clear empty states.
+- Appropriate color contrast.
+- Touch targets of at least 44×44px where practical.
+- Reduced-motion support.
+
+## Performance
+
+Ensure:
+
+- Proper product image optimization.
+- Lazy loading below the fold.
+- Correct image aspect ratios.
+- No unnecessary JavaScript.
+- No duplicate product data requests.
+- No unnecessary rerendering.
+- No excessive carousel dependencies.
+- No layout shifts caused by dynamic filters or image loading.
+
+Use the existing Cloudinary optimization utilities where appropriate.
+
+---
+
+# 15. RESPONSIVE DESIGN VALIDATION
+
+Test the following viewports:
+
+| Device | Viewport |
+|---|---|
+| Small mobile | 390 × 844 |
+| Large mobile | 430 × 932 |
+| Tablet | 768 × 1024 |
+| Small desktop | 1024 × 768 |
+| Desktop | 1440 × 900 |
+
+For each relevant page, verify:
+
+- Header and footer integration.
+- Editorial heading.
+- Image composition.
+- Product grid columns.
+- Product-card consistency.
+- Filtering controls.
+- Drawer positioning.
+- Sorting usability.
+- Product pricing visibility.
+- Mobile navigation compatibility.
+- No horizontal overflow.
+
+Test all existing main category routes, not just skincare and haircare.
+
+---
+
+# 16. REQUIRED FUNCTIONAL TESTING
+
+Use actual Chromium/Playwright testing.
+
+## Routes
+
+Test at minimum:
+
+- `/`
+- `/all-products`
+- `/category/skin-care`
+- `/category/hair-care`
+- All other existing category routes.
+- `/special-offers`
+- `/pink-friday`
+- `/product/facial-serum-3x1-30ml`
+- `/cart`
+
+Verify that out-of-scope pages remain unaffected.
+
+## Catalog Tests
+
+Verify:
+
+1. All products load correctly.
+2. Product counts are accurate.
+3. Search continues to work.
+4. Sorting produces correct ordering.
+5. Filters produce correct results.
+6. Multiple filters work together where supported.
+7. Reset filters works.
+8. Empty states display correctly.
+9. Product links resolve correctly.
+10. Product pricing remains consistent.
+11. ProductCard interactions remain functional.
+12. Cart counts remain synchronized.
+
+## Category Tests
+
+Verify:
+
+1. Correct category title.
+2. Correct category image where available.
+3. Correct category description.
+4. Correct product count.
+5. Only appropriate category products appear.
+6. Filters and sorting work.
+7. Invalid category routes retain correct behavior.
+8. No horizontal overflow.
+
+## Promotional Tests
+
+Verify:
+
+1. Active special offers display correctly.
+2. Inactive offers do not appear as genuine active promotions.
+3. Pink Friday respects published campaign state.
+4. Countdown behaves correctly.
+5. Campaign pricing is accurate.
+6. Product eligibility remains correct.
+7. Promotional images are not improperly cropped.
+8. Campaign CTAs navigate correctly.
+
+## Regression Tests
+
+Verify:
+
+- Homepage remains intact.
+- Product detail pages remain intact.
+- Cart remains intact.
+- Header search remains intact.
+- Mobile navigation remains intact.
+- DandyToast remains functional.
+- BAB remains functional.
+- Meta-related frontend hooks remain intact.
+
+---
+
+# 17. FINAL BUILD & TECHNICAL VALIDATION
+
+Run the existing commands without modifying their configuration:
+
+```bash
+npm run lint
+npm run build
+```
+
+Run the existing relevant unit-test suites:
+
+- `foundation.test.ts`
+- `shell.test.ts`
+- `product-card.test.ts`
+- `product-pdp.test.ts`
+
+Add appropriate catalog/filter logic tests when needed.
+
+Inspect:
+
+- Browser console.
+- Network errors.
+- Broken images.
+- Missing icons.
+- Incorrect price rendering.
+- Duplicate DOM IDs.
+- Horizontal overflow.
+- Unexpected runtime errors.
+- Unintended changes to shared components.
+
+Run the tests after the final code changes.
+
+Do not suppress errors to produce successful results.
+
+---
+
+# 18. FINAL REPORT
+
+Create:
+
+`DANDY_PHASE_5_FINAL_REPORT_AR.md`
+
+Write the report in professional Arabic.
+
+Include:
+
+1. Executive summary.
+2. Initial audit findings.
+3. Existing catalog and category architecture.
+4. Unified ProductCard integration.
+5. All-products redesign.
+6. Category editorial redesign.
+7. Root causes and fixes for previous mobile overflow.
+8. Filtering and sorting implementation.
+9. Mobile filter drawer.
+10. Special offers redesign.
+11. Pink Friday reconstruction.
+12. Campaign and pricing integration.
+13. SEO and accessibility preservation.
+14. Files created.
+15. Files modified.
+16. Files deleted, if any, with justification.
+17. All tested routes.
+18. All responsive viewports tested.
+19. Horizontal overflow results.
+20. Functional test results.
+21. Unit test results.
+22. Lint results.
+23. Production build results.
+24. Protected configuration integrity verification.
+25. Known issues and incomplete tests.
+26. Deferred items.
+27. Recommended next phase.
+
+For each modified file, explain why it changed.
+
+Clearly distinguish between:
+
+- Implemented and tested.
+- Implemented but not fully tested.
+- Not implemented.
+- Deferred.
+
+Do not claim successful verification without actual evidence.
+
+---
+
+# 19. PHASE 5 ACCEPTANCE CRITERIA
+
+Phase 5 is complete only when:
+
+- All Products page has a complete new catalog experience.
+- Category pages have editorial headers and correct images where available.
+- All catalog grids use the Phase 3 ProductCard.
+- Filtering works.
+- Sorting works.
+- Mobile filter drawer works.
+- Historical category overflow is corrected.
+- Special Offers page uses genuine offer data.
+- Pink Friday respects the actual campaign state.
+- Existing discount and pricing logic remains intact.
+- Product URLs remain correct.
+- Cart functionality remains intact.
+- Header and footer remain compatible.
+- RTL is verified.
+- Responsive behavior is verified.
+- No unrelated application functionality is broken.
+- All protected configuration files remain unchanged.
+- No unauthorized dependency changes occurred.
+- `npm run lint` passes.
+- `npm run build` passes.
+- Final report exists.
+
+---
+
+# 20. EXECUTION SEQUENCE
+
+Follow this order strictly:
+
+1. Read the Phase 0–4 documentation.
+2. Verify previous phases in the current workspace.
+3. Create an immutable snapshot of all protected build and deployment files.
+4. Audit the catalog, categories, and campaign data.
+5. Map the existing ProductCard consumers.
+6. Investigate the category horizontal-overflow root causes.
+7. Prepare a focused implementation plan.
+8. Implement the unified catalog controls.
+9. Reconstruct the All Products page.
+10. Reconstruct category pages.
+11. Fix the mobile overflow issues.
+12. Reconstruct Special Offers.
+13. Reconstruct Pink Friday.
+14. Verify shared ProductCard compatibility.
+15. Run functional and responsive tests.
+16. Run unit tests, lint, and build.
+17. Verify protected configuration checksums.
+18. Review all modified files for unintended changes.
+19. Create the final report.
+
+Do not begin implementation before completing the audit.
+
+---
+
+# FINAL INSTRUCTION
+
+Execute **PHASE 5 ONLY**.
+
+This is a complete catalog, category, and campaign experience reconstruction.
+
+Preserve all existing product data, product links, pricing rules, discount eligibility, campaign behavior, and shopping interactions.
+
+Do not invent products, promotional offers, discounts, customer claims, or category content.
+
+Do not modify backend systems, Firebase schemas, or business logic.
+
+Do not redesign the homepage, PDP, cart, Header, or Footer.
+
+**Never modify Astro, Vercel, build, deployment, package, dependency, or lockfile configuration. If you accidentally modify any protected file, restore its exact original pre-phase content and verify its checksum.**
+
+Do not start Phase 6.
+
+Do not perform Git commits or pushes.
+
+Work exclusively in the current project workspace.
+
+**Deliver a premium, unified DANDY catalog and category experience, fix the documented mobile overflow issues at their actual source, preserve all existing commerce functionality, and finish with the complete Phase 5 final report.**

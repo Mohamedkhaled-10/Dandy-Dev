@@ -34,6 +34,16 @@ import Tag from '@lucide/astro/icons/tag';
 import Phone from '@lucide/astro/icons/phone';
 import MapPin from '@lucide/astro/icons/map-pin';
 import Sparkles from '@lucide/astro/icons/sparkles';
+import ZoomIn from '@lucide/astro/icons/zoom-in';
+import Share2 from '@lucide/astro/icons/share-2';
+import Copy from '@lucide/astro/icons/copy';
+import MessageCircle from '@lucide/astro/icons/message-circle';
+import BookOpen from '@lucide/astro/icons/book-open';
+import PackageCheck from '@lucide/astro/icons/package-check';
+import Ban from '@lucide/astro/icons/ban';
+import Clock from '@lucide/astro/icons/clock';
+import Gift from '@lucide/astro/icons/gift';
+import RotateCcw from '@lucide/astro/icons/rotate-ccw';
 
 const ICON_MAP = {
   'check': Check,
@@ -69,6 +79,16 @@ const ICON_MAP = {
   'phone': Phone,
   'map-pin': MapPin,
   'sparkles': Sparkles,
+  'zoom-in': ZoomIn,
+  'share-2': Share2,
+  'copy': Copy,
+  'message-circle': MessageCircle,
+  'book-open': BookOpen,
+  'package-check': PackageCheck,
+  'ban': Ban,
+  'clock': Clock,
+  'gift': Gift,
+  'rotate-ccw': RotateCcw,
 } as const;
 
 export type LucideIconName = keyof typeof ICON_MAP;

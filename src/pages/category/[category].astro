@@ -1,17 +1,27 @@
 ---
 // src/pages/category/[category].astro
-// Server-Side Rendered Category Landing Page for Dandy Cosmetics
-// Scope: SEO Category Landing, Server-side Product Grid, Rich Metadata & Structured Data
+// Server-Side Rendered Category Landing Page for Dandy Cosmetics (Phase 5)
 export const prerender = false;
 
 import BaseLayout from '../../layouts/BaseLayout.astro';
-import { getAllProducts, optimizeCloudinaryUrl, SITE_URL, type Product } from '../../utils/products';
+import Icon from '../../components/ui/Icon.astro';
+import ProductCard from '../../components/product/ProductCard.astro';
+import CategoryEditorialHeader from '../../components/catalog/CategoryEditorialHeader.astro';
+import CatalogToolbar from '../../components/catalog/CatalogToolbar.astro';
+import MobileFilterDrawer from '../../components/catalog/MobileFilterDrawer.astro';
+import CatalogEmptyState from '../../components/catalog/CatalogEmptyState.astro';
+import { getAllProducts, SITE_URL, type Product } from '../../utils/products';
 import {
   getCategoryBySlug,
   getProductsForCategory,
   generateCategoryJsonLd,
   type CategoryTaxonomy,
 } from '../../utils/categories';
+import {
+  calculatePinkFridayPricing,
+  getPublishedPinkFridayCampaign,
+} from '../../utils/pink-friday-server';
+import { buildCatalogItemMeta } from '../../scripts/catalog';
 
 const { category } = Astro.params;
 
@@ -23,14 +33,46 @@ if (isNotFound) {
   Astro.response.status = 404;
 }
 
-// 2. Fetch Category Products Server-Side if valid
+const AUDITED_CATALOG_PARAMS = [
+  'category',
+  'search',
+  'sort',
+  'page',
+  'price',
+  'sale',
+  'availability',
+  'bestseller',
+];
+const hasAuditedCatalogParam = AUDITED_CATALOG_PARAMS.some((param) =>
+  Astro.url.searchParams.has(param)
+);
+
+// 2. Fetch Category Products & Active Pink Friday Campaign Server-Side
 let categoryProducts: Product[] = [];
+let pinkFridayCampaign: Awaited<ReturnType<typeof getPublishedPinkFridayCampaign>> | null = null;
+
 if (categoryConfig) {
-  const allProducts = await getAllProducts();
+  const [allProducts, pfCampaign] = await Promise.all([
+    getAllProducts(),
+    getPublishedPinkFridayCampaign(),
+  ]);
   categoryProducts = getProductsForCategory(categoryConfig.slug, allProducts);
+  pinkFridayCampaign = pfCampaign;
 }
 
-// 3. SEO Metadata Configuration
+const categoryEntries = categoryProducts.map((product, index) => {
+  const pfPricing = pinkFridayCampaign
+    ? calculatePinkFridayPricing(product, pinkFridayCampaign)
+    : null;
+  const meta = buildCatalogItemMeta(product, index, pfPricing);
+  return { product, pfPricing, meta };
+});
+
+const hasSaleItems = categoryEntries.some((e) => e.meta.isOnSale);
+const hasBestSellerItems = categoryEntries.some((e) => e.meta.isBestSeller);
+const hasSoldOutItems = categoryEntries.some((e) => e.meta.isSoldOut);
+
+// 3. SEO Metadata Configuration (Preserved)
 const pageTitle = categoryConfig
   ? categoryConfig.seoTitle
   : 'القسم غير موجود (404) | داندي كوزمتكس - Dandy Cosmetics';
@@ -47,12 +89,18 @@ const ogImage = categoryConfig
   ? categoryConfig.image
   : `${SITE_URL}/assets/images/fav-icons/android-chrome-512x512.png`;
 
-// 4. Generate Structured Data (Only for valid 200 category pages)
+const robotsDirective = isNotFound
+  ? 'noindex, nofollow'
+  : hasAuditedCatalogParam
+    ? 'noindex, follow'
+    : 'index, follow';
+
+// 4. Generate Structured Data (CollectionPage, ItemList, BreadcrumbList)
 const schemas = categoryConfig
   ? generateCategoryJsonLd(categoryConfig, categoryProducts, canonicalUrl)
   : [];
 
-// 5. Approved Category-to-Article Editorial Guides (Phase 3.5)
+// 5. Editorial Guide Mapping
 interface CategoryArticleGuide {
   title: string;
   description: string;
@@ -63,7 +111,7 @@ interface CategoryArticleGuide {
 const CATEGORY_ARTICLE_MAP: Record<string, CategoryArticleGuide> = {
   'hair-care': {
     title: 'دليل العناية التحريري',
-    description: 'تعرفي على أفضل النصائح والخطوات العملية لتغذية وترميم خصلات شعرك وحمايتها من التلف:',
+    description: 'تعرّفي على أفضل النصائح والخطوات العملية لتغذية وترميم خصلات شعرك وحمايتها من التلف:',
     anchorText: 'دليل روتين العناية بالشعر الجاف والمتقصف',
     articleUrl: '/blog/daily-hair-care-routine-dry-damaged-hair',
   },
@@ -82,12 +130,11 @@ const categoryArticle = categoryConfig ? CATEGORY_ARTICLE_MAP[categoryConfig.slu
   title={pageTitle}
   description={pageDescription}
   canonical={categoryConfig ? canonicalUrl : undefined}
-  robots={isNotFound ? 'noindex, nofollow' : 'index, follow'}
+  robots={robotsDirective}
 >
   <Fragment slot="head">
     {categoryConfig && (
       <>
-        <!-- OpenGraph Social Metadata -->
         <meta property="og:type" content="website" />
         <meta property="og:title" content={categoryConfig.seoTitle} />
         <meta property="og:description" content={categoryConfig.seoDescription} />
@@ -95,804 +142,210 @@ const categoryArticle = categoryConfig ? CATEGORY_ARTICLE_MAP[categoryConfig.slu
         <meta property="og:image" content={ogImage} />
         <meta property="og:site_name" content="داندي كوزمتكس - Dandy Cosmetics" />
 
-        <!-- Twitter Card Metadata -->
         <meta name="twitter:card" content="summary_large_image" />
         <meta name="twitter:title" content={categoryConfig.seoTitle} />
         <meta name="twitter:description" content={categoryConfig.seoDescription} />
         <meta name="twitter:image" content={ogImage} />
 
-        <!-- Schema.org JSON-LD Structured Data -->
-        {schemas.map((schema, index) => (
+        {schemas.map((schema) => (
           <script
             type="application/ld+json"
+            is:inline
             set:html={JSON.stringify(schema)}
           />
         ))}
       </>
     )}
-
-    <style>
-      .category-page-wrap {
-        background: #ffffff;
-        color: var(--color-dust-grey-100, #2c2828);
-        min-height: 70vh;
-        direction: rtl;
-        text-align: right;
-      }
-
-      .category-container {
-        width: 100%;
-        max-width: 1280px;
-        margin: 0 auto;
-        padding: 0 20px;
-      }
-
-      /* Breadcrumb Navigation */
-      .category-breadcrumb-nav {
-        background: #faf8f7;
-        border-bottom: 1px solid var(--border-light, #ede7e4);
-        padding: 12px 0;
-      }
-
-      .breadcrumb-list {
-        list-style: none;
-        margin: 0;
-        padding: 0;
-        display: flex;
-        align-items: center;
-        flex-wrap: wrap;
-        gap: 8px;
-        font-size: 0.88rem;
-      }
-
-      .breadcrumb-item {
-        display: inline-flex;
-        align-items: center;
-      }
-
-      .breadcrumb-link {
-        color: var(--color-dust-grey-300, #5c5553);
-        text-decoration: none;
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        transition: color 0.15s ease;
-      }
-
-      .breadcrumb-link:hover {
-        color: var(--color-rose-kiss-600, #df3f85);
-      }
-
-      .breadcrumb-separator {
-        color: var(--color-dust-grey-400, #78716c);
-        font-size: 0.72rem;
-        display: inline-flex;
-        align-items: center;
-      }
-
-      .breadcrumb-current {
-        color: var(--color-dust-grey-100, #2c2828);
-        font-weight: 700;
-      }
-
-      /* Category Hero Header */
-      .category-hero-section {
-        padding: 36px 0 28px;
-        border-bottom: 1px solid var(--border-light, #ede7e4);
-        background: linear-gradient(180deg, #fffafa 0%, #ffffff 100%);
-      }
-
-      .category-hero-content {
-        max-width: 800px;
-      }
-
-      .category-eyebrow {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        font-size: 0.82rem;
-        font-weight: 700;
-        color: var(--color-rose-kiss-600, #df3f85);
-        background: rgba(254, 93, 159, 0.1);
-        padding: 4px 12px;
-        border-radius: 999px;
-        margin-bottom: 12px;
-        letter-spacing: 0.3px;
-      }
-
-      .category-h1 {
-        font-size: clamp(1.6rem, 3.2vw, 2.3rem);
-        font-weight: 800;
-        color: var(--color-primary-dark, #18181b);
-        line-height: 1.25;
-        margin: 0 0 12px;
-      }
-
-      .category-intro-p {
-        font-size: 1.02rem;
-        line-height: 1.65;
-        color: var(--color-dust-grey-300, #5c5553);
-        margin: 0 0 18px;
-      }
-
-      .category-meta-bar {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        flex-wrap: wrap;
-        gap: 12px;
-        padding-top: 14px;
-        border-top: 1px dashed var(--border-light, #ede7e4);
-      }
-
-      .category-count-badge {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        font-size: 0.92rem;
-        color: var(--color-dust-grey-300, #5c5553);
-        font-weight: 600;
-      }
-
-      .category-count-badge strong {
-        color: var(--color-rose-kiss-600, #df3f85);
-      }
-
-      .category-all-link {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        font-size: 0.88rem;
-        font-weight: 600;
-        color: var(--color-rose-kiss-600, #df3f85);
-        text-decoration: none;
-        transition: transform 0.15s ease;
-      }
-
-      .category-all-link:hover {
-        transform: translateX(-3px);
-      }
-
-      /* Main Catalog Section */
-      .category-catalog-section {
-        padding: 32px 0 54px;
-      }
-
-      .category-products-grid {
-        display: grid;
-        grid-template-columns: repeat(4, minmax(0, 1fr));
-        gap: 20px;
-      }
-
-      @media (max-width: 1100px) {
-        .category-products-grid {
-          grid-template-columns: repeat(3, minmax(0, 1fr));
-          gap: 16px;
-        }
-      }
-
-      @media (max-width: 768px) {
-        .category-products-grid {
-          grid-template-columns: repeat(2, minmax(0, 1fr));
-          gap: 12px;
-        }
-        .category-hero-section {
-          padding: 24px 0 20px;
-        }
-      }
-
-      /* Product Card Overrides & Enhancements */
-      .product-card-item {
-        background-color: #ffffff;
-        border: 1px solid var(--border-light, #ede7e4);
-        border-radius: 12px;
-        overflow: hidden;
-        display: flex;
-        flex-direction: column;
-        position: relative;
-        transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
-      }
-
-      .product-card-item:hover {
-        border-color: var(--color-rose-kiss-400, #ff82b3);
-        box-shadow: 0 8px 24px rgba(44, 40, 40, 0.08);
-        transform: translateY(-3px);
-      }
-
-      .product-card-link {
-        display: flex;
-        flex-direction: column;
-        flex: 1;
-        text-decoration: none;
-        color: inherit;
-      }
-
-      .card-image-box {
-        position: relative;
-        width: 100%;
-        padding-top: 100%;
-        background-color: #f7f5f4;
-        overflow: hidden;
-      }
-
-      .card-image-box img {
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-        transition: transform 0.35s ease;
-      }
-
-      .product-card-item:hover .card-image-box img {
-        transform: scale(1.04);
-      }
-
-      .card-badge {
-        position: absolute;
-        top: 10px;
-        right: 10px;
-        background: var(--color-rose-kiss-500, #fe5d9f);
-        color: #ffffff;
-        font-size: 0.76rem;
-        font-weight: 700;
-        padding: 4px 10px;
-        border-radius: 999px;
-        z-index: 2;
-        box-shadow: 0 2px 6px rgba(254, 93, 159, 0.35);
-      }
-
-      .card-badge.sold-out {
-        background: #64748b;
-        box-shadow: none;
-      }
-
-      .btn-card-wishlist {
-        position: absolute;
-        top: 10px;
-        left: 10px;
-        width: 32px;
-        height: 32px;
-        border-radius: 50%;
-        background: rgba(255, 255, 255, 0.92);
-        border: 1px solid rgba(0, 0, 0, 0.06);
-        color: #78716c;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        cursor: pointer;
-        z-index: 3;
-        transition: all 0.18s ease;
-      }
-
-      .btn-card-wishlist:hover {
-        background: #ffffff;
-        color: var(--color-rose-kiss-500, #fe5d9f);
-        transform: scale(1.08);
-      }
-
-      .btn-card-wishlist.active {
-        color: var(--color-rose-kiss-500, #fe5d9f);
-      }
-
-      .card-content-box {
-        padding: 14px 14px 16px;
-        display: flex;
-        flex-direction: column;
-        flex: 1;
-      }
-
-      .card-category {
-        font-size: 0.78rem;
-        font-weight: 600;
-        color: var(--color-rose-kiss-600, #df3f85);
-        margin-bottom: 4px;
-        display: block;
-      }
-
-      .card-title {
-        font-size: 0.96rem;
-        font-weight: 700;
-        color: var(--color-primary-dark, #18181b);
-        margin: 0 0 8px;
-        line-height: 1.4;
-        display: -webkit-box;
-        -webkit-line-clamp: 2;
-        -webkit-box-orient: vertical;
-        overflow: hidden;
-        min-height: 2.7em;
-      }
-
-      .card-rating-mini {
-        display: inline-flex;
-        align-items: center;
-        gap: 4px;
-        font-size: 0.8rem;
-        color: var(--color-dust-grey-300, #5c5553);
-        margin-bottom: 8px;
-      }
-
-      .card-rating-star {
-        color: #f59e0b;
-        font-size: 0.75rem;
-      }
-
-      .card-price-row {
-        display: flex;
-        align-items: baseline;
-        gap: 8px;
-        margin-top: auto;
-        margin-bottom: 12px;
-      }
-
-      .price-current {
-        font-size: 1.05rem;
-        font-weight: 800;
-        color: var(--color-primary-dark, #18181b);
-      }
-
-      .price-old {
-        font-size: 0.84rem;
-        color: var(--color-dust-grey-400, #78716c);
-        text-decoration: line-through;
-      }
-
-      .card-add-btn {
-        width: 100%;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        gap: 8px;
-        background: #faf8f7;
-        color: var(--color-dust-grey-100, #2c2828);
-        border: 1px solid var(--border-light, #ede7e4);
-        padding: 9px 12px;
-        border-radius: 8px;
-        font-size: 0.86rem;
-        font-weight: 700;
-        cursor: pointer;
-        transition: all 0.18s ease;
-        text-decoration: none;
-      }
-
-      .card-add-btn svg {
-        width: 15px;
-        height: 15px;
-        flex-shrink: 0;
-      }
-
-      .card-add-btn:hover {
-        background: var(--color-rose-kiss-500, #fe5d9f);
-        border-color: var(--color-rose-kiss-500, #fe5d9f);
-        color: #ffffff;
-      }
-
-      .card-add-btn.is-sold-out {
-        background: #f1f5f9;
-        color: #94a3b8;
-        border-color: #e2e8f0;
-        cursor: not-allowed;
-      }
-
-      /* 404 Category Not Found State */
-      .category-not-found-box {
-        text-align: center;
-        padding: 72px 20px;
-        max-width: 540px;
-        margin: 0 auto;
-      }
-
-      .not-found-icon-wrap {
-        width: 80px;
-        height: 80px;
-        border-radius: 50%;
-        background: rgba(254, 93, 159, 0.1);
-        color: var(--color-rose-kiss-500, #fe5d9f);
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 2rem;
-        margin-bottom: 20px;
-      }
-
-      .category-not-found-box h1 {
-        font-size: 1.6rem;
-        font-weight: 800;
-        color: var(--color-primary-dark, #18181b);
-        margin-bottom: 12px;
-      }
-
-      .category-not-found-box p {
-        font-size: 0.98rem;
-        color: var(--color-dust-grey-300, #5c5553);
-        line-height: 1.6;
-        margin-bottom: 24px;
-      }
-
-      .btn-back-catalog {
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        background: var(--color-rose-kiss-500, #fe5d9f);
-        color: #ffffff;
-        text-decoration: none;
-        padding: 12px 28px;
-        border-radius: 999px;
-        font-size: 0.92rem;
-        font-weight: 700;
-        box-shadow: 0 4px 14px rgba(254, 93, 159, 0.25);
-        transition: all 0.2s ease;
-      }
-
-      .btn-back-catalog:hover {
-        background: var(--color-rose-kiss-600, #df3f85);
-        transform: translateY(-2px);
-        box-shadow: 0 6px 18px rgba(254, 93, 159, 0.35);
-      }
-
-      /* Editorial Guide Section (Phase 3.5) */
-      .category-editorial-section {
-        padding: 0 0 54px;
-      }
-
-      .category-editorial-card {
-        background: #faf7f8;
-        border: 1px solid var(--border-light, #ede7e4);
-        border-radius: 14px;
-        padding: 24px 28px;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 20px;
-        flex-wrap: wrap;
-      }
-
-      .category-editorial-icon {
-        width: 44px;
-        height: 44px;
-        border-radius: 10px;
-        background: rgba(223, 63, 133, 0.08);
-        color: var(--color-rose-kiss-600, #df3f85);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 1.2rem;
-        flex-shrink: 0;
-      }
-
-      .category-editorial-body {
-        flex: 1;
-        min-width: 260px;
-      }
-
-      .category-editorial-heading {
-        font-size: 1.05rem;
-        font-weight: 800;
-        color: var(--color-primary-dark, #18181b);
-        margin: 0 0 6px;
-      }
-
-      .category-editorial-text {
-        font-size: 0.92rem;
-        color: var(--color-dust-grey-300, #5c5553);
-        margin: 0;
-        line-height: 1.6;
-      }
-
-      .category-editorial-link {
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        background: #ffffff;
-        color: var(--color-rose-kiss-600, #df3f85);
-        border: 1px solid rgba(223, 63, 133, 0.25);
-        padding: 10px 20px;
-        border-radius: 999px;
-        font-size: 0.9rem;
-        font-weight: 700;
-        text-decoration: none;
-        transition: all 0.2s ease;
-        white-space: nowrap;
-      }
-
-      .category-editorial-link:hover {
-        background: var(--color-rose-kiss-600, #df3f85);
-        color: #ffffff;
-        transform: translateX(-3px);
-        box-shadow: 0 4px 12px rgba(223, 63, 133, 0.25);
-      }
-    </style>
   </Fragment>
 
-  <div class="category-page-wrap">
-    {isNotFound ? (
-      <div class="category-container">
-        <div class="category-not-found-box">
-          <div class="not-found-icon-wrap" aria-hidden="true">
-            <i class="fas fa-folder-open"></i>
-          </div>
-          <h1>القسم غير موجود (404)</h1>
-          <p>
-            عذراً، القسم الذي تبحثين عنه غير متوفر أو تم نقله. يمكنكِ استعراض كامل تشكيلة داندي الطبيعية للعناية بالبشرة والشعر والجسم عبر صفحة جميع المنتجات.
-          </p>
-          <a href="/all-products" class="btn-back-catalog">
-            <i class="fas fa-arrow-right"></i>
-            <span>تصفحي جميع المنتجات</span>
-          </a>
+  {isNotFound ? (
+    <main class="dandy-page-band" dir="rtl">
+      <div class="dandy-container">
+        <div class="dandy-cat-404-wrap">
+          <CatalogEmptyState
+            hidden={false}
+            icon="folder-open"
+            title="القسم غير موجود (404)"
+            description="عذراً، القسم الذي تبحثين عنه غير متوفر أو تم نقله. يمكنكِ استعراض كامل تشكيلة داندي الطبيعية للعناية بالبشرة والشعر والجسم عبر صفحة جميع المنتجات."
+            ctaLabel="تصفحي جميع المنتجات"
+            ctaHref="/all-products"
+          />
         </div>
       </div>
-    ) : (
-      <>
-        {/* 1. Breadcrumb UI */}
-        <nav class="category-breadcrumb-nav" aria-label="مسار التنقل">
-          <div class="category-container">
-            <ol class="breadcrumb-list">
-              <li class="breadcrumb-item">
-                <a href="/" class="breadcrumb-link">
-                  <i class="fas fa-home" aria-hidden="true"></i>
-                  <span>الرئيسية</span>
-                </a>
-              </li>
-              <li class="breadcrumb-separator" aria-hidden="true">
-                <i class="fas fa-chevron-left"></i>
-              </li>
-              <li class="breadcrumb-item breadcrumb-current" aria-current="page">
-                <span>{categoryConfig!.arabicName}</span>
-              </li>
-            </ol>
-          </div>
-        </nav>
+    </main>
+  ) : (
+    <>
+      <CategoryEditorialHeader
+        category={categoryConfig!}
+        productCount={categoryEntries.length}
+      />
 
-        {/* 2. Category Hero & Editorial Intro */}
-        <header class="category-hero-section">
-          <div class="category-container">
-            <div class="category-hero-content">
-              <span class="category-eyebrow">
-                <i class="fas fa-sparkles" aria-hidden="true"></i>
-                <span>أقسام داندي</span>
-              </span>
-              <h1 class="category-h1">{categoryConfig!.h1Title}</h1>
-              <p class="category-intro-p">{categoryConfig!.introText}</p>
-              <div class="category-meta-bar">
-                <span class="category-count-badge">
-                  <span>المنتجات المتاحة:</span>
-                  <strong>{categoryProducts.length} منتج</strong>
-                </span>
-                <a href="/all-products" class="category-all-link">
-                  <span>استعراض كامل منتجات المتجر</span>
-                  <i class="fas fa-arrow-left" aria-hidden="true"></i>
-                </a>
+      <main
+        class="dandy-page-band"
+        id="category-catalog"
+        dir="rtl"
+        data-catalog-root
+        data-show-category-filter="false"
+        data-sync-url="true"
+      >
+        <div class="dandy-container">
+          {categoryEntries.length > 0 ? (
+            <>
+              <CatalogToolbar
+                totalCount={categoryEntries.length}
+                showCategoryFilter={false}
+                showPriceFilter={true}
+                hasSaleItems={hasSaleItems}
+                hasBestSellerItems={hasBestSellerItems}
+                hasSoldOutItems={hasSoldOutItems}
+                searchPlaceholder={`ابحثي في ${categoryConfig!.arabicName}...`}
+              />
+
+              <MobileFilterDrawer
+                showCategoryFilter={false}
+                showPriceFilter={true}
+                hasSaleItems={hasSaleItems}
+                hasBestSellerItems={hasBestSellerItems}
+                hasSoldOutItems={hasSoldOutItems}
+              />
+
+              <div class="dandy-catalog-grid" id="category-grid" data-catalog-grid>
+                {categoryEntries.map(({ product, pfPricing, meta }, index) => (
+                  <div
+                    class="dandy-catalog-slot"
+                    data-catalog-item
+                    data-product-id={meta.id}
+                    data-index={meta.index}
+                    data-name={meta.name}
+                    data-category={meta.categorySlug}
+                    data-category-label={meta.categoryLabelAr}
+                    data-price={meta.currentPrice}
+                    data-on-sale={meta.isOnSale ? 'true' : 'false'}
+                    data-bestseller={meta.isBestSeller ? 'true' : 'false'}
+                    data-sold-out={meta.isSoldOut ? 'true' : 'false'}
+                    data-search={meta.searchText}
+                  >
+                    <ProductCard
+                      product={product}
+                      pinkFridayPricing={pfPricing}
+                      priority={index < 4}
+                    />
+                  </div>
+                ))}
               </div>
-            </div>
-          </div>
-        </header>
 
-        {/* 3. Server-Rendered Product Grid */}
-        <main class="category-catalog-section" id="category-catalog">
-          <div class="category-container">
-            <div class="category-products-grid" id="category-grid">
-              {categoryProducts.map((product) => {
-                const productUrl = `/product/${encodeURIComponent(product.resolvedSlug)}`;
-                const hasVars = Boolean(product.hasVariants && product.variants);
-                const isSoldOut = Boolean(product.isSoldOut);
-                
-                let badgeText = '';
-                let isSaleBadge = false;
-                if (isSoldOut) {
-                  badgeText = 'نفذت الكمية';
-                } else if (product.originalPrice) {
-                  badgeText = 'تخفيض';
-                  isSaleBadge = true;
-                } else if (product.onSale && product.discount) {
-                  badgeText = `خصم ${product.discount}%`;
-                  isSaleBadge = true;
-                } else if (product.bestSeller) {
-                  badgeText = 'الأكثر مبيعاً';
-                }
+              <CatalogEmptyState
+                isFilterEmpty={true}
+                hidden={true}
+                icon="search"
+                title="لم نجد منتجات مطابقة في هذا القسم"
+                description="جرّبي تعديل البحث أو إزالة الفلاتر لعرض جميع مستحضرات القسم."
+                resetLabel="عرض جميع منتجات القسم"
+              />
+            </>
+          ) : (
+            <CatalogEmptyState
+              hidden={false}
+              icon="package-check"
+              title={`لا توجد منتجات متاحة حالياً في ${categoryConfig!.arabicName}`}
+              description="نقوم بتحديث مستحضرات هذا القسم قريباً. يمكنكِ استعراض بقية أقسام داندي الطبيعية في صفحة جميع المنتجات."
+              ctaLabel="تصفح جميع المنتجات"
+              ctaHref="/all-products"
+            />
+          )}
 
-                const priceNumber = Number(product.price) || 0;
-                const origPriceNumber = product.originalPrice ? Number(product.originalPrice) : null;
-                const reviewCountNum = Number(product.reviewCount) || 0;
-                const avgRatingNum = Number(product.avgRating) || 0;
-
-                return (
-                  <article class="product-card-item product" data-id={product.id} data-category={categoryConfig!.slug}>
-                    {badgeText && (
-                      <span class={`card-badge ${isSoldOut ? 'sold-out' : ''}`}>
-                        {badgeText}
-                      </span>
-                    )}
-
-                    <button
-                      type="button"
-                      class="btn-card-wishlist"
-                      data-product-id={product.id}
-                      onclick={`event.stopPropagation(); window.toggleCardWishlist && window.toggleCardWishlist('${product.id}', this);`}
-                      title="حفظ في المفضلة"
-                      aria-label="حفظ في المفضلة"
-                    >
-                      <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
-                      </svg>
-                    </button>
-
-                    <a href={productUrl} class="product-card-link" aria-label={product.name}>
-                      <div class="card-image-box product-image-wrap">
-                        <img
-                          src={optimizeCloudinaryUrl(product.image, { width: 500, height: 500, crop: 'limit' }) || '/assets/images/logo.png'}
-                          alt={`${product.name} - داندي كوزمتكس`}
-                          width="400"
-                          height="400"
-                          loading="lazy"
-                          decoding="async"
-                          onerror="this.onerror=null;this.src='https://images.unsplash.com/photo-1608248597481-496100c80836?auto=format&fit=crop&w=400&q=80';"
-                        />
-                      </div>
-
-                      <div class="card-content-box product-info-box">
-                        <span class="card-category">{categoryConfig!.arabicName}</span>
-                        <h3 class="card-title product-title">{product.name}</h3>
-
-                        {reviewCountNum > 0 && (
-                          <div class="card-rating-mini">
-                            <i class="fas fa-star card-rating-star" aria-hidden="true"></i>
-                            <span class="card-rating-val">{avgRatingNum.toFixed(1)}</span>
-                            <span class="card-rating-count">({reviewCountNum})</span>
-                          </div>
-                        )}
-
-                        <div class="card-price-row product-price">
-                          <span class="price-current">{priceNumber} ج.م</span>
-                          {origPriceNumber && origPriceNumber > priceNumber && (
-                            <span class="price-old">{origPriceNumber} ج.م</span>
-                          )}
-                        </div>
-
-                        {isSoldOut ? (
-                          <button type="button" disabled class="card-add-btn is-sold-out" onclick="event.preventDefault(); event.stopPropagation();">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
-                            <span>نفذت الكمية</span>
-                          </button>
-                        ) : hasVars ? (
-                          <span class="card-add-btn">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-                            <span>اختاري الرائحة</span>
-                          </span>
-                        ) : (
-                          <button
-                            type="button"
-                            class="card-add-btn"
-                            onclick={`event.preventDefault(); event.stopPropagation(); window.quickAdd && window.quickAdd('${product.id}', \`${(product.name || '').replace(/`/g, '')}\`, '${product.price}', '${product.image || ''}', '${product.discount || ''}', ${product.onSale || false}, false, '${product.resolvedSlug}');`}
-                          >
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 01-8 0"/></svg>
-                            <span>أضيفي للسلة</span>
-                          </button>
-                        )}
-                      </div>
-                    </a>
-                  </article>
-                );
-              })}
-            </div>
-          </div>
-        </main>
-
-        {/* 4. Editorial Guide Block (If approved article exists for this category) */}
-        {categoryArticle && (
-          <section class="category-editorial-section" aria-label="دليل العناية التحريري">
-            <div class="category-container">
-              <div class="category-editorial-card">
-                <div class="category-editorial-icon" aria-hidden="true">
-                  <i class="fas fa-book-open"></i>
-                </div>
-                <div class="category-editorial-body">
-                  <h2 class="category-editorial-heading">{categoryArticle.title}</h2>
-                  <p class="category-editorial-text">{categoryArticle.description}</p>
-                </div>
-                <div class="category-editorial-action">
-                  <a href={categoryArticle.articleUrl} class="category-editorial-link">
-                    <span>{categoryArticle.anchorText}</span>
-                    <i class="fas fa-arrow-left" aria-hidden="true"></i>
-                  </a>
-                </div>
+          {categoryArticle && (
+            <aside class="dandy-cat-guide-card" aria-label="دليل العناية التحريري">
+              <div class="dandy-cat-guide-icon" aria-hidden="true">
+                <Icon name="book-open" size={22} strokeWidth={1.75} />
               </div>
-            </div>
-          </section>
-        )}
-      </>
-    )}
-  </div>
+              <div class="dandy-cat-guide-body">
+                <h2 class="dandy-cat-guide-title">{categoryArticle.title}</h2>
+                <p class="dandy-cat-guide-desc">{categoryArticle.description}</p>
+              </div>
+              <a href={categoryArticle.articleUrl} class="dandy-btn dandy-btn--outline dandy-cat-guide-btn">
+                <span>{categoryArticle.anchorText}</span>
+                <Icon name="arrow-left" size={16} strokeWidth={1.85} />
+              </a>
+            </aside>
+          )}
+        </div>
+      </main>
 
-  <!-- Client-side Cart & Wishlist Interaction Script -->
-  <script is:inline>
-    // Quick Add to Cart Handler (reusing store pattern)
-    window.quickAdd = window.quickAdd || function(id, name, price, image, discount, onSale, hasVariants, slug) {
-      if (hasVariants) {
-        window.location.href = '/product/' + encodeURIComponent(slug || id);
-        return;
-      }
-      try {
-        var cart = JSON.parse(localStorage.getItem('cart')) || [];
-        var productItem = { id: id, productId: id, name: name, price: price, image: image, discount: discount, onSale: onSale };
-
-        var existIndex = cart.findIndex(function(item) {
-          return (item.productId || item.id) === id && (!item.selectedVariants || item.selectedVariants.length === 0);
-        });
-
-        if (existIndex !== -1) {
-          cart[existIndex].quantity = (parseInt(cart[existIndex].quantity) || 0) + 1;
-        } else {
-          productItem.quantity = 1;
-          cart.push(productItem);
-        }
-
-        localStorage.setItem('cart', JSON.stringify(cart));
-
-        // Facebook / Meta Pixel AddToCart event tracking via DandyMeta (after successful addition)
-        if (window.DandyMeta && typeof window.DandyMeta.trackAddToCart === 'function') {
-          window.DandyMeta.trackAddToCart(productItem);
-        } else if (typeof fbq === 'function') {
-          fbq('track', 'AddToCart', {
-            content_name: name,
-            content_ids: [id],
-            content_type: 'product',
-            value: parseFloat(price) || 0,
-            currency: 'EGP'
-          });
-        }
-        if (typeof window.updateSharedCartCount === 'function') window.updateSharedCartCount();
-        if (typeof updateCartCount === 'function') updateCartCount();
-
-        var alertDiv = document.createElement('div');
-        alertDiv.style.position = 'fixed';
-        alertDiv.style.bottom = '100px';
-        alertDiv.style.left = '50%';
-        alertDiv.style.transform = 'translateX(-50%)';
-        alertDiv.style.background = '#2bae66';
-        alertDiv.style.color = '#fff';
-        alertDiv.style.padding = '14px 28px';
-        alertDiv.style.borderRadius = '8px';
-        alertDiv.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
-        alertDiv.style.zIndex = '1030';
-        alertDiv.style.fontWeight = '700';
-        alertDiv.style.textAlign = 'center';
-        alertDiv.innerHTML = '<i class="fas fa-check-circle" style="margin-left:8px;"></i> تمت إضافة المنتج إلى السلة بنجاح!';
-        document.body.appendChild(alertDiv);
-
-        setTimeout(function() {
-          alertDiv.style.opacity = '0';
-          alertDiv.style.transition = 'opacity 0.4s ease';
-          setTimeout(function() { alertDiv.remove(); }, 400);
-        }, 2500);
-      } catch (err) {
-        console.error('Error adding to cart:', err);
-      }
-    };
-
-    // Toggle Wishlist Handler (reusing store pattern)
-    window.toggleCardWishlist = window.toggleCardWishlist || async function(productId, btnEl) {
-      if (!window.auth || !window.db) return;
-      var user = window.auth.currentUser;
-      if (!user) {
-        window.location.href = '/account-login';
-        return;
-      }
-      var isFav = btnEl.classList.contains('active');
-      var svg = btnEl.querySelector('svg');
-      try {
-        if (isFav) {
-          await window.db.ref('wishlists/' + user.uid + '/' + productId).remove();
-          btnEl.classList.remove('active');
-          if (svg) svg.setAttribute('fill', 'none');
-        } else {
-          await window.db.ref('wishlists/' + user.uid + '/' + productId).set(true);
-          btnEl.classList.add('active');
-          if (svg) svg.setAttribute('fill', 'currentColor');
-        }
-      } catch (err) {
-        console.error('Error toggling wishlist:', err);
-      }
-    };
-  </script>
+      <script>
+        import { initCatalogControllers } from '../../scripts/catalog-client';
+        initCatalogControllers();
+      </script>
+    </>
+  )}
 </BaseLayout>
+
+<style>
+  .dandy-cat-404-wrap {
+    padding-block: 16px;
+  }
+
+  .dandy-cat-guide-card {
+    margin-top: clamp(32px, 5vw, 52px);
+    padding: clamp(18px, 3vw, 28px);
+    background-color: var(--dandy-bg-editorial);
+    border: 1px solid var(--dandy-border-subtle);
+    border-radius: var(--dandy-radius-md);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 18px;
+    min-width: 0;
+  }
+
+  .dandy-cat-guide-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: var(--dandy-radius-sm);
+    background-color: var(--dandy-bg-page);
+    border: 1px solid var(--dandy-border-subtle);
+    color: var(--dandy-botanical-deep);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .dandy-cat-guide-body {
+    flex: 1 1 260px;
+    min-width: 0;
+  }
+
+  .dandy-cat-guide-title {
+    margin: 0 0 4px;
+    font-size: 1.08rem;
+    font-weight: 700;
+    color: var(--dandy-ink-primary);
+  }
+
+  .dandy-cat-guide-desc {
+    margin: 0;
+    font-size: var(--dandy-text-sm);
+    line-height: 1.65;
+    color: var(--dandy-ink-secondary);
+  }
+
+  .dandy-cat-guide-btn {
+    white-space: normal;
+    text-align: center;
+    max-width: 100%;
+    flex-shrink: 0;
+  }
+
+  @media (max-width: 639px) {
+    .dandy-cat-guide-card {
+      flex-direction: column;
+      align-items: stretch;
+    }
+
+    .dandy-cat-guide-btn {
+      width: 100%;
+    }
+  }
+</style>

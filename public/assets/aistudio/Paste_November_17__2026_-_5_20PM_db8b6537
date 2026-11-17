@@ -1,0 +1,1316 @@
+# DANDY — BOTANICAL EDITORIAL COMMERCE
+# PHASE 4 — PRODUCT DETAIL PAGE (PDP) RECONSTRUCTION
+## Premium Product Gallery · Product Information · Variants · Pricing · Reviews · Purchase Experience
+
+---
+
+# 1. ROLE & PROJECT CONTEXT
+
+Act as a Principal Frontend Architect, Senior Astro Engineer, and Premium Beauty E-commerce UX Designer.
+
+You are continuing the complete visual and experiential reconstruction of:
+
+**DANDY Cosmetics**
+
+Repository: `Mohamedkhaled-10/Dandy`
+
+The approved design direction is:
+
+**BOTANICAL EDITORIAL COMMERCE**
+
+The project has completed the following phases:
+
+- Phase 0 — UI/UX Architecture Audit & Master Blueprint.
+- Phase 1 — Design System Foundation.
+- Phase 2 — Global Storefront Shell Reconstruction.
+- Phase 3 — Product Experience & Homepage Reconstruction.
+
+The authoritative project documentation consists of:
+
+- `DANDY_COMPLETE_UI_UX_BLUEPRINT_AR.md`
+- `DANDY_PHASE_1_FINAL_REPORT_AR.md`
+- `DANDY_PHASE_2_FINAL_REPORT_AR.md`
+- `DANDY_PHASE_3_FINAL_REPORT_AR.md`
+
+Read these documents before implementation whenever available in the current workspace.
+
+The current workspace is the authoritative development environment.
+
+Do not search GitHub for newer changes, and do not assume the GitHub repository reflects the latest local implementation.
+
+## Your Assignment
+
+Completely reconstruct the customer-facing Product Detail Page (PDP) into a premium, sophisticated, highly usable beauty e-commerce experience.
+
+The design must combine:
+
+**ELIXIR:**
+- Luxury editorial composition.
+- Refined typography.
+- Generous whitespace.
+- Elegant product presentation.
+- Sophisticated image treatment.
+
+**PureBelle:**
+- Structured product information.
+- Multiple product images when available.
+- Clear pricing and discounts.
+- Product variations.
+- Organized purchasing controls.
+- Trust information.
+- Detailed review presentation.
+- Related product discovery.
+
+The final design must feel purpose-built for DANDY rather than copied from a generic e-commerce template.
+
+---
+
+# 2. MANDATORY PRE-IMPLEMENTATION AUDIT
+
+Before modifying source files, inspect the actual current workspace.
+
+Do not rely exclusively on previous reports.
+
+## 2.1 Previous Phase Compatibility
+
+Verify the existing implementations of:
+
+- Phase 1 design tokens.
+- Global typography and CSS foundation.
+- `Icon.astro`.
+- `DandyToast`.
+- Phase 2 Header and Footer.
+- Phase 3 `ProductCard.astro`.
+- Phase 3 product pricing utilities.
+- Phase 3 cart interaction controller.
+- Homepage and global storefront integration.
+
+Identify existing public functions, selectors, and component contracts that the product page depends on.
+
+Do not recreate existing capabilities without first understanding their current implementations.
+
+## 2.2 Product Data Architecture
+
+Inspect:
+
+- `src/utils/products.ts`
+- The current `Product` interface.
+- Product loading and rendering logic.
+- Existing product image fields.
+- Product variant data structures.
+- Existing multi-scent or multi-variant behavior.
+- Current pricing and discount calculations.
+- Pink Friday pricing integration.
+- Existing review data.
+- Existing category and product relationship data.
+- Cloudinary image optimization utilities.
+
+Determine which fields actually exist and which are optional.
+
+In particular, establish whether the current product data provides:
+
+- A single product image.
+- Multiple gallery images.
+- Variant-specific images.
+- Image metadata.
+- Product ingredients.
+- Usage instructions.
+- Product specifications.
+- Customer reviews.
+- Stock or availability information.
+
+Do not assume that every product contains all these fields.
+
+**Never invent product information or manufacture fake product gallery images.**
+
+If multiple images are not available in the current data model, design a polished single-image experience and prepare the gallery component to support multiple images when genuine image data becomes available.
+
+Do not modify the Firebase product schema or introduce a new database field as part of this UI redesign.
+
+## 2.3 Existing Product Detail Implementation
+
+Inspect the current:
+
+`src/pages/product/[...slug].astro`
+
+Also inspect any supporting files and scripts it depends on.
+
+Pay particular attention to:
+
+- Existing DOM IDs.
+- Product selectors.
+- Variant selectors.
+- Quantity controls.
+- Add-to-cart buttons.
+- Wishlist buttons.
+- Review interactions.
+- Pricing elements.
+- Existing image behavior.
+- Existing WhatsApp or contact actions.
+- Existing SEO metadata.
+- Product JSON-LD.
+- Canonical URLs.
+- Existing product redirect behavior.
+
+## 2.4 Variant and Cart Contracts
+
+Inspect:
+
+- `public/assets/js/variants.js`
+- `src/scripts/product-card.ts`
+- `src/scripts/product-card-client.ts`
+- Existing cart implementation.
+- Existing cart storage format.
+- Existing DandyToast integration.
+- Existing Pink Friday pricing functions.
+
+Create a clear dependency and interaction map before changing any purchase-related markup.
+
+Do not assume that the homepage ProductCard and the product detail page use identical purchase mechanisms.
+
+Preserve the actual working implementation of both.
+
+---
+
+# 3. STRICT SCOPE
+
+This phase authorizes the reconstruction of the Product Detail Page and its directly related presentation components.
+
+Authorized:
+
+- Product detail layout.
+- Product gallery.
+- Product information area.
+- Product variant selector presentation.
+- Product quantity selector presentation.
+- Purchase action presentation and integration.
+- Product feature summary.
+- Product description presentation.
+- Product information tabs or accordions.
+- Reviews presentation.
+- Related products presentation.
+- Responsive PDP behavior.
+- Supporting reusable PDP components.
+
+Not authorized:
+
+- Rebuilding the shopping cart.
+- Rebuilding checkout.
+- Changing pricing calculations or financial logic.
+- Changing product database schemas.
+- Rebuilding the entire catalog.
+- Redesigning category pages.
+- Redesigning the Header or Footer.
+- Rebuilding the account or authentication system.
+- Modifying Admin Studio.
+- Modifying Firebase APIs.
+- Changing Vercel or Astro configuration.
+- Performing unrelated project-wide refactoring.
+
+Do not begin Phase 5.
+
+---
+
+# 4. CRITICAL PROTECTED BUILD & DEPLOYMENT CONFIGURATION
+
+**THIS SECTION IS MANDATORY AND OVERRIDES ANY OTHER IMPLEMENTATION INSTRUCTION.**
+
+The existing DANDY project has a working Astro build environment and deployment configuration.
+
+The current build and deployment configuration must remain completely untouched throughout Phase 4.
+
+## 4.1 Absolutely Protected Files
+
+Do NOT edit, replace, rename, delete, regenerate, reformat, or otherwise modify any of the following files:
+
+### Astro Configuration
+
+- `astro.config.mjs`
+- `astro.config.js`
+- Any existing Astro configuration variants.
+
+### Vercel & Deployment
+
+- `vercel.json`
+- `.vercelignore`
+- Existing Vercel configuration files.
+- Deployment scripts.
+- Existing deployment-related configuration.
+
+### Package & Dependency Configuration
+
+- `package.json`
+- `package-lock.json`
+- `npm-shrinkwrap.json`
+- `pnpm-lock.yaml`
+- `yarn.lock`
+- Any existing dependency lockfile.
+
+### TypeScript & Build Configuration
+
+- `tsconfig.json`
+- `jsconfig.json`
+- `vite.config.ts`
+- `vite.config.js`
+- Existing build-related configuration files.
+- Existing compiler configuration.
+
+### Environment & Tooling Configuration
+
+- `.npmrc`
+- `.nvmrc`
+- `.node-version`
+- Existing environment configuration files.
+- Existing CI/CD workflow configurations.
+- Existing GitHub workflow files.
+- Existing build scripts and deployment automation.
+
+This list is not exhaustive.
+
+**Any file whose primary responsibility is build configuration, framework configuration, dependency management, compilation, or deployment is protected.**
+
+## 4.2 No Dependency Changes
+
+Do NOT:
+
+- Install new packages.
+- Uninstall existing packages.
+- Upgrade packages.
+- Downgrade packages.
+- Change dependency versions.
+- Regenerate lockfiles.
+- Modify npm scripts.
+- Change Node.js requirements.
+
+The current project already contains the technology required for this phase.
+
+Use existing Astro, TypeScript, CSS, GSAP, Lucide, and browser capabilities.
+
+An external gallery dependency is not required for this phase by default. Prefer the existing project capabilities.
+
+## 4.3 Baseline Integrity Verification
+
+Before starting implementation:
+
+1. Inspect every protected file that exists in the current workspace.
+2. Record its exact original content.
+3. Calculate and record its SHA-256 checksum where tooling permits.
+4. Treat this snapshot as the immutable Phase 4 baseline.
+5. Do not overwrite the original snapshot during implementation.
+
+Before final delivery:
+
+- Compare every protected file against its original baseline.
+- Verify that its content and checksum remain unchanged.
+- Confirm that no protected file appears in the Phase 4 change list.
+
+## 4.4 Mandatory Restoration Rule
+
+**If you accidentally modify ANY protected file during Phase 4, immediately restore it to its exact pre-Phase-4 content.**
+
+Restoration requirements:
+
+- Restore the exact original file content.
+- Do not reconstruct a configuration file from memory.
+- Do not replace it with a default Astro or Vercel configuration.
+- Do not use a newly generated configuration as a substitute.
+- Do not introduce unrelated configuration cleanup.
+- Verify its SHA-256 checksum against the original baseline after restoration.
+
+If exact restoration cannot be guaranteed:
+
+1. Stop the affected operation.
+2. Do not proceed with further implementation that depends on the modified configuration.
+3. Clearly report the file and the reason restoration could not be verified.
+
+**Never silently leave build, Astro, Vercel, package, or deployment configuration modified.**
+
+## 4.5 Build Verification Without Configuration Changes
+
+You may run the existing project commands:
+
+```bash
+npm run lint
+npm run build
+```
+
+However:
+
+- Do not edit their script definitions.
+- Do not change their configuration.
+- Do not fix unrelated pre-existing build issues by changing protected files.
+- Do not suppress existing build errors.
+- Do not generate new configuration files to bypass failures.
+
+If the build fails for an unrelated pre-existing reason, document the exact failure.
+
+The objective is to preserve the existing build and deployment environment, not redesign it.
+
+---
+
+# 5. PRODUCT DETAIL PAGE — MASTER VISUAL ARCHITECTURE
+
+Use the first reference image, PureBelle, as the primary structural reference for the product purchasing experience.
+
+Use the editorial visual language of ELIXIR to refine the page's overall presentation.
+
+## 5.1 Overall Composition
+
+The page should use:
+
+- A centered content container.
+- Maximum width around 1320px.
+- Refined whitespace.
+- Consistent vertical rhythm.
+- Clear separation between the primary product area and supporting information.
+
+Desktop composition:
+
+**Two-column product layout: approximately 48% / 52%.**
+
+Because Arabic RTL is the primary direction:
+
+- Product gallery occupies the right-side visual column.
+- Product information and purchasing controls occupy the left-side visual column.
+
+Ensure this is the actual rendered result. Do not rely on assumptions about CSS Grid column order and RTL.
+
+The page must feel visually balanced.
+
+## 5.2 Breadcrumb Navigation
+
+Position breadcrumbs above the main product section.
+
+Example:
+
+الرئيسية / العناية بالبشرة / اسم المنتج
+
+Requirements:
+
+- Use actual product and category information.
+- Preserve valid existing URLs.
+- Use RTL-compatible separators.
+- Keep typography subtle.
+- Avoid oversized breadcrumb styling.
+- Maintain semantic navigation markup.
+
+---
+
+# 6. PRODUCT GALLERY — COMPLETE RECONSTRUCTION
+
+Create:
+
+`src/components/commerce/ProductGallery.astro`
+
+This component is one of the primary visual elements of the new PDP.
+
+## 6.1 Main Image Presentation
+
+The main image must appear in a refined product presentation stage.
+
+Recommended characteristics:
+
+- Warm neutral background: `var(--dandy-bg-stage)`.
+- Consistent square image stage where appropriate.
+- Product image centered visually.
+- `object-fit: contain` for product packshots where suitable.
+- No aggressive cropping.
+- Proper proportions.
+- Responsive image dimensions.
+- Subtle rounded corners using Phase 1 radii.
+- No unnecessary shadows or decorative frames.
+
+The product itself must remain the focal point.
+
+## 6.2 Multiple Images — Only When Genuine Data Exists
+
+If the current product data provides multiple genuine images:
+
+- Display one main selected image.
+- Provide a thumbnail gallery.
+- Show the selected thumbnail clearly.
+- Allow the customer to switch images.
+- Update the main image without reloading the page.
+- Provide appropriate accessible labels.
+- Preserve correct product-image associations.
+
+If only one image exists:
+
+- Display the image elegantly.
+- Provide image zoom or lightbox functionality where appropriate.
+- Do not duplicate the same image into multiple fake thumbnails.
+- Do not use unrelated category images as additional product photographs.
+- Do not generate fake product angles or ingredient images.
+
+The component must gracefully support both single-image and multiple-image products.
+
+## 6.3 Product Image Zoom / Lightbox
+
+Implement an accessible image viewing experience.
+
+Requirements:
+
+- Open image in a refined lightbox or native dialog.
+- Close button.
+- Escape-key support.
+- Clicking the backdrop closes the dialog where appropriate.
+- Keyboard accessibility.
+- Focus management and restoration.
+- Responsive image scaling.
+- No layout shifts.
+
+Do not introduce an unnecessary large gallery dependency.
+
+If the current project already has a suitable image-viewing utility, evaluate whether it can be reused.
+
+Embla Carousel is optional and should only be introduced if the verified image-gallery experience genuinely requires carousel functionality.
+
+Do not install dependencies simply because they appear in the blueprint.
+
+## 6.4 Gallery Responsive Behavior
+
+Desktop:
+
+- Large main image.
+- Thumbnail strip below the main image when multiple photographs exist.
+- Balanced spacing.
+- Optional sticky gallery behavior if it does not cause overlap.
+
+Mobile:
+
+- Full-width image stage.
+- Horizontal, touch-friendly thumbnail navigation when multiple images exist.
+- Clear active-image indicator.
+- No horizontal page overflow.
+- No controls covering the product itself.
+
+---
+
+# 7. PRODUCT INFORMATION — PURCHASE HIERARCHY
+
+Create a reusable information component where appropriate:
+
+`src/components/commerce/ProductInfo.astro`
+
+The information column must present content in a deliberate order.
+
+Recommended hierarchy:
+
+1. Product category or verified product label.
+2. Product title.
+3. Rating and review count, if genuine reviews exist.
+4. Product price.
+5. Original price and discount information, when valid.
+6. Product variation selection, if supported.
+7. Stock or availability information, if supported.
+8. Quantity selector.
+9. Main purchase action.
+10. Existing secondary actions, if functional.
+11. Verified product benefits or specifications.
+
+Do not overwhelm the customer with every detail at the top.
+
+Use subtle dividers and intentional spacing.
+
+## 7.1 Product Title
+
+Use the approved Arabic typography system.
+
+The title should be visually prominent without dominating the entire page.
+
+Support long Arabic product names gracefully.
+
+Do not truncate the product name when doing so would hide important identifying information.
+
+## 7.2 Rating
+
+Show rating only when genuine review information is available.
+
+Preserve the Phase 3 rule:
+
+A default rating value without an actual review count must not be displayed as genuine social proof.
+
+Where supported, display:
+
+- Average rating.
+- Number of actual reviews.
+- A link to the reviews section.
+
+Do not manufacture ratings or review counts.
+
+## 7.3 Pricing and Discounts
+
+Pricing correctness is critical.
+
+Use existing project pricing utilities wherever possible.
+
+Inspect how Phase 3 handles:
+
+- Normal product prices.
+- Original prices.
+- Valid discounts.
+- Pink Friday promotional pricing.
+- Discount eligibility.
+
+The PDP must display the same valid price that the customer sees in the product listing for the same product and campaign state.
+
+Do not implement an independent discount formula.
+
+Do not duplicate Pink Friday logic.
+
+Do not alter currency calculations.
+
+Use consistent Egyptian Pound formatting and appropriate numeric typography.
+
+Show the original price only when the original value is genuinely greater than the current applicable price and the underlying discount state supports it.
+
+Do not display misleading savings percentages.
+
+**Important:** If the listing card, product page, and cart currently calculate or display different prices, identify the discrepancy and document it. Do not silently change the financial logic.
+
+---
+
+# 8. PRODUCT VARIANTS — PRESERVE EXISTING FUNCTIONALITY
+
+Create or rebuild:
+
+`src/components/commerce/VariantSwatches.astro`
+
+This is one of the most sensitive parts of the page.
+
+The current system supports product variants and potentially multiple scent selections.
+
+The new interface must improve the visual presentation without replacing the underlying variant logic.
+
+## 8.1 Visual Design
+
+Depending on the actual product variant type, render:
+
+- Color swatches.
+- Scent options.
+- Size options.
+- Variant selection buttons.
+- Clear selected states.
+- Disabled states where applicable.
+- Variant descriptions where provided.
+
+The selected option must be obvious.
+
+Avoid rendering all variant types as colored circles if that does not accurately represent the product.
+
+For scents and sizes, readable text-based selectors may be more appropriate.
+
+## 8.2 Existing Variant Engine
+
+Preserve the existing functionality provided by:
+
+`public/assets/js/variants.js`
+
+Before changing markup, identify all of its expected:
+
+- Selectors.
+- DOM IDs.
+- Data attributes.
+- Global functions.
+- Events.
+- Selected-variant state.
+- Price-update behavior.
+- Stock behavior.
+
+Retain these contracts wherever possible.
+
+If a selector must change, search for every dependent reference and migrate them consistently.
+
+Do not create a second variant engine.
+
+Do not implement price adjustments independently from the existing system.
+
+## 8.3 Variant Interaction Tests
+
+Verify:
+
+- Selecting a variant updates the selected state.
+- The displayed variant name is correct.
+- The appropriate price is displayed.
+- Relevant availability information is updated.
+- Multiple selections behave according to the existing supported model.
+- Changing selections does not produce duplicated event handlers.
+- Adding the product preserves the correct variant information in the cart.
+
+Products without variants must not display unnecessary selectors.
+
+---
+
+# 9. QUANTITY SELECTOR & PURCHASE AREA
+
+Create:
+
+`src/components/commerce/QuantityStepper.astro`
+
+Use a compact, refined quantity control.
+
+Requirements:
+
+- Decrease button.
+- Current quantity.
+- Increase button.
+- Clear selected state.
+- Accessible button labels.
+- Proper keyboard and touch support.
+- Correct minimum and maximum behavior based on existing product rules.
+
+Do not invent stock limits.
+
+The quantity control must integrate with the actual purchase mechanism already used by the PDP.
+
+## 9.1 Main Purchase Button
+
+The primary button must be visually prominent.
+
+Use:
+
+`var(--dandy-accent-primary)`
+
+The button should:
+
+- Have a clear Arabic label.
+- Show an appropriate loading state during the existing operation.
+- Prevent accidental repeated submissions through the existing interaction mechanism.
+- Provide a clear successful response.
+- Handle errors without generic browser alerts.
+
+Use:
+
+`window.DandyToast.show(...)`
+
+Preserve the actual add-to-cart implementation.
+
+Do not create a new cart implementation or directly bypass the existing product-page purchase flow.
+
+## 9.2 Secondary Actions
+
+Preserve existing functionality where available:
+
+- Wishlist.
+- WhatsApp inquiry.
+- Sharing.
+
+Do not introduce fake buttons.
+
+If a secondary action does not have a verified working implementation, do not present it as functional.
+
+## 9.3 Mobile Purchase Experience
+
+Evaluate a mobile sticky purchase bar.
+
+It may be implemented only if it improves accessibility and does not:
+
+- Duplicate the main purchase action in a confusing manner.
+- Cover the mobile bottom navigation.
+- Overlap BAB.
+- Overlap DandyToast.
+- Cover important product content.
+- Interfere with the quantity selector.
+
+Use safe-area insets and the Phase 1 z-index system.
+
+Do not introduce a sticky bar merely for decoration.
+
+---
+
+# 10. PRODUCT FEATURES — BOTANICAL FEATURE GRID
+
+Create:
+
+`src/components/commerce/BotanicalFeatureGrid.astro`
+
+The design reference includes a compact grid of product benefits and formula information.
+
+Adapt that idea to DANDY.
+
+Possible content categories include:
+
+- Ingredients.
+- Product texture.
+- Skin or hair suitability.
+- Usage characteristics.
+- Product size.
+- Verified formulation information.
+
+However:
+
+**Every displayed product claim must be supported by actual product data.**
+
+Do not assume products are:
+
+- 100% organic.
+- Sulfate-free.
+- Paraben-free.
+- Dermatologically tested.
+- Suitable for sensitive skin.
+- Clinically proven.
+
+Only display these claims when supported by reliable existing product information.
+
+If structured benefits are absent:
+
+- Use available verified specifications.
+- Present useful descriptive information from the existing product description where appropriate.
+- Omit unsupported feature cards.
+
+Use a refined 2-column × 3-row desktop grid where sufficient genuine information exists.
+
+Adapt to smaller screens without overcrowding the content.
+
+---
+
+# 11. PRODUCT DESCRIPTION & INFORMATION SECTIONS
+
+Organize the existing product information into a clear presentation.
+
+Evaluate these sections based on available data:
+
+- Overview.
+- Ingredients.
+- How to use.
+- Product specifications.
+- Shipping information.
+- Returns information.
+
+Use tabs on desktop or a refined accordion layout where appropriate.
+
+Do not create empty sections.
+
+Do not generate filler text.
+
+Do not invent shipping promises or return policies.
+
+Preserve the existing `parseDescriptionToHtml()` functionality where applicable.
+
+Ensure that product descriptions remain readable and that supported HTML is handled consistently with the current implementation.
+
+The page must remain usable when optional description fields are missing.
+
+---
+
+# 12. REVIEWS — PROFESSIONAL REVIEW PRESENTATION
+
+Create:
+
+`src/components/commerce/ReviewSummaryPanel.astro`
+
+The review experience should be organized and visually sophisticated.
+
+When genuine review data is available, provide:
+
+- Average rating.
+- Total verified review count where actual verification exists.
+- Rating distribution.
+- Individual review entries.
+- Customer review text.
+- Review dates where available.
+- Relevant product-related review information.
+
+If rating distribution can be accurately calculated from actual review records, display a horizontal star-distribution chart.
+
+Do not fabricate distribution percentages.
+
+Do not label a review as a verified purchase without the existing system confirming that status.
+
+Preserve existing review submission behavior and validation.
+
+Avoid altering review database structures or APIs.
+
+## Empty Review State
+
+When there are no reviews:
+
+- Do not show a fake 5-star rating.
+- Do not show empty rating bars as if there were actual ratings.
+- Display a graceful Arabic empty state.
+- Explain that the product has not received reviews yet, if appropriate.
+- Preserve the existing ability to submit a review when available.
+
+The review section must feel integrated with the DANDY visual system.
+
+---
+
+# 13. RELATED PRODUCTS
+
+Include a related-products section near the end of the page.
+
+Requirements:
+
+- Reuse the Phase 3 ProductCard component.
+- Use genuine related product data or the existing category-based product selection mechanism.
+- Maintain correct product URLs.
+- Use consistent spacing.
+- Display an appropriate number of products for the available screen width.
+- Avoid repeating the current product.
+- Avoid duplicate products.
+- Do not invent popularity or bestseller rankings.
+
+Do not build a second product-card component.
+
+Keep the related-product experience visually consistent with the homepage.
+
+---
+
+# 14. RESPONSIVE DESIGN — RTL FIRST
+
+The PDP must be intentionally designed for mobile rather than simply shrinking the desktop grid.
+
+Test the following viewports:
+
+- 390 × 844
+- 430 × 932
+- 768 × 1024
+- 1024 × 768
+- 1440 × 900
+
+## Desktop
+
+- Two-column composition.
+- Sticky gallery only when appropriate.
+- Comfortable reading width for product information.
+- Clear purchase hierarchy.
+- Large image presentation.
+
+## Tablet
+
+- Balanced columns where practical.
+- If the screen cannot comfortably accommodate the two-column design, switch to a stacked layout.
+- Preserve usable control sizes.
+
+## Mobile
+
+- Product image first.
+- Product title and rating clearly visible.
+- Price immediately accessible.
+- Variant selectors easy to tap.
+- Quantity and purchase controls easy to use.
+- Description and reviews organized into collapsible sections where useful.
+- Related products in a responsive grid.
+- No horizontal overflow.
+
+## RTL and LTR
+
+Use logical CSS properties.
+
+Verify that:
+
+- Gallery and product information occupy the intended sides.
+- Directional arrows behave correctly.
+- Numerical values and currencies remain readable.
+- English product names do not break Arabic layout.
+- Mixed Arabic and English content remains aligned correctly.
+
+---
+
+# 15. PERFORMANCE, SEO & ACCESSIBILITY
+
+Preserve all existing SEO and structured data.
+
+This includes:
+
+- Page title.
+- Meta description.
+- Canonical URL.
+- OpenGraph metadata.
+- Twitter metadata where present.
+- Product JSON-LD.
+- Breadcrumb structured data where available.
+
+Do not replace valid SEO data with generic values.
+
+Maintain:
+
+- Optimized Cloudinary image URLs through the existing project utility.
+- Explicit image aspect ratios.
+- Appropriate `loading` behavior.
+- High priority for the main product image when justified.
+- Lazy loading for below-the-fold images.
+- Descriptive alt text.
+- Semantic HTML.
+- Accessible dialog behavior.
+- Visible keyboard focus.
+- Keyboard navigation for tabs and selectors.
+- Correct screen-reader labels.
+- Reduced-motion compatibility.
+
+Avoid layout shifts when thumbnails or gallery images load.
+
+Do not modify canonical product URLs or redirect behavior.
+
+---
+
+# 16. PROTECTED FUNCTIONAL CONTRACTS
+
+The following existing systems must remain intact.
+
+### Product Data
+
+- Existing `Product` interface unless a strictly presentation-level adapter is required.
+- Existing product retrieval methods.
+- Existing product slugs.
+- Existing image optimization.
+- Existing category relationships.
+
+### Variants
+
+- `variants.js`
+- Existing selectors and data attributes.
+- Existing variant selection behavior.
+- Existing multi-scent calculations.
+- Existing variant-based pricing.
+
+### Pricing
+
+- Phase 3 product pricing utilities.
+- Existing Pink Friday pricing calculations.
+- Existing discount eligibility.
+- Existing product price display rules.
+- Egyptian Pound formatting.
+
+### Cart
+
+- Existing PDP add-to-cart mechanism.
+- Existing cart data structure.
+- Correct product variant information.
+- Correct quantity.
+- Existing cart count synchronization.
+- Existing DandyToast integration.
+- Existing Meta Pixel tracking.
+
+### Reviews
+
+- Existing review retrieval.
+- Existing review submission.
+- Existing validation.
+- Existing verification state.
+
+### SEO
+
+- Canonical URLs.
+- Product metadata.
+- Product JSON-LD.
+- Existing redirects.
+
+Do not break any existing public function, event handler, DOM selector, or global contract without mapping and migrating every affected consumer.
+
+---
+
+# 17. FILE ARCHITECTURE
+
+Use the following proposed structure where appropriate:
+
+```text
+src/
+├── components/
+│   └── commerce/
+│       ├── ProductGallery.astro
+│       ├── ProductInfo.astro
+│       ├── VariantSwatches.astro
+│       ├── QuantityStepper.astro
+│       ├── BotanicalFeatureGrid.astro
+│       └── ReviewSummaryPanel.astro
+│
+├── pages/
+│   └── product/
+│       └── [...slug].astro
+│
+└── scripts/
+    └── product-gallery.ts
+```
+
+Do not create a component merely because it appears in this proposed structure.
+
+Reuse existing components when they already perform the same role correctly.
+
+Keep the implementation modular and maintainable.
+
+The existing dynamic product route remains the authoritative product page.
+
+Preserve the existing `/product.astro` redirect behavior.
+
+---
+
+# 18. TESTING & VERIFICATION
+
+Testing is mandatory.
+
+Use actual Chromium/Playwright browser testing.
+
+## 18.1 Product Test Cases
+
+Inspect actual available products and select representative examples for the following scenarios:
+
+1. Standard product with a single image.
+2. Product with multiple genuine images, if one exists.
+3. Product with multiple variants.
+4. Product with a single variant type.
+5. Product with a valid discount.
+6. Product eligible for Pink Friday pricing, if active.
+7. Product with no reviews.
+8. Product with actual customer reviews.
+9. Sold-out product, if one exists.
+10. Product with a long Arabic title or description.
+
+Do not assume these products exist.
+
+Identify real representative product slugs from the current data.
+
+If a particular scenario does not exist in the available data, document that limitation.
+
+## 18.2 Gallery Tests
+
+- Main image loads.
+- Thumbnails work when multiple genuine images exist.
+- Active thumbnail state updates.
+- Zoom opens and closes.
+- Escape closes the lightbox.
+- Focus is restored correctly.
+- Images remain proportionally scaled.
+- No broken or duplicate placeholder images appear.
+
+## 18.3 Variant Tests
+
+- Correct selected variant.
+- Correct displayed name.
+- Correct associated price.
+- Correct availability state where supported.
+- Existing multi-variant behavior.
+- No duplicated event listeners.
+- Correct cart item data.
+
+## 18.4 Purchase Tests
+
+Verify:
+
+- Quantity changes.
+- Add-to-cart works.
+- Repeated clicks do not create accidental duplicate additions.
+- Correct variant information is preserved.
+- Cart count updates.
+- DandyToast displays correctly.
+- The product appears in the existing cart.
+- Pricing is consistent with the listing and existing cart calculations.
+- Pink Friday pricing behaves according to the existing campaign state.
+
+Do not change the financial logic to make tests pass.
+
+## 18.5 Reviews Tests
+
+Verify:
+
+- Actual rating appears when supported.
+- Empty state appears when reviews are absent.
+- Review information is not duplicated.
+- Existing review submission functionality remains intact where testable.
+
+## 18.6 Responsive Testing
+
+Verify every representative product at:
+
+- 390 × 844
+- 430 × 932
+- 768 × 1024
+- 1024 × 768
+- 1440 × 900
+
+Record:
+
+- Horizontal overflow.
+- Content clipping.
+- Image layout.
+- Purchase-button visibility.
+- Sticky element overlap.
+- BAB overlap.
+- DandyToast overlap.
+- Bottom navigation overlap.
+
+Do not change the old category pages to eliminate their previously reported horizontal overflow. That remains assigned to Phase 5.
+
+## 18.7 Regression Testing
+
+Retest:
+
+- Homepage.
+- All products.
+- Product categories.
+- Cart.
+- Header search.
+- Mobile navigation.
+- Bottom mobile navigation.
+
+Verify that the PDP reconstruction has not broken existing storefront functionality.
+
+---
+
+# 19. BUILD & VALIDATION
+
+Run the existing project checks:
+
+```bash
+npm run lint
+npm run build
+```
+
+Run the available unit tests, including the existing:
+
+- `foundation.test.ts`
+- `shell.test.ts`
+- `product-card.test.ts`
+
+Add appropriate new product-gallery or PDP tests where practical.
+
+Inspect:
+
+- Browser console.
+- Network requests.
+- Missing images.
+- Missing fonts.
+- Missing icons.
+- Runtime errors.
+- Broken product links.
+- Duplicate IDs.
+- Unexpected horizontal overflow.
+
+Do not suppress errors or modify unrelated test suites.
+
+Testing must happen after the final code changes, not only before the last implementation update.
+
+**After validation, recheck the protected build and deployment files against the original baseline.**
+
+---
+
+# 20. FINAL REPORT
+
+Create:
+
+`DANDY_PHASE_4_FINAL_REPORT_AR.md`
+
+Write the report in professional Arabic.
+
+Include:
+
+1. Executive summary.
+2. Pre-implementation findings.
+3. Existing product data capabilities.
+4. New PDP architecture.
+5. Product gallery implementation.
+6. Single-image and multiple-image handling.
+7. Product information hierarchy.
+8. Variant integration and preservation of variants.js.
+9. Pricing and discount integration.
+10. Cart integration.
+11. Product features implementation.
+12. Reviews implementation.
+13. Related products implementation.
+14. SEO and accessibility preservation.
+15. All created, modified, or deleted files.
+16. Responsive test results.
+17. Functional test results.
+18. Unit test results.
+19. `npm run lint` results.
+20. `npm run build` results.
+21. Protected configuration integrity verification results.
+22. Known issues and incomplete tests.
+23. Deferred items.
+24. Recommended next phase.
+
+Clearly distinguish between:
+
+- Implemented and tested.
+- Implemented but not fully tested.
+- Not implemented.
+- Deferred.
+
+Include exact product slugs tested.
+
+Do not claim multiple-image support was verified if no product with multiple images exists.
+
+Do not claim authenticated customer or review-submission testing was successful unless actually tested.
+
+The report must explicitly confirm that all protected build, Astro, Vercel, dependency, and deployment configuration files remained unchanged.
+
+---
+
+# 21. PHASE 4 ACCEPTANCE CRITERIA
+
+Phase 4 is complete only when:
+
+- The PDP has a fully reconstructed visual structure.
+- Product imagery is presented professionally.
+- Single-image products are handled gracefully.
+- Genuine multiple-image products support gallery navigation.
+- Lightbox works accessibly.
+- Product information has a clear hierarchy.
+- Price and discount display remain consistent with existing pricing logic.
+- Product variants work with the existing variant engine.
+- Quantity selection works.
+- Add-to-cart remains connected to the existing implementation.
+- Cart count synchronization works.
+- DandyToast works.
+- Existing product reviews are presented correctly.
+- Related products use the Phase 3 ProductCard.
+- RTL and responsive layouts are verified.
+- Existing SEO and structured data are preserved.
+- No unrelated application functionality is broken.
+- All protected configuration files remain unchanged.
+- No unauthorized dependency changes occurred.
+- `npm run lint` passes.
+- `npm run build` passes.
+- The final report exists.
+
+---
+
+# 22. EXECUTION SEQUENCE
+
+Follow this sequence strictly:
+
+1. Inspect the Phase 1, Phase 2, and Phase 3 implementations in the current workspace.
+2. Read and verify the relevant project documentation.
+3. Create an immutable baseline snapshot of all protected build and deployment files.
+4. Audit the current Product model and its real data.
+5. Map the existing PDP DOM and interaction contracts.
+6. Map the variant and purchase flow.
+7. Document potential regression risks.
+8. Prepare a focused implementation plan.
+9. Reconstruct the ProductGallery.
+10. Reconstruct the product information and purchase hierarchy.
+11. Integrate the existing variant engine.
+12. Reconstruct product descriptions, specifications, and review presentation.
+13. Add related products using Phase 3 ProductCard.
+14. Implement responsive behavior.
+15. Run functional and visual browser tests.
+16. Run unit tests, lint, and production build using existing configuration only.
+17. Verify all protected file checksums and restore any accidentally modified protected file to its exact original content.
+18. Review all changes for unintended side effects.
+19. Produce the final report.
+
+Do not start implementation before completing the initial audit.
+
+---
+
+# FINAL INSTRUCTION
+
+Execute **PHASE 4 ONLY**.
+
+This is a complete visual and UX reconstruction of the Product Detail Page, not a rewrite of the product business logic.
+
+Preserve the existing product, variant, pricing, cart, review, and SEO contracts.
+
+Do not invent product images, review counts, ingredients, benefits, prices, or shipping claims.
+
+Do not modify Firebase schemas or backend systems.
+
+**Never modify Astro, Vercel, build, deployment, package, dependency, or lockfile configuration. If you accidentally modify any protected file, restore its exact original pre-phase content and verify its checksum.**
+
+Do not redesign the catalog, categories, homepage, header, or footer.
+
+Do not start Phase 5.
+
+Do not perform Git commits or pushes. Work only in the current project workspace.
+
+**Deliver a premium, internationally competitive DANDY product-detail experience while keeping every existing purchasing capability accurate and functional. Finish with the complete final report.**
