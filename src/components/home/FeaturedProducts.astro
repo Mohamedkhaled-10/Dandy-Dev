@@ -1,0 +1,106 @@
+---
+/**
+ * DANDY COSMETICS — FEATURED PRODUCTS SHOWCASE (PHASE 3)
+ * SSR-first balanced catalog showcase using the unified ProductCard component.
+ */
+import Icon from '../ui/Icon.astro';
+import ProductCard from '../product/ProductCard.astro';
+import type { Product } from '../../utils/products';
+import {
+  calculatePinkFridayPricing,
+  type PinkFridayCampaignData,
+} from '../../utils/pink-friday-server';
+
+export interface Props {
+  products: Product[];
+  pinkFridayCampaign?: PinkFridayCampaignData | null;
+}
+
+const { products = [], pinkFridayCampaign = null } = Astro.props;
+---
+
+<section
+  class="dandy-home-section dandy-featured-section"
+  aria-labelledby="home-featured-heading"
+  data-studio-section="featured-products"
+>
+  <div class="dandy-container">
+    <header class="dandy-section-header">
+      <div class="dandy-section-titles">
+        <p class="dandy-section-kicker">مختارات داندي</p>
+        <h2 id="home-featured-heading" class="dandy-section-heading">
+          مستحضرات مختارة لروتينكِ اليومي
+        </h2>
+      </div>
+      <a href="/all-products" class="dandy-section-more">
+        <span>عرض المتجر بالكامل</span>
+        <Icon name="arrow-left" size={15} strokeWidth={1.8} />
+      </a>
+    </header>
+
+    {products.length > 0 ? (
+      <div class="dandy-featured-grid">
+        {products.map((product, index) => {
+          const pfPricing = pinkFridayCampaign
+            ? calculatePinkFridayPricing(product, pinkFridayCampaign)
+            : null;
+          return (
+            <ProductCard
+              product={product}
+              pinkFridayPricing={pfPricing}
+              priority={index < 4}
+            />
+          );
+        })}
+      </div>
+    ) : (
+      <div class="dandy-featured-empty">
+        <p>يمكنكِ تصفح جميع منتجات داندي المتاحة عبر صفحة المتجر.</p>
+        <a href="/all-products" class="dandy-btn dandy-btn--outline">
+          <span>زيارة المتجر</span>
+        </a>
+      </div>
+    )}
+  </div>
+</section>
+
+<style>
+  .dandy-featured-section {
+    background-color: var(--dandy-bg-editorial);
+    border-top: 1px solid var(--dandy-border-subtle);
+    border-bottom: 1px solid var(--dandy-border-subtle);
+  }
+
+  .dandy-featured-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 20px;
+  }
+
+  .dandy-featured-empty {
+    padding: 40px 24px;
+    text-align: center;
+    background-color: var(--dandy-bg-page);
+    border: 1px solid var(--dandy-border-subtle);
+    border-radius: var(--dandy-radius-md);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+    color: var(--dandy-ink-secondary);
+  }
+
+  @media (max-width: 1099px) {
+    .dandy-featured-grid {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 16px;
+    }
+  }
+
+  @media (max-width: 767px) {
+    .dandy-featured-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+  }
+</style>

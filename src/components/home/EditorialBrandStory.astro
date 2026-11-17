@@ -1,0 +1,181 @@
+---
+/**
+ * DANDY COSMETICS — EDITORIAL BRAND STORY SECTION (PHASE 3)
+ * Strictly grounded in verified facts from src/pages/about-us.astro.
+ */
+import Icon from '../ui/Icon.astro';
+---
+
+<section
+  class="dandy-home-section dandy-story-section"
+  aria-labelledby="home-story-heading"
+  data-studio-section="brand-story"
+>
+  <div class="dandy-container dandy-story-grid">
+    <div class="dandy-story-media">
+      <figure class="dandy-story-frame">
+        <img
+          src="/assets/images/editorial/story-botanical.jpg"
+          alt="مكونات طبيعية وزبدات نباتية في تركيبات داندي"
+          width="900"
+          height="1200"
+          loading="lazy"
+          decoding="async"
+          class="dandy-story-img"
+        />
+      </figure>
+    </div>
+
+    <div class="dandy-story-copy">
+      <p class="dandy-section-kicker">قصتنا وفلسفة التصنيع</p>
+      <h2 id="home-story-heading" class="dandy-story-title">
+        تركيبات صيدلانية متطورة تجمع بين نقاء الطبيعة والفاعلية العلمية
+      </h2>
+
+      <p class="dandy-story-text">
+        تأسست <strong>DANDY</strong> برؤية صيدلانية متخصصة في علم تصنيع مستحضرات التجميل،
+        لتقديم منتجات للعناية بالبشرة والشعر والجسم تعتمد على الاختيار الدقيق للزيوت النباتية
+        والزبدات المغذية والفيتامينات، بتركيبات متوازنة خالية من الإضافات الكيميائية القاسية.
+      </p>
+
+      <blockquote class="dandy-story-quote">
+        «مهمتنا هي جعل منتجات الجمال عالية الجودة في متناول الجميع، بتركيبات تنافس المعايير العالمية وبقيمة محلية عادلة.»
+      </blockquote>
+
+      <ul class="dandy-story-pillars">
+        <li>
+          <Icon name="leaf" size={18} strokeWidth={1.75} class="dandy-story-icon" />
+          <span>زيوت نباتية وزبدات مغذية مختارة بعناية للاستخدام اليومي اللطيف</span>
+        </li>
+        <li>
+          <Icon name="truck" size={18} strokeWidth={1.75} class="dandy-story-icon" />
+          <span>القاهرة، مصر — شحن وتوصيل موثوق لجميع المحافظات</span>
+        </li>
+      </ul>
+
+      <div class="dandy-story-actions">
+        <a href="/about-us" class="dandy-btn dandy-btn--editorial">
+          <span>اقرئي قصة داندي</span>
+          <Icon name="arrow-left" size={16} strokeWidth={1.8} />
+        </a>
+        <a href="/blog" class="dandy-btn dandy-btn--outline">
+          <span>مدونة العناية والجمال</span>
+        </a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<style>
+  .dandy-story-section {
+    background-color: var(--dandy-bg-page);
+  }
+
+  .dandy-story-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+    align-items: center;
+    gap: clamp(28px, 5vw, 64px);
+  }
+
+  .dandy-story-media {
+    width: 100%;
+  }
+
+  .dandy-story-frame {
+    margin: 0;
+    width: 100%;
+    aspect-ratio: 3 / 4;
+    max-height: 540px;
+    border-radius: var(--dandy-radius-md);
+    overflow: hidden;
+    background-color: var(--dandy-bg-stage);
+    border: 1px solid var(--dandy-border-subtle);
+  }
+
+  .dandy-story-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+
+  .dandy-story-copy {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+  }
+
+  .dandy-story-title {
+    margin: 0;
+    font-family: var(--dandy-font-ar-display);
+    font-size: clamp(1.625rem, 2.6vw, 2.35rem);
+    font-weight: 700;
+    line-height: 1.32;
+    color: var(--dandy-ink-primary);
+    text-wrap: balance;
+    max-width: 22ch;
+  }
+
+  .dandy-story-text {
+    margin: 0;
+    font-size: var(--dandy-text-base);
+    line-height: 1.82;
+    color: var(--dandy-ink-secondary);
+    max-width: 58ch;
+  }
+
+  .dandy-story-quote {
+    margin: 4px 0;
+    padding: 14px 18px;
+    background-color: var(--dandy-bg-editorial);
+    border: 1px solid var(--dandy-border-subtle);
+    border-radius: var(--dandy-radius-sm);
+    font-size: var(--dandy-text-sm);
+    font-weight: 600;
+    line-height: 1.75;
+    color: var(--dandy-ink-primary);
+  }
+
+  .dandy-story-pillars {
+    list-style: none;
+    margin: 4px 0 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .dandy-story-pillars li {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: var(--dandy-text-sm);
+    color: var(--dandy-ink-secondary);
+  }
+
+  .dandy-story-icon {
+    color: var(--dandy-botanical-deep);
+    flex-shrink: 0;
+  }
+
+  .dandy-story-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    padding-top: 8px;
+  }
+
+  @media (max-width: 900px) {
+    .dandy-story-grid {
+      grid-template-columns: 1fr;
+      gap: 28px;
+    }
+
+    .dandy-story-frame {
+      aspect-ratio: 4 / 3;
+      max-height: 360px;
+    }
+  }
+</style>

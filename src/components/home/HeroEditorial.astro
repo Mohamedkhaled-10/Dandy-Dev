@@ -1,0 +1,228 @@
+---
+/**
+ * DANDY COSMETICS — EDITORIAL HERO SECTION (PHASE 3)
+ * Botanical Editorial Commerce: visible Arabic display typography, grounded value copy,
+ * zero hidden text, zero blocking curtains, single high-priority LCP image.
+ */
+import Icon from '../ui/Icon.astro';
+---
+
+<section
+  class="dandy-hero"
+  aria-label="داندي للعناية الطبيعية بالبشرة والشعر"
+  data-studio-section="hero"
+>
+  <div class="dandy-container dandy-hero-grid">
+    <div class="dandy-hero-copy">
+      <p class="dandy-hero-kicker">
+        Dandy Cosmetics <span aria-hidden="true">·</span> عناية طبيعية برؤية صيدلانية
+      </p>
+
+      <h1 class="dandy-hero-title">
+        عناية طبيعية متوازنة لبشرة أكثر إشراقاً وشعر أكثر قوة
+      </h1>
+
+      <p class="dandy-hero-subtitle">
+        تركيبات صيدلانية لطيفة محضّرة من الزيوت النباتية والزبدات المغذية والفيتامينات،
+        مصممة بعناية لتمنحكِ روتين عناية يومياً موثوقاً وخالياً من الإضافات القاسية.
+      </p>
+
+      <div class="dandy-hero-actions">
+        <a href="/all-products" class="dandy-btn dandy-btn--editorial dandy-hero-cta">
+          <span>تسوقي الآن</span>
+          <Icon name="arrow-left" size={16} strokeWidth={1.85} />
+        </a>
+        <a href="/about-us" class="dandy-btn dandy-btn--outline">
+          <span>فلسفة داندي</span>
+        </a>
+      </div>
+
+      <dl class="dandy-hero-facts" aria-label="مميزات المتجر">
+        <div class="dandy-hero-fact">
+          <dt>التركيبات</dt>
+          <dd>زيوت نباتية وزبدات مغذية</dd>
+        </div>
+        <div class="dandy-hero-fact">
+          <dt>الشحن والتوصيل</dt>
+          <dd>توصيل لكافة محافظات مصر</dd>
+        </div>
+        <div class="dandy-hero-fact">
+          <dt>الشحن المجاني</dt>
+          <dd>للطلبات فوق <span class="dandy-tabular">2000</span> ج.م</dd>
+        </div>
+      </dl>
+    </div>
+
+    <div class="dandy-hero-visual">
+      <figure class="dandy-hero-frame">
+        <img
+          src="/assets/images/editorial/hero-botanical.jpg"
+          alt="مستحضرات داندي للعناية بالبشرة بتركيبات نباتية طبيعية"
+          width="1200"
+          height="900"
+          loading="eager"
+          decoding="sync"
+          fetchpriority="high"
+          class="dandy-hero-img"
+        />
+      </figure>
+    </div>
+  </div>
+</section>
+
+<style>
+  .dandy-hero {
+    background-color: var(--dandy-bg-editorial);
+    border-bottom: 1px solid var(--dandy-border-subtle);
+    padding-block: clamp(32px, 4.5vw, 64px);
+    overflow-x: clip;
+  }
+
+  .dandy-hero-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+    align-items: center;
+    gap: clamp(28px, 4vw, 56px);
+  }
+
+  .dandy-hero-copy {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 18px;
+  }
+
+  .dandy-hero-kicker {
+    margin: 0;
+    font-family: var(--dandy-font-ar-sans);
+    font-size: var(--dandy-text-xs);
+    font-weight: 600;
+    color: var(--dandy-botanical-deep);
+    letter-spacing: 0;
+  }
+
+  .dandy-hero-title {
+    margin: 0;
+    font-family: var(--dandy-font-ar-display);
+    font-size: clamp(2rem, 3.6vw, 3.35rem);
+    font-weight: 700;
+    line-height: 1.24;
+    color: var(--dandy-ink-primary);
+    text-wrap: balance;
+    max-width: 18ch;
+  }
+
+  .dandy-hero-subtitle {
+    margin: 0;
+    font-size: var(--dandy-text-lead);
+    line-height: 1.78;
+    color: var(--dandy-ink-secondary);
+    max-width: 54ch;
+  }
+
+  .dandy-hero-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+    padding-top: 6px;
+  }
+
+  .dandy-hero-cta {
+    padding-inline: 26px;
+  }
+
+  .dandy-hero-facts {
+    margin: 10px 0 0;
+    padding-top: 20px;
+    width: 100%;
+    border-top: 1px solid var(--dandy-border-subtle);
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 16px;
+  }
+
+  .dandy-hero-fact {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .dandy-hero-fact dt {
+    font-size: var(--dandy-text-xs);
+    font-weight: 600;
+    color: var(--dandy-ink-muted);
+  }
+
+  .dandy-hero-fact dd {
+    margin: 0;
+    font-size: var(--dandy-text-sm);
+    font-weight: 600;
+    color: var(--dandy-ink-primary);
+  }
+
+  .dandy-hero-visual {
+    width: 100%;
+  }
+
+  .dandy-hero-frame {
+    margin: 0;
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    border-radius: var(--dandy-radius-md);
+    overflow: hidden;
+    background-color: var(--dandy-bg-stage);
+    border: 1px solid var(--dandy-border-subtle);
+  }
+
+  .dandy-hero-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+
+  @media (max-width: 1023px) {
+    .dandy-hero-grid {
+      grid-template-columns: 1fr;
+      gap: 24px;
+    }
+
+    .dandy-hero-title {
+      max-width: 24ch;
+    }
+  }
+
+  @media (max-width: 639px) {
+    .dandy-hero {
+      padding-block: 22px 32px;
+    }
+
+    .dandy-hero-title {
+      font-size: 1.85rem;
+    }
+
+    .dandy-hero-frame {
+      aspect-ratio: 16 / 10;
+    }
+
+    .dandy-hero-facts {
+      grid-template-columns: 1fr;
+      gap: 10px;
+      padding-top: 14px;
+    }
+
+    .dandy-hero-fact {
+      flex-direction: row;
+      justify-content: space-between;
+      align-items: baseline;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--dandy-border-subtle);
+    }
+
+    .dandy-hero-fact:last-child {
+      border-bottom: none;
+      padding-bottom: 0;
+    }
+  }
+</style>

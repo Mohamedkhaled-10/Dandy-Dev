@@ -4,7 +4,12 @@ import Header from '../components/Header.astro';
 import Footer from '../components/Footer.astro';
 import DashboardNav from '../components/DashboardNav.astro';
 import ConsentBanner from '../components/ConsentBanner.astro';
+import ToastHost from '../components/ui/ToastHost.astro';
 import { getPublishedPinkFridayCampaign } from '../utils/pink-friday-server.ts';
+import '../styles/tokens.css';
+import '../styles/base.css';
+import '../styles/components.css';
+import '../styles/animations.css';
 
 export interface Props {
   title?: string;
@@ -58,13 +63,13 @@ const pinkFridayCampaign = await getPublishedPinkFridayCampaign();
   <link rel="icon" type="image/png" sizes="32x32" href="/assets/images/fav-icons/favicon-32x32.png" />
   <link rel="apple-touch-icon" sizes="180x180" href="/assets/images/fav-icons/apple-touch-icon.png" />
   <link rel="manifest" href="/site.webmanifest" />
-  <meta name="theme-color" content="#fe5d9f" />
+  <meta name="theme-color" content="#FAF8F6" />
 
-  <!-- Preconnect & Fonts -->
+  <!-- Preconnect & Centralized Approved Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="preconnect" href="https://dandy-562fc-default-rtdb.europe-west1.firebasedatabase.app" />
-  <link href="https://fonts.googleapis.com/css2?family=Alexandria:wght@300;400;500;600;700&family=Cairo:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,600;0,700;1,600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Alexandria:wght@400;500;600;700&family=Amiri:wght@700&family=Playfair+Display:ital,wght@0,600;0,700;1,600&family=Plus+Jakarta+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
 
   <!-- Stylesheets -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" integrity="sha384-iw3OoTErCYJJB9mCa8LNS2hbsQ7M3C0EpIsO/H5+EGAkPGc6rk+V8i04oW/K5xq0" crossorigin="anonymous" />
@@ -142,6 +147,9 @@ const pinkFridayCampaign = await getPublishedPinkFridayCampaign();
   </script>
 
   {showFooter && <Footer />}
+
+  <!-- Global DandyToast Notification Host -->
+  <ToastHost />
 
   <!-- Cookie Consent Banner for Marketing & Analytics Tracking -->
   <ConsentBanner />

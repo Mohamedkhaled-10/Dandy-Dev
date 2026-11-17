@@ -1,0 +1,56 @@
+/**
+ * ============================================================================
+ * DANDY COSMETICS — FOUNDATION ANIMATION & REDUCED-MOTION RULES (PHASE 1)
+ * Compositor-only (transform, opacity) rules for Dandy components.
+ * ============================================================================
+ */
+
+@keyframes dandyToastEnter {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes dandyToastExit {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+@media (max-width: 767px) {
+  @keyframes dandyToastEnter {
+    from {
+      opacity: 0;
+      transform: translateY(-10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  .dandy-toast,
+  .dandy-toast.is-leaving,
+  .dandy-btn,
+  .dandy-animated {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

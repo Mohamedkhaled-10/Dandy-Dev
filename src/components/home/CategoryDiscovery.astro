@@ -1,0 +1,194 @@
+---
+/**
+ * DANDY COSMETICS — CATEGORY DISCOVERY SECTION (PHASE 3)
+ * Renders strictly the 4 canonical categories from src/utils/categories.ts.
+ */
+import Icon from '../ui/Icon.astro';
+import { getAllCategories } from '../../utils/categories';
+
+const categories = getAllCategories();
+const fallbackCatImg = '/assets/images/index-products/product-2.jpg';
+---
+
+<section
+  class="dandy-home-section dandy-categories-section"
+  aria-labelledby="home-categories-heading"
+  data-studio-section="categories"
+>
+  <div class="dandy-container">
+    <header class="dandy-section-header">
+      <div class="dandy-section-titles">
+        <p class="dandy-section-kicker">الأقسام الرئيسية</p>
+        <h2 id="home-categories-heading" class="dandy-section-heading">
+          تسوقي حسب الروتين
+        </h2>
+      </div>
+      <a href="/all-products" class="dandy-section-more">
+        <span>كل المنتجات</span>
+        <Icon name="arrow-left" size={15} strokeWidth={1.8} />
+      </a>
+    </header>
+
+    <div class="dandy-cat-grid">
+      {categories.map((cat) => (
+        <a href={`/category/${cat.slug}`} class="dandy-cat-card">
+          <div class="dandy-cat-media">
+            <img
+              src={cat.image || fallbackCatImg}
+              alt={`${cat.arabicName} — Dandy Cosmetics`}
+              width="600"
+              height="450"
+              loading="lazy"
+              decoding="async"
+              referrerpolicy="no-referrer"
+              class="dandy-cat-img"
+              onerror={`this.onerror=null;this.src='${fallbackCatImg}';`}
+            />
+          </div>
+          <div class="dandy-cat-body">
+            <div class="dandy-cat-title-row">
+              <h3 class="dandy-cat-title">{cat.arabicName}</h3>
+              <span class="dandy-cat-en" dir="ltr">{cat.name}</span>
+            </div>
+            <p class="dandy-cat-desc">{cat.introText}</p>
+            <span class="dandy-cat-link">
+              <span>تصفحي القسم</span>
+              <Icon name="chevron-left" size={14} strokeWidth={2} />
+            </span>
+          </div>
+        </a>
+      ))}
+    </div>
+  </div>
+</section>
+
+<style>
+  .dandy-cat-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 20px;
+  }
+
+  .dandy-cat-card {
+    display: flex;
+    flex-direction: column;
+    text-decoration: none;
+    background-color: var(--dandy-bg-page);
+    border: 1px solid var(--dandy-border-subtle);
+    border-radius: var(--dandy-radius-md);
+    overflow: hidden;
+    transition:
+      transform var(--dandy-transition-base),
+      border-color var(--dandy-transition-base),
+      box-shadow var(--dandy-transition-base);
+  }
+
+  .dandy-cat-card:hover {
+    transform: translateY(-2px);
+    border-color: var(--dandy-border-default);
+    box-shadow: var(--dandy-shadow-sm);
+  }
+
+  .dandy-cat-media {
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    background-color: var(--dandy-bg-stage);
+    overflow: hidden;
+  }
+
+  .dandy-cat-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    transition: transform 360ms var(--dandy-ease-out);
+  }
+
+  .dandy-cat-card:hover .dandy-cat-img {
+    transform: scale(1.03);
+  }
+
+  .dandy-cat-body {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    padding: 16px;
+    gap: 8px;
+  }
+
+  .dandy-cat-title-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .dandy-cat-title {
+    margin: 0;
+    font-family: var(--dandy-font-ar-sans);
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--dandy-ink-primary);
+  }
+
+  .dandy-cat-en {
+    font-family: var(--dandy-font-en-sans);
+    font-size: 0.72rem;
+    font-weight: 500;
+    color: var(--dandy-ink-muted);
+    white-space: nowrap;
+  }
+
+  .dandy-cat-desc {
+    margin: 0;
+    font-size: var(--dandy-text-xs);
+    line-height: 1.65;
+    color: var(--dandy-ink-secondary);
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .dandy-cat-link {
+    margin-top: auto;
+    padding-top: 6px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: var(--dandy-text-xs);
+    font-weight: 700;
+    color: var(--dandy-ink-primary);
+    transition: color var(--dandy-transition-fast);
+  }
+
+  .dandy-cat-card:hover .dandy-cat-link {
+    color: var(--dandy-accent-text);
+  }
+
+  @media (max-width: 1099px) {
+    .dandy-cat-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+    }
+  }
+
+  @media (max-width: 639px) {
+    .dandy-cat-grid {
+      gap: 12px;
+    }
+
+    .dandy-cat-body {
+      padding: 12px;
+      gap: 6px;
+    }
+
+    .dandy-cat-title {
+      font-size: 0.9375rem;
+    }
+
+    .dandy-cat-en {
+      display: none;
+    }
+  }
+</style>
