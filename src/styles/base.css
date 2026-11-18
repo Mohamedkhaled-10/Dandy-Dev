@@ -50,6 +50,21 @@ html[dir="rtl"] .dandy-prose h4 {
   text-align: start;
 }
 
+/* English LTR Typography Compatibility (Phase 10 Groundwork) */
+html[dir="ltr"] .dandy-prose,
+html[dir="ltr"] .dandy-prose p,
+html[dir="ltr"] .dandy-prose h1,
+html[dir="ltr"] .dandy-prose h2,
+html[dir="ltr"] .dandy-prose h3,
+html[dir="ltr"] .dandy-prose h4 {
+  text-align: start;
+}
+
+html[lang="en"] .dandy-font-localized-display {
+  font-family: var(--dandy-font-en-display);
+  line-height: var(--dandy-leading-display-en);
+}
+
 .dandy-prose h1,
 .dandy-prose h2,
 .dandy-prose h3,

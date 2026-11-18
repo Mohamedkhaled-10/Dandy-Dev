@@ -354,6 +354,7 @@ const CATEGORY_LINKS = [
 
       const hoverCapable = window.matchMedia && window.matchMedia('(hover: hover)').matches;
       let closeTimer = null;
+      const hoverOpenedAt = new WeakMap();
 
       function setOpen(dropdown, open) {
         const trigger = dropdown.querySelector('.dandy-nav-trigger');
@@ -377,6 +378,14 @@ const CATEGORY_LINKS = [
 
         trigger.addEventListener('click', function (e) {
           e.stopPropagation();
+          const openedAt = hoverOpenedAt.get(dropdown) || 0;
+          const justOpenedByHover = hoverCapable && !menu.hidden && Date.now() - openedAt < 500;
+          hoverOpenedAt.delete(dropdown);
+          if (justOpenedByHover) {
+            closeAll(dropdown);
+            setOpen(dropdown, true);
+            return;
+          }
           const willOpen = menu.hidden;
           closeAll(dropdown);
           setOpen(dropdown, willOpen);
@@ -385,10 +394,15 @@ const CATEGORY_LINKS = [
         if (hoverCapable) {
           dropdown.addEventListener('mouseenter', function () {
             clearTimeout(closeTimer);
+            const wasClosed = menu.hidden;
             closeAll(dropdown);
             setOpen(dropdown, true);
+            if (wasClosed) {
+              hoverOpenedAt.set(dropdown, Date.now());
+            }
           });
           dropdown.addEventListener('mouseleave', function () {
+            hoverOpenedAt.delete(dropdown);
             closeTimer = setTimeout(function () {
               setOpen(dropdown, false);
             }, 140);

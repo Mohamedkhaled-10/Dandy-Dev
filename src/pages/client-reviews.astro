@@ -52,17 +52,61 @@ import EditorialPageHeader from '../components/editorial/EditorialPageHeader.ast
   <script>
     import { getIconSvg } from '../scripts/icons';
 
-    const db = (window as any).db || ((window as any).firebase && (window as any).firebase.database ? (window as any).firebase.database() : null);
     const imageSection = document.getElementById('testimonial-images');
     const videoSection = document.getElementById('testimonial-videos');
+
+    function isSafeMediaUrl(rawUrl: string): boolean {
+      const trimmed = rawUrl.trim();
+      return trimmed.startsWith('https://') || trimmed.startsWith('http://') || trimmed.startsWith('/');
+    }
 
     function renderEmpty(el: HTMLElement | null, msg: string): void {
       if (!el) return;
       el.innerHTML = `<div class="dandy-rev-empty"><p>${msg}</p></div>`;
     }
 
-    if (db && imageSection && videoSection) {
-      db.ref('testimonials').on('value', (snapshot: any) => {
+    function renderErrorWithRetry(el: HTMLElement | null, onRetry: () => void): void {
+      if (!el) return;
+      el.innerHTML = '';
+      const box = document.createElement('div');
+      box.className = 'dandy-rev-empty';
+      const p = document.createElement('p');
+      p.textContent = 'تعذر تحميل التجارب حالياً بسبب ضعف الاتصال أو قيود الشبكة.';
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'dandy-btn dandy-btn--outline dandy-rev-retry-btn';
+      btn.innerHTML = `${getIconSvg('rotate-ccw', { size: 15, strokeWidth: 1.85 })}<span>إعادة المحاولة</span>`;
+      btn.addEventListener('click', onRetry);
+      box.appendChild(p);
+      box.appendChild(btn);
+      el.appendChild(box);
+    }
+
+    function loadTestimonials(): void {
+      const db = (window as any).db || ((window as any).firebase && (window as any).firebase.database ? (window as any).firebase.database() : null);
+      if (!db || !imageSection || !videoSection) {
+        renderEmpty(imageSection, 'لا توجد تجارب متاحة حالياً.');
+        renderEmpty(videoSection, 'لا توجد تجارب متاحة حالياً.');
+        return;
+      }
+
+      imageSection.innerHTML = '<p class="dandy-rev-loading">جاري تحميل التجارب المصورة...</p>';
+      videoSection.innerHTML = '<p class="dandy-rev-loading">جاري تحميل التجارب المرئية...</p>';
+
+      let settled = false;
+      const fallbackTimer = window.setTimeout(() => {
+        if (!settled) {
+          settled = true;
+          renderErrorWithRetry(imageSection, loadTestimonials);
+          renderErrorWithRetry(videoSection, loadTestimonials);
+        }
+      }, 7000);
+
+      const handleSnapshot = (snapshot: any) => {
+        if (settled) return;
+        settled = true;
+        window.clearTimeout(fallbackTimer);
+
         const data = snapshot.val();
         imageSection.innerHTML = '';
         videoSection.innerHTML = '';
@@ -78,7 +122,7 @@ import EditorialPageHeader from '../components/editorial/EditorialPageHeader.ast
 
         Object.values(data).forEach((rawItem: unknown) => {
           const item = rawItem as { type?: string; url?: string } | null;
-          if (!item || !item.url) return;
+          if (!item || typeof item.url !== 'string' || !isSafeMediaUrl(item.url)) return;
 
           const capsule = document.createElement('div');
           capsule.className = 'dandy-rev-capsule';
@@ -95,7 +139,12 @@ import EditorialPageHeader from '../components/editorial/EditorialPageHeader.ast
             img.src = item.url;
             img.alt = 'تجربة استخدام منتجات داندي';
             img.loading = 'lazy';
+            img.decoding = 'async';
             img.referrerPolicy = 'no-referrer';
+            img.onerror = () => {
+              img.onerror = null;
+              img.src = '/assets/images/logo.png';
+            };
 
             link.appendChild(img);
             capsule.appendChild(link);
@@ -128,11 +177,24 @@ import EditorialPageHeader from '../components/editorial/EditorialPageHeader.ast
         if ((window as any).GLightbox) {
           (window as any).GLightbox({ selector: '.glightbox' });
         }
-      });
-    } else {
-      renderEmpty(imageSection, 'لا توجد تجارب متاحة حالياً.');
-      renderEmpty(videoSection, 'لا توجد تجارب متاحة حالياً.');
+      };
+
+      const handleError = () => {
+        if (settled) return;
+        settled = true;
+        window.clearTimeout(fallbackTimer);
+        renderErrorWithRetry(imageSection, loadTestimonials);
+        renderErrorWithRetry(videoSection, loadTestimonials);
+      };
+
+      try {
+        db.ref('testimonials').once('value', handleSnapshot, handleError);
+      } catch {
+        handleError();
+      }
     }
+
+    loadTestimonials();
   </script>
 </BaseLayout>
 
@@ -180,14 +242,20 @@ import EditorialPageHeader from '../components/editorial/EditorialPageHeader.ast
   .dandy-rev-link {
     display: block;
     text-decoration: none;
+    background-color: var(--dandy-bg-stage);
   }
 
   .dandy-rev-capsule img {
     width: 100%;
     aspect-ratio: 4 / 5;
-    object-fit: cover;
+    object-fit: contain;
+    padding: 8px;
     display: block;
     background-color: var(--dandy-bg-stage);
+  }
+
+  .dandy-rev-retry-btn {
+    margin-top: 14px;
   }
 
   .dandy-rev-video-tile {

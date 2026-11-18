@@ -7,6 +7,8 @@ import ConsentBanner from '../components/ConsentBanner.astro';
 import ToastHost from '../components/ui/ToastHost.astro';
 import { getPublishedPinkFridayCampaign } from '../utils/pink-friday-server.ts';
 import { isExcludedMotionRoute } from '../scripts/page-entrance';
+import { getDocumentAttributes } from '../i18n/config';
+import type { HreflangAlternate } from '../i18n/types';
 import '../styles/tokens.css';
 import '../styles/base.css';
 import '../styles/components.css';
@@ -19,6 +21,7 @@ export interface Props {
   canonical?: string;
   lang?: string;
   dir?: string;
+  alternates?: HreflangAlternate[];
   showHeader?: boolean;
   showFooter?: boolean;
   showDashboardNav?: boolean;
@@ -31,12 +34,17 @@ const {
   keywords = 'Dandy, Dandy Cosmetics, دندي, داندي, دندي للتجميل, العناية بالبشرة, العناية بالشعر, مستحضرات تجميل طبيعية, منتجات دندي, Natural Skincare, Beauty Store Egypt',
   canonical,
   lang = 'ar',
-  dir = 'rtl',
+  dir,
+  alternates = [],
   showHeader = true,
   showFooter = true,
   showDashboardNav = false,
   robots = 'index, follow',
 } = Astro.props;
+
+const docAttrs = getDocumentAttributes(lang);
+const resolvedLang = docAttrs.lang;
+const resolvedDir = dir === 'rtl' || dir === 'ltr' ? dir : docAttrs.dir;
 
 const pathname = (Astro.url.pathname || '').replace(/\/$/, '');
 const defaultCanonical = `https://dandy-ebon.vercel.app${pathname || '/'}`;
@@ -49,7 +57,7 @@ const enableStorefrontMotion =
 ---
 
 <!DOCTYPE html>
-<html lang={lang} dir={dir}>
+<html lang={resolvedLang} dir={resolvedDir}>
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -58,6 +66,9 @@ const enableStorefrontMotion =
   {keywords && <meta name="keywords" content={keywords} />}
   <meta name="robots" content={robots} />
   <link rel="canonical" href={resolvedCanonical} />
+  {Array.isArray(alternates) && alternates.length > 0 && alternates.map((alt) => (
+    <link rel="alternate" hreflang={alt.hreflang} href={alt.href} />
+  ))}
   <meta name="google-site-verification" content="vgH4o9b-LdBpUBJcipJLSwPjgGpGIepXbHXz8e5r3B8" />
 
   <!-- Favicons -->

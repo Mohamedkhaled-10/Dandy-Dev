@@ -295,4 +295,14 @@
 
   --transition-fast: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
   --transition-smooth: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* Phase 10 Locale-Active Font Tokens (Default = Arabic RTL) */
+  --dandy-font-active-sans: var(--dandy-font-ar-sans);
+  --dandy-font-active-display: var(--dandy-font-ar-display);
+}
+
+html[lang="en"] {
+  --dandy-font-active-sans: var(--dandy-font-en-sans);
+  --dandy-font-active-display: var(--dandy-font-en-display);
+  --font-sans: var(--dandy-font-en-sans);
 }

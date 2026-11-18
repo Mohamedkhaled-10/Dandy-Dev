@@ -1,0 +1,1469 @@
+# DANDY COSMETICS
+# PHASE 9 — FINAL UI/UX AUDIT & PRODUCTION POLISH
+
+## Comprehensive Storefront Review · Visual Consistency · Responsive Quality · Interaction Reliability · Performance & Accessibility
+
+---
+
+# 1. ROLE & PROJECT CONTEXT
+
+Act as a Principal Frontend Architect, Senior UI/UX Engineer, Visual Quality Assurance Specialist, and Premium E-commerce Experience Auditor.
+
+You are working on the existing DANDY Cosmetics storefront.
+
+The approved design direction is:
+
+**BOTANICAL EDITORIAL COMMERCE**
+
+The project has completed the following implementation phases:
+
+- Phase 0 — Architecture Audit & Master Design Blueprint.
+- Phase 1 — Design System Foundation.
+- Phase 2 — Global Storefront Shell Reconstruction.
+- Phase 3 — Product Card & Homepage Reconstruction.
+- Phase 4 — Product Detail Page Reconstruction.
+- Phase 5 — Catalog, Categories & Campaigns Reconstruction.
+- Phase 6 — Cart, Checkout, Invoice & Order Tracking Reconstruction.
+- Phase 7 — Global Page Entrance & Progressive Content Reveal System.
+- Phase 8 — Customer Accounts, Editorial Content & Support Reconstruction.
+
+The following additional standalone improvements were also completed:
+
+- Homepage synchronization with the existing Admin Studio customization system.
+- Responsive refinement of the homepage Hero for tablet and mobile devices.
+
+Your task is to perform a comprehensive final quality review of the existing implementation and apply carefully scoped frontend refinements.
+
+## Main Objective
+
+Bring the entire Arabic DANDY storefront to a consistent, polished, production-quality visual and interaction standard.
+
+This phase is NOT another complete redesign.
+
+It is a systematic process of:
+
+1. Auditing the entire customer-facing storefront.
+2. Identifying visual and interaction inconsistencies.
+3. Inspecting responsive behavior.
+4. Discovering broken or incomplete frontend interactions.
+5. Reviewing accessibility and performance.
+6. Correcting confirmed issues.
+7. Running comprehensive regression tests.
+8. Preparing a final release-readiness report.
+
+**Do not modify working components just to make changes. Preserve good existing implementations and focus on genuine deficiencies.**
+
+---
+
+# 2. MANDATORY PRE-AUDIT DOCUMENTATION
+
+Before implementing any modifications, inspect the actual current workspace.
+
+Read the available project documentation:
+
+- `DANDY_COMPLETE_UI_UX_BLUEPRINT_AR.md`
+- `DANDY_PHASE_1_FINAL_REPORT_AR.md`
+- `DANDY_PHASE_2_FINAL_REPORT_AR.md`
+- `DANDY_PHASE_3_FINAL_REPORT_AR.md`
+- `DANDY_PHASE_4_FINAL_REPORT_AR.md`
+- `DANDY_PHASE_5_FINAL_REPORT_AR.md`
+- `DANDY_PHASE_6_FINAL_REPORT_AR.md`
+- `DANDY_PHASE_7_FINAL_REPORT_AR.md`
+- `DANDY_PHASE_8_FINAL_REPORT_AR.md`
+
+Also inspect the standalone homepage/Admin Studio and responsive Hero modifications where documentation or implementation references are available.
+
+Do not assume the repository contains the latest implementation.
+
+The current working environment is the authoritative source of truth.
+
+Do not search GitHub for remote changes.
+
+## 2.1 Audit the Global Design System
+
+Inspect:
+
+- `src/styles/tokens.css`
+- `src/styles/base.css`
+- `src/styles/components.css`
+- `src/styles/animations.css`
+- `src/layouts/BaseLayout.astro`
+- `src/components/ui/Icon.astro`
+- `src/scripts/icons.ts`
+- `src/scripts/toast.ts`
+- `src/utils/animations.ts`
+- `src/scripts/page-entrance.ts`
+
+Evaluate:
+
+- Duplicate or conflicting CSS rules.
+- Inconsistent typography.
+- Incorrect design-token usage.
+- Inconsistent component spacing.
+- Unexpected button sizes.
+- Inconsistent border radii.
+- Incorrect z-index relationships.
+- Responsive layout inconsistencies.
+- Missing focus states.
+- Motion conflicts.
+- Unused or duplicated styles that demonstrably cause problems.
+
+Do not perform broad stylesheet cleanup without proving that a rule is unused and safe to remove.
+
+## 2.2 Audit All Customer-Facing Routes
+
+Discover the actual existing routes from the project.
+
+The expected route inventory includes:
+
+### Core Storefront
+
+- `/`
+- `/all-products`
+- `/category/skin-care`
+- `/category/hair-care`
+- `/category/body-care`
+- `/category/fragrance`
+- `/product/[...slug]`
+- `/special-offers`
+- `/pink-friday`
+
+### Shopping Journey
+
+- `/cart`
+- `/invoice`
+- `/track-order`
+
+### Customer Accounts
+
+- `/account`
+- `/account-login`
+- `/account-signup`
+
+### Brand & Editorial
+
+- `/about-us`
+- `/blog`
+- `/blog/[...slug]`
+- `/post`
+- `/client-reviews`
+
+### Customer Support
+
+- `/contact-us`
+- `/help`
+
+### Legal & System
+
+- `/privacy-policy`
+- `/terms`
+- `/404`
+
+This list is a reference inventory.
+
+Verify actual routes before testing. Do not create new routes simply to match this list.
+
+Exclude administrative pages and `/api/*` endpoints from the visual redesign audit.
+
+## 2.3 Create the Audit Report
+
+Create:
+
+`DANDY_PHASE_9_PRE_RELEASE_AUDIT_AR.md`
+
+The document must classify findings using four categories:
+
+**Critical**
+Issues that prevent an essential customer journey or make an important page unusable.
+
+**High**
+Major visual, responsive, or interaction problems that materially damage the customer experience.
+
+**Medium**
+Noticeable inconsistencies or usability problems that should be corrected before release.
+
+**Low**
+Minor visual polish or optional refinements.
+
+For every finding, document:
+
+- Affected route.
+- Actual problem.
+- Reproduction steps.
+- Observed behavior.
+- Expected behavior.
+- Severity.
+- Proposed solution.
+- Relevant files.
+
+Do not invent problems to justify modifications.
+
+---
+
+# 3. STRICT SCOPE — FRONTEND QUALITY ONLY
+
+This phase authorizes carefully scoped frontend improvements across the existing customer-facing storefront.
+
+Allowed:
+
+- Visual consistency corrections.
+- Responsive layout corrections.
+- Typography refinement.
+- Spacing corrections.
+- Image presentation improvements.
+- UI interaction repairs.
+- Accessibility refinements.
+- Animation consistency improvements.
+- Error, loading, and empty-state presentation.
+- Small component-level refactoring when necessary to fix a verified issue.
+- Frontend performance improvements without configuration changes.
+
+Not authorized:
+
+- Complete homepage redesign.
+- Complete ProductCard redesign.
+- Complete PDP redesign.
+- Complete catalog redesign.
+- Complete cart or checkout redesign.
+- Account architecture redesign.
+- New marketing features.
+- New backend functionality.
+- New database features.
+- New business rules.
+- New payment methods.
+- New product-management systems.
+
+Preserve the work completed in Phases 1–8.
+
+**Do not turn Phase 9 into an opportunity to rebuild the project again.**
+
+---
+
+# 4. CRITICAL BUILD, ASTRO & VERCEL CONFIGURATION PROTECTION
+
+**THIS SECTION IS NON-NEGOTIABLE AND OVERRIDES ANY CONFLICTING INSTRUCTION.**
+
+The original project framework, build environment, package configuration, and deployment settings must remain completely unchanged.
+
+Never modify, replace, rename, delete, regenerate, or reformat:
+
+### Astro & Framework Configuration
+
+- `astro.config.mjs`
+- `astro.config.js`
+- Any existing framework configuration variants.
+
+### Vercel & Deployment
+
+- `vercel.json`
+- `.vercelignore`
+- Deployment scripts.
+- Deployment configuration files.
+
+### Package & Dependency Configuration
+
+- `package.json`
+- `package-lock.json`
+- `npm-shrinkwrap.json`
+- `pnpm-lock.yaml`
+- `yarn.lock`
+- `bun.lock`
+- `bun.lockb`
+
+### Build & Compiler Configuration
+
+- `tsconfig.json`
+- `jsconfig.json`
+- `vite.config.*`
+- Existing compiler configuration.
+- Existing build-related configuration.
+
+### Environment & Automation
+
+- `patch-env.cjs`
+- `server.js`
+- `.env`
+- `.env.*`
+- `.npmrc`
+- `.nvmrc`
+- `.node-version`
+- Existing CI/CD configurations.
+- Existing GitHub workflows.
+- Existing deployment automation.
+- Any other build, framework, dependency, or deployment configuration.
+
+This list is not exhaustive.
+
+## 4.1 Dependency Restrictions
+
+Do not:
+
+- Install dependencies.
+- Uninstall dependencies.
+- Upgrade packages.
+- Downgrade packages.
+- Change dependency versions.
+- Regenerate lockfiles.
+- Modify npm scripts.
+- Change Node.js requirements.
+- Introduce a new UI framework.
+- Replace the current Astro architecture.
+
+Use the existing installed dependencies.
+
+## 4.2 Immutable Baseline
+
+Before implementation:
+
+1. Inspect all protected files that exist.
+2. Record their exact original contents.
+3. Calculate SHA-256 checksums where available.
+4. Save an immutable baseline snapshot.
+5. Use this snapshot as the authoritative reference for the entire phase.
+
+Historical checksums from previous reports may be used as additional references, but the actual current workspace determines the baseline.
+
+If any protected file is accidentally modified:
+
+1. Stop the affected operation.
+2. Restore its exact original pre-Phase-9 content.
+3. Do not reconstruct the file from memory.
+4. Verify the original SHA-256 checksum.
+5. Record the incident.
+
+Before finishing Phase 9, confirm that every protected file remains byte-for-byte identical to the original baseline.
+
+**Do not modify the original Build, Astro, Vercel, package, dependency, or deployment settings under any circumstances.**
+
+---
+
+# 5. GLOBAL VISUAL CONSISTENCY AUDIT
+
+Review the entire storefront as one unified brand experience.
+
+A customer moving between pages should not feel that different parts of the store were built using unrelated templates.
+
+## 5.1 Color Consistency
+
+Verify that the existing design tokens are being used consistently.
+
+Inspect:
+
+- Page backgrounds.
+- Editorial surfaces.
+- Product image stages.
+- Main text colors.
+- Secondary text.
+- Commercial accent.
+- Botanical colors.
+- Borders.
+- Functional status colors.
+
+Preserve the established palette.
+
+Do not introduce new colors without a genuine design requirement.
+
+Avoid unnecessary pink usage in ordinary paragraphs, section headings, and large background areas.
+
+## 5.2 Typography
+
+Review:
+
+- Main headings.
+- Section titles.
+- Product names.
+- Prices.
+- Form labels.
+- Descriptions.
+- Breadcrumbs.
+- Captions.
+- Legal content.
+- English numeric content.
+
+Ensure consistent use of the approved fonts:
+
+- Alexandria.
+- Amiri.
+- Playfair Display.
+- Plus Jakarta Sans.
+
+Verify Arabic text rendering, line heights, and wrapping.
+
+Do not apply positive letter spacing to Arabic text.
+
+Ensure numbers and currencies remain readable through the existing numeric typography utilities.
+
+## 5.3 Spacing and Layout Rhythm
+
+Check:
+
+- Content container widths.
+- Section vertical spacing.
+- Grid gaps.
+- Card padding.
+- Form spacing.
+- Heading-to-description spacing.
+- Page top offsets under the sticky header.
+- Footer spacing.
+- Mobile safe-area spacing.
+
+Correct inconsistent spacing only where it materially affects visual quality.
+
+## 5.4 Borders, Radii and Shadows
+
+Maintain the established restrained style.
+
+Look for:
+
+- Excessively rounded buttons.
+- Inconsistent card radii.
+- Unnecessary shadows.
+- Duplicate borders.
+- Nested frames.
+- Heavy decorative outlines.
+
+Do not apply a global override that breaks already-correct components.
+
+## 5.5 Buttons and Controls
+
+Verify consistent presentation of:
+
+- Primary buttons.
+- Secondary buttons.
+- Outline buttons.
+- Icon buttons.
+- Disabled controls.
+- Loading controls.
+- Selected states.
+- Form controls.
+
+Every visible actionable element must have a real working purpose.
+
+Do not leave decorative controls pretending to be functional.
+
+---
+
+# 6. RESPONSIVE QUALITY AUDIT
+
+This is one of the most important objectives of Phase 9.
+
+Review the storefront intentionally at:
+
+| Viewport | Dimensions |
+|---|---|
+| Small Mobile | 390 × 844 |
+| Large Mobile | 430 × 932 |
+| Tablet | 768 × 1024 |
+| Small Desktop | 1024 × 768 |
+| Desktop | 1440 × 900 |
+
+For each relevant page, inspect:
+
+- Content width.
+- Horizontal overflow.
+- Vertical spacing.
+- Image proportions.
+- Grid column counts.
+- Heading wrapping.
+- Button dimensions.
+- Form alignment.
+- Navigation overlap.
+- Footer layout.
+- Dialogs and drawers.
+- Sticky controls.
+- Safe-area handling.
+
+## 6.1 Mobile-Specific Review
+
+Ensure that:
+
+- Product cards remain readable.
+- Product images are not distorted.
+- Important CTAs are accessible.
+- Search is easy to use.
+- Filter drawers are usable.
+- Checkout fields are not cramped.
+- Order information does not overflow.
+- Account navigation remains practical.
+- Legal and blog text remains readable.
+- BottomMobileNav does not cover important actions.
+- BAB does not overlap essential content.
+- Toast notifications remain visible without covering controls.
+
+## 6.2 Horizontal Overflow
+
+For every audited route, verify:
+
+`document.documentElement.scrollWidth === document.documentElement.clientWidth`
+
+Do not hide overflow using a global rule.
+
+Find the actual element causing it.
+
+Correct its sizing, grid behavior, text wrapping, image dimensions, or positioning.
+
+Do not clip legitimate content to produce a passing measurement.
+
+## 6.3 Homepage Hero Preservation
+
+The homepage Hero received separate responsive refinements in an earlier standalone task.
+
+Preserve that implementation.
+
+Verify that:
+
+- Desktop composition remains correct.
+- Tablet retains its intended visual arrangement.
+- Mobile keeps the image visually prominent.
+- The title and CTA remain discoverable.
+- The image does not get pushed below a long text block.
+- No overlapping or clipping occurs.
+- The Admin Studio-configured Hero content remains visible.
+
+Do not reimplement the responsive Hero from scratch.
+
+Only correct a specifically verified regression if one exists.
+
+---
+
+# 7. GLOBAL COMPONENTS & INTERACTION AUDIT
+
+Review shared components that appear throughout the storefront.
+
+## 7.1 Header and Announcement Bar
+
+Verify:
+
+- Logo display.
+- Active navigation state.
+- Dropdown behavior.
+- Mobile menu.
+- Search activation.
+- Cart counter.
+- Guest/authenticated navigation state.
+- Announcement visibility.
+- Pink Friday state.
+- Escape-key behavior.
+- Sticky header spacing.
+
+Check the previously documented desktop dropdown issue where hovering and clicking the same category trigger could immediately close the menu.
+
+If it still exists, correct the event-state handling without changing the navigation architecture.
+
+Do not redesign the Header.
+
+## 7.2 Search
+
+Verify:
+
+- Opening and closing.
+- Search input.
+- Product result rendering.
+- Empty state.
+- Keyboard shortcuts.
+- Escape behavior.
+- Result navigation.
+- Mobile layout.
+- Focus management.
+
+## 7.3 Footer and Bottom Navigation
+
+Verify:
+
+- Correct links.
+- Logo presentation.
+- Column layout.
+- Mobile spacing.
+- Bottom navigation.
+- Cart counter.
+- No content hidden behind fixed navigation.
+
+## 7.4 DandyToast
+
+Review:
+
+- Success notifications.
+- Error notifications.
+- Informational notifications.
+- Stacking behavior.
+- Close button.
+- Escape support.
+- Screen-reader announcements.
+- BAB overlap.
+- Mobile positioning.
+
+Do not create a second toast system.
+
+## 7.5 BAB Assistant
+
+Verify:
+
+- Floating button visibility.
+- Open/close behavior.
+- Proper placement.
+- Safe spacing from BottomMobileNav.
+- Safe spacing from Toast.
+- No obstruction of primary actions.
+
+Do not redesign or rewrite the assistant.
+
+## 7.6 Consent Banner
+
+Verify:
+
+- Initial display state.
+- Accept behavior.
+- Reject/revoke behavior where supported.
+- Persistent user choices.
+- Privacy-page integration.
+- Mobile layout.
+- No obstruction of essential controls.
+
+Preserve the existing consent implementation.
+
+---
+
+# 8. HOMEPAGE & ADMIN STUDIO INTEGRATION AUDIT
+
+The homepage-dashboard synchronization was completed as a standalone task.
+
+Phase 9 must verify this integration without rebuilding it.
+
+Inspect:
+
+- Existing homepage section identifiers.
+- `data-studio-section` attributes.
+- Existing Studio preview communication.
+- Section visibility behavior.
+- Section ordering.
+- Editable text and image configuration.
+- Hero customization.
+- Published versus preview content.
+
+Verify the supported workflow:
+
+1. Open the existing Admin Studio.
+2. Load the homepage customization interface.
+3. Inspect section availability.
+4. Change a supported section property using a safe preview configuration.
+5. Verify that the storefront preview receives the change.
+6. Test supported visibility controls.
+7. Test supported ordering controls.
+8. Verify that the configured content is rendered correctly.
+9. Verify that the production homepage remains unchanged by test modifications.
+
+Do not:
+
+- Redesign Admin Studio.
+- Change administrative authentication.
+- Change database schemas.
+- Introduce new backend interfaces.
+- Recreate the homepage.
+- Remove existing customization capabilities.
+
+If a preview-only test cannot be performed safely, test the existing contracts and DOM integration and document the limitation.
+
+---
+
+# 9. PRODUCT & CATALOG EXPERIENCE AUDIT
+
+Review consistency across:
+
+- `/all-products`
+- `/category/[category]`
+- `/special-offers`
+- `/pink-friday`
+
+Verify:
+
+- ProductCard consistency.
+- Accurate prices.
+- Genuine discounts.
+- Campaign eligibility.
+- Correct category relationships.
+- Correct image proportions.
+- Product links.
+- Search behavior.
+- Filtering behavior.
+- Sorting behavior.
+- Empty states.
+- Filter URL synchronization.
+- Mobile drawer behavior.
+- Campaign countdown display.
+- Collection customization behavior.
+
+Pay particular attention to avoiding misleading information.
+
+Do not invent:
+
+- Ratings.
+- Sales numbers.
+- Product stock.
+- Discount values.
+- Campaign eligibility.
+- Product benefits.
+
+Preserve Phase 3 and Phase 5 pricing utilities.
+
+Do not create new price calculations.
+
+---
+
+# 10. PRODUCT DETAIL EXPERIENCE AUDIT
+
+Review representative product detail pages.
+
+Verify:
+
+- Main image presentation.
+- Single-image gallery behavior.
+- Multi-image gallery code path where available.
+- Zoom and lightbox.
+- Variant selection.
+- Multiple-scent behavior.
+- Quantity controls.
+- Price updates.
+- Discounts.
+- Add-to-cart.
+- Wishlist.
+- Product descriptions.
+- Specifications.
+- Reviews.
+- Related products.
+- SEO metadata.
+- JSON-LD.
+
+Use the real product data available in the current workspace.
+
+Do not invent image galleries or fake ratings for testing.
+
+Pay particular attention to the actual cart payload generated by PDP interactions.
+
+Products selected through a PDP must remain compatible with the existing cart and Phase 6 checkout.
+
+---
+
+# 11. COMPLETE PURCHASE JOURNEY AUDIT
+
+Review the complete customer journey.
+
+The objective is to make sure that the various phases work as one coherent purchasing experience.
+
+## 11.1 Shopping to Cart
+
+Verify:
+
+- Direct product additions.
+- Variant-dependent product additions.
+- Pink Friday collection additions.
+- Correct quantities.
+- Correct selected variants.
+- Correct item images.
+- Correct prices.
+- Correct cart counters.
+
+## 11.2 Cart
+
+Review:
+
+- Empty state.
+- Individual items.
+- Collections.
+- Quantity controls.
+- Removal confirmation.
+- Subtotal.
+- Shipping.
+- Discounts.
+- Total.
+- Guest checkout.
+- Existing address integration.
+- Responsive layout.
+
+Preserve the existing shipping calculation rules and current guest checkout capability.
+
+## 11.3 Checkout
+
+Verify the existing three-step experience:
+
+1. Cart review.
+2. Delivery information.
+3. Final review and order submission.
+
+Preserve:
+
+- Existing field validation.
+- Governorate selection.
+- Delivery fees.
+- COD payment.
+- Turnstile integration.
+- Existing order API contract.
+- Existing loading and error states.
+
+Do not place actual production orders during testing.
+
+Use safe mocked responses, request interception, or other isolated test fixtures.
+
+## 11.4 Invoice and Confirmation
+
+Verify:
+
+- Valid order display.
+- Correct order data.
+- Correct item presentation.
+- Correct collection details.
+- Correct total.
+- Order reference.
+- Print layout.
+- Error states.
+- Existing access-token handling.
+
+Do not fabricate production order data.
+
+## 11.5 Order Tracking
+
+Verify:
+
+- Search form.
+- Input validation.
+- Existing order lookup.
+- Existing phone matching.
+- Actual order status presentation.
+- Status timeline.
+- Not-found state.
+- Network-failure presentation.
+
+Do not invent delivery progress or tracking events.
+
+---
+
+# 12. CUSTOMER ACCOUNT & CONTENT AUDIT
+
+Review Phase 8 implementations without initiating another redesign.
+
+## Account and Authentication
+
+Verify:
+
+- Login.
+- Signup.
+- Password visibility.
+- Form validation.
+- Guest state.
+- Authenticated state where available.
+- Existing Firebase integrations.
+- Turnstile.
+- Orders.
+- Wishlist.
+- Saved addresses.
+- Checkout address compatibility.
+
+If a real authenticated test session is unavailable, explicitly document which flows remain unverified.
+
+Do not invent successful authenticated operations.
+
+## About and Editorial Pages
+
+Verify:
+
+- About DANDY.
+- Blog listing.
+- Article details.
+- Related products.
+- Related articles.
+- Customer reviews.
+- Article routes.
+- Redirect behavior.
+- SEO metadata.
+
+## Support
+
+Verify:
+
+- Contact channels.
+- Contact page navigation.
+- Help accordion.
+- Correct shipping information.
+- Support links.
+
+## Legal
+
+Verify:
+
+- Privacy policy.
+- Consent controls.
+- Terms.
+- 404 behavior.
+- Correct HTTP status.
+
+Do not change the legal meaning of existing content.
+
+Do not introduce unsupported customer-facing claims.
+
+---
+
+# 13. GLOBAL ANIMATION SYSTEM AUDIT
+
+Phase 7 introduced the PageEntranceManager and progressive reveal system.
+
+Inspect:
+
+- `src/scripts/page-entrance.ts`
+- `src/utils/animations.ts`
+- `src/styles/animations.css`
+- Existing motion markers.
+- Existing initialization through BaseLayout.
+
+Verify:
+
+- Initial content appears promptly.
+- No content remains hidden.
+- No excessive entrance delay occurs.
+- Scroll reveals run once.
+- Browser back/forward restoration behaves correctly.
+- Keyboard focus reveals content when necessary.
+- Reduced-motion preferences work.
+- Product grid batching remains responsive.
+- Filter updates do not reanimate entire grids.
+- Homepage Hero images are not delayed.
+- Checkout and form interactions remain immediately usable.
+
+Check for duplicate observers and event listeners.
+
+Do not rebuild the animation system.
+
+Do not introduce another animation library.
+
+Correct only verified problems.
+
+---
+
+# 14. IMAGE AND ASSET QUALITY AUDIT
+
+Perform a focused review of image quality across the storefront.
+
+Check:
+
+- Broken images.
+- Missing local assets.
+- Invalid fallback URLs.
+- Incorrect aspect ratios.
+- Distorted product images.
+- Aggressive cropping.
+- Poor mobile image composition.
+- Logo clipping.
+- Incorrect `object-fit`.
+- Missing or poor alt text.
+- Unnecessarily large image downloads.
+
+Preserve existing image sources and data contracts.
+
+Use existing optimization utilities.
+
+Do not generate fake product imagery.
+
+Do not replace real content images with random stock photography.
+
+If a genuine missing asset cannot be repaired using available project assets, document the exact asset requirement instead of inventing a replacement.
+
+---
+
+# 15. ACCESSIBILITY AUDIT
+
+Perform a practical accessibility review across the customer-facing storefront.
+
+Check:
+
+- Semantic HTML.
+- Heading hierarchy.
+- Button and link semantics.
+- Form labels.
+- Validation messages.
+- Focus visibility.
+- Keyboard navigation.
+- Dialog accessibility.
+- Drawer accessibility.
+- Accordions.
+- Dropdown menus.
+- Image alt text.
+- Color contrast.
+- Touch target dimensions.
+- Screen-reader announcements.
+- Reduced-motion behavior.
+
+Target WCAG 2.1 AA principles wherever applicable.
+
+Do not claim full WCAG certification based only on automated scanning or a limited set of checks.
+
+Report any unverified or incomplete areas honestly.
+
+Do not alter backend behavior or security architecture as part of this visual accessibility review.
+
+---
+
+# 16. FRONTEND PERFORMANCE REVIEW
+
+Review frontend performance without changing the build architecture.
+
+Inspect:
+
+- Largest Contentful Paint.
+- Cumulative Layout Shift.
+- Image loading priority.
+- Image dimensions.
+- Lazy-loading behavior.
+- Unnecessary JavaScript.
+- Duplicate script initialization.
+- Animation overhead.
+- Large layout recalculations.
+- Excessive DOM elements.
+- Repeated data processing.
+- Unnecessary client-side rendering.
+- Font-loading behavior.
+
+Preserve the SSR-first approach established in earlier phases.
+
+Do not introduce new dependencies.
+
+Do not install Lighthouse or another testing tool.
+
+Use existing browser and project capabilities where available.
+
+Record the testing environment and distinguish local laboratory measurements from real-user performance data.
+
+Where practical, use the following as improvement objectives:
+
+- LCP: approximately 2.5 seconds or better.
+- CLS: below 0.05 as a preferred target.
+- No unnecessary animation-induced layout shifts.
+- No significant performance regression relative to the current baseline.
+
+Do not claim that production Core Web Vitals have been verified from local browser tests alone.
+
+---
+
+# 17. RTL & FUTURE MULTILINGUAL READINESS
+
+The current storefront is Arabic-first.
+
+Preserve its existing Arabic content.
+
+Verify that shared layouts remain compatible with both:
+
+- `dir="rtl"`
+- `dir="ltr"`
+
+Check:
+
+- CSS logical properties.
+- Navigation alignment.
+- Breadcrumb direction.
+- Product pricing.
+- Numerical values.
+- Mixed Arabic/English text.
+- Form alignment.
+- Directional icons.
+- Animation offsets.
+
+Do not create the English storefront in Phase 9.
+
+Do not add:
+
+- Language switcher.
+- `/en` routes.
+- Translation framework.
+- New localization infrastructure.
+- English content translation.
+
+The full English storefront and language switching will be handled in the dedicated future multilingual phases.
+
+---
+
+# 18. PREVIOUSLY KNOWN LIMITATIONS TO RECHECK
+
+The following historical limitations deserve explicit attention.
+
+### 18.1 Authenticated Customer Testing
+
+Previous phases could not fully verify real Firebase-authenticated customer operations because no suitable test customer session was available.
+
+If a valid test account is now available, verify the relevant account operations safely.
+
+Otherwise, preserve the existing limitation in the final report.
+
+Do not use real customer data without authorization.
+
+### 18.2 Multiple Product Images
+
+The previous product audit found that all 32 catalog products contained only one image at that time.
+
+Do not assume that this is still true.
+
+Inspect the current data.
+
+If multiple genuine images are now available, verify the multi-image gallery visually.
+
+Otherwise, retain the truthful statement that the single-image path was verified and the multi-image path was only tested through suitable unit tests.
+
+### 18.3 Sold-Out and Campaign Edge States
+
+Review existing tests and actual data for:
+
+- Sold-out products.
+- Empty categories.
+- Empty promotional pages.
+- Upcoming campaigns.
+- Ended campaigns.
+- Disabled campaigns.
+- Products with no reviews.
+- Network failures.
+
+Do not modify production data to manufacture these states.
+
+Use safe isolated test fixtures when required.
+
+### 18.4 Firebase-Dependent UI
+
+Review pages such as:
+
+- `/account`
+- `/client-reviews`
+- `/invoice`
+- `/track-order`
+
+Ensure that genuine network failures do not leave customers trapped on permanent loading screens when an appropriate error or retry state can be displayed using the existing frontend contracts.
+
+Do not create new backend functionality.
+
+---
+
+# 19. TESTING STRATEGY
+
+Use actual Chromium/Playwright browser testing.
+
+Create a route inventory based on the actual project.
+
+## 19.1 Core Route Coverage
+
+For every existing customer-facing route:
+
+- Test HTTP response behavior.
+- Inspect the first viewport.
+- Inspect a representative lower-page section.
+- Check horizontal overflow.
+- Check broken images.
+- Check console errors.
+- Check essential navigation.
+
+At minimum, test all routes at:
+
+- Desktop: 1440 × 900.
+- Mobile: 390 × 844.
+
+For critical shopping routes, additionally test every approved viewport:
+
+- `/`
+- `/all-products`
+- All four category pages.
+- Representative product detail pages.
+- `/special-offers`
+- `/pink-friday`
+- `/cart`
+- `/invoice`
+- `/track-order`
+
+Test these five viewports:
+
+- 390 × 844
+- 430 × 932
+- 768 × 1024
+- 1024 × 768
+- 1440 × 900
+
+Document any route that was not tested at all five sizes.
+
+## 19.2 Functional Journey Coverage
+
+Test a complete safe customer journey:
+
+1. Open the homepage.
+2. Navigate to the catalog.
+3. Filter products.
+4. Open a product.
+5. Select a variant where applicable.
+6. Add it to the cart.
+7. Review the cart.
+8. Continue through guest checkout using test data.
+9. Verify the expected checkout submission behavior without creating a real production order.
+10. Test invoice and order-tracking presentation using safe test data.
+
+Also verify:
+
+- Pink Friday collection compatibility.
+- Existing campaign behavior.
+- Wishlist guest behavior.
+- Authentication page validation.
+- Mobile navigation.
+- Search.
+- Privacy consent.
+
+Do not submit real production orders.
+
+Do not modify live customer, product, or campaign data to test presentation states.
+
+## 19.3 Regression Matrix
+
+Retest representative routes from all previous phases.
+
+Make sure a correction to a shared component does not accidentally break other pages.
+
+---
+
+# 20. SAFE IMPLEMENTATION RULES
+
+After completing the audit, prepare a prioritized correction plan.
+
+Do not immediately modify every file.
+
+Follow this process:
+
+1. Audit.
+2. Classify issues.
+3. Identify shared root causes.
+4. Prioritize critical and high-severity problems.
+5. Fix the smallest appropriate scope.
+6. Retest affected pages.
+7. Run regression tests.
+8. Document remaining limitations.
+
+## Important Restrictions
+
+- Do not redesign stable pages.
+- Do not replace complete components for minor CSS issues.
+- Do not duplicate functionality.
+- Do not introduce new dependencies.
+- Do not modify pricing calculations.
+- Do not change business rules.
+- Do not change Firebase schemas.
+- Do not modify APIs.
+- Do not modify Admin Studio.
+- Do not alter existing customer purchase workflows unless a verified frontend defect makes it necessary.
+- Do not remove working functionality to simplify the design.
+- Do not make speculative visual changes without a clear reason.
+
+Every code change must correspond to a documented issue or a clearly justified consistency improvement.
+
+---
+
+# 21. FINAL BUILD & VALIDATION
+
+Run the existing project checks:
+
+```bash
+npm run lint
+npm run build
+```
+
+Run all existing test suites using the current project setup.
+
+Preserve previous tests.
+
+Do not modify protected configuration to make the build pass.
+
+After the final source modification:
+
+1. Rerun lint.
+2. Rerun build.
+3. Rerun affected unit tests.
+4. Rerun the relevant browser tests.
+5. Verify protected file checksums.
+6. Review the final changes for unintended side effects.
+
+Do not suppress errors or modify unrelated tests to produce successful results.
+
+---
+
+# 22. FINAL REPORTS
+
+Create two documents.
+
+## A. Pre-Release Audit
+
+`DANDY_PHASE_9_PRE_RELEASE_AUDIT_AR.md`
+
+This must document:
+
+- Complete route inventory.
+- Audit scope.
+- Existing issues.
+- Severity classification.
+- Screens and viewports inspected.
+- Main customer journey findings.
+- Performance findings.
+- Accessibility findings.
+- Proposed corrections.
+
+## B. Final Release Polish Report
+
+`DANDY_PHASE_9_FINAL_REPORT_AR.md`
+
+Write in professional Arabic.
+
+Include:
+
+1. Executive summary.
+2. Complete route inventory.
+3. Issues discovered.
+4. Issues fixed.
+5. Issues intentionally left unchanged.
+6. Files created.
+7. Files modified.
+8. Files deleted, if any, with justification.
+9. Global design consistency results.
+10. Responsive audit results.
+11. Horizontal overflow results.
+12. Header and navigation tests.
+13. Product and catalog tests.
+14. Product detail tests.
+15. Cart and guest checkout tests.
+16. Invoice and tracking tests.
+17. Account and authentication test coverage.
+18. Admin Studio integration test coverage.
+19. Phase 7 animation verification.
+20. Accessibility findings.
+21. Image and asset findings.
+22. Performance findings.
+23. Console and network results.
+24. Unit test results.
+25. Lint results.
+26. Build results.
+27. Protected configuration SHA-256 verification.
+28. Known limitations.
+29. Items deferred to the multilingual implementation.
+30. Final release-readiness assessment.
+
+For every critical test, explicitly distinguish:
+
+- Tested successfully.
+- Tested with limitations.
+- Not tested.
+- Not applicable.
+
+Do not claim that a feature is fully verified merely because the route returned HTTP 200.
+
+---
+
+# 23. PHASE 9 ACCEPTANCE CRITERIA
+
+Phase 9 is complete when:
+
+- The customer-facing route inventory has been reviewed.
+- All existing pages remain visually consistent.
+- Shared components remain consistent.
+- The responsive layouts are verified.
+- Horizontal overflow issues are identified and corrected.
+- The homepage Hero remains intact.
+- Admin Studio homepage synchronization remains intact.
+- ProductCard and PDP behavior remain intact.
+- Pricing and discount presentation remain accurate.
+- Catalog filters and campaigns remain functional.
+- Cart and guest checkout remain functional.
+- Invoice and tracking presentation remains accurate.
+- Account and authentication interfaces remain functional.
+- Editorial and support pages remain consistent.
+- Phase 7 animations remain stable.
+- Reduced-motion behavior is verified.
+- Accessibility issues are documented and corrected where appropriate.
+- Image and asset issues are addressed.
+- No significant performance regression is introduced.
+- No protected build or deployment file is modified.
+- Existing unit tests pass, or documented limitations are provided.
+- Lint and build succeed.
+- Final reports exist.
+
+---
+
+# 24. FUTURE MULTILINGUAL PROJECT — STRICTLY DEFERRED
+
+After Phase 9, DANDY will move to a dedicated Arabic/English multilingual implementation.
+
+This future work will include:
+
+- A complete English storefront.
+- A unified Arabic storefront.
+- Language switching.
+- RTL/LTR routing.
+- Localized page metadata.
+- Localized product and category content.
+- Localized editorial content.
+- Language-specific SEO.
+- Consistent cart and account behavior across languages.
+
+Do not implement any of these features now.
+
+Do not add temporary language-switching controls.
+
+Do not create incomplete English pages.
+
+Phase 9 must finish the Arabic storefront first.
+
+---
+
+# 25. EXECUTION SEQUENCE
+
+Follow this sequence strictly:
+
+1. Read all previous phase reports.
+2. Inspect the actual current workspace.
+3. Discover all current customer-facing routes.
+4. Record protected configuration checksums.
+5. Create the pre-release audit report.
+6. Audit global design consistency.
+7. Audit responsive layouts.
+8. Audit shared components.
+9. Audit homepage and Admin Studio synchronization without rebuilding them.
+10. Audit product, catalog, and campaign experiences.
+11. Audit the purchase journey.
+12. Audit account, editorial, and support experiences.
+13. Audit Phase 7 animations.
+14. Audit accessibility and image quality.
+15. Review performance.
+16. Prepare a prioritized correction plan.
+17. Apply only necessary and justified frontend corrections.
+18. Run complete regression testing.
+19. Run unit tests, lint, and production build.
+20. Verify protected configuration integrity.
+21. Create the final Arabic report.
+
+Do not begin implementation before completing the audit.
+
+Do not perform broad refactoring.
+
+---
+
+# FINAL INSTRUCTION
+
+Execute **PHASE 9 — FINAL UI/UX AUDIT & PRODUCTION POLISH ONLY**.
+
+Your responsibility is to make the existing DANDY storefront more consistent, polished, reliable, accessible, and visually complete.
+
+This is a quality and refinement phase, not another redesign phase.
+
+Preserve every working feature and existing business contract from Phases 1–8.
+
+Preserve the separately completed homepage/Admin Studio synchronization and responsive Hero improvements.
+
+Keep the website Arabic-first.
+
+Do not create the English storefront or language switcher yet.
+
+Do not modify Firebase schemas, backend APIs, order processing, authentication backend behavior, or existing business rules.
+
+Do not modify Astro, Vercel, Build, package, dependency, environment, or deployment configuration.
+
+If any protected file is accidentally modified, immediately restore its exact original pre-phase content and verify its SHA-256 checksum.
+
+Do not perform Git commits or pushes.
+
+Work exclusively in the current project workspace.
+
+**Inspect first, identify real deficiencies, prioritize corrections, fix only what is necessary, verify everything, and produce the complete Phase 9 final reports. Do not automatically begin the multilingual implementation or any subsequent phase.**
