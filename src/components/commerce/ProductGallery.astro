@@ -7,6 +7,7 @@
 import Icon from '../ui/Icon.astro';
 import { FALLBACK_PRODUCT_IMAGE } from '../../scripts/product-card';
 import type { GalleryImageItem } from '../../scripts/product-pdp';
+import type { Locale } from '../../i18n/types';
 
 export interface Props {
   productId: string;
@@ -14,6 +15,7 @@ export interface Props {
   images: GalleryImageItem[];
   badge?: { text: string; tone: 'soldout' | 'campaign' | 'discount' } | null;
   isSoldOut?: boolean;
+  locale?: Locale;
 }
 
 const {
@@ -22,7 +24,10 @@ const {
   images,
   badge = null,
   isSoldOut = false,
+  locale = 'ar',
 } = Astro.props;
+
+const isEn = locale === 'en';
 
 const safeImages = images.length > 0
   ? images
@@ -61,8 +66,8 @@ const hasMultiple = safeImages.length > 1;
       class="dandy-pdp-stage-action dandy-pdp-wishlist-pin"
       id="detailWishlistBtn"
       data-product-id={productId}
-      title="حفظ في المفضلة"
-      aria-label="حفظ في المفضلة"
+      title={isEn ? 'Save to Wishlist' : 'حفظ في المفضلة'}
+      aria-label={isEn ? 'Save to Wishlist' : 'حفظ في المفضلة'}
       aria-pressed="false"
     >
       <Icon name="heart" size={19} strokeWidth={1.8} />
@@ -72,8 +77,8 @@ const hasMultiple = safeImages.length > 1;
       type="button"
       class="dandy-pdp-stage-action dandy-pdp-zoom-trigger"
       id="gallery-zoom-btn"
-      title="تكبير الصورة"
-      aria-label="تكبير صورة المنتج"
+      title={isEn ? 'Zoom photo' : 'تكبير الصورة'}
+      aria-label={isEn ? 'Zoom product photo' : 'تكبير صورة المنتج'}
       data-zoom-src={primary.zoomUrl}
       data-zoom-alt={primary.alt}
     >
@@ -96,7 +101,7 @@ const hasMultiple = safeImages.length > 1;
   </div>
 
   {hasMultiple && (
-    <div class="dandy-pdp-thumbs" role="list" aria-label="صور المنتج">
+    <div class="dandy-pdp-thumbs" role="list" aria-label={isEn ? 'Product photos' : 'صور المنتج'}>
       {safeImages.map((img, idx) => (
         <button
           type="button"
@@ -107,7 +112,7 @@ const hasMultiple = safeImages.length > 1;
           data-stage-src={img.stageUrl}
           data-zoom-src={img.zoomUrl}
           data-alt={img.alt}
-          aria-label={`عرض ${img.alt}`}
+          aria-label={isEn ? `View ${img.alt}` : `عرض ${img.alt}`}
           aria-current={idx === 0 ? 'true' : 'false'}
         >
           <img
@@ -127,7 +132,7 @@ const hasMultiple = safeImages.length > 1;
   <dialog
     id="pdp-lightbox-dialog"
     class="dandy-pdp-lightbox"
-    aria-label={`معاينة مكبرة — ${productName}`}
+    aria-label={isEn ? `Enlarged view — ${productName}` : `معاينة مكبرة — ${productName}`}
     data-images={JSON.stringify(safeImages.map((img) => ({ zoomUrl: img.zoomUrl, alt: img.alt })))}
   >
     <div class="dandy-pdp-lightbox-surface">
@@ -137,7 +142,7 @@ const hasMultiple = safeImages.length > 1;
           type="button"
           class="dandy-pdp-lightbox-close"
           id="pdp-lightbox-close"
-          aria-label="إغلاق المعاينة المكبرة"
+          aria-label={isEn ? 'Close enlarged preview' : 'إغلاق المعاينة المكبرة'}
         >
           <Icon name="x" size={20} strokeWidth={2} />
         </button>
@@ -149,9 +154,9 @@ const hasMultiple = safeImages.length > 1;
             type="button"
             class="dandy-pdp-lightbox-nav is-prev"
             id="pdp-lightbox-prev"
-            aria-label="الصورة السابقة"
+            aria-label={isEn ? 'Previous image' : 'الصورة السابقة'}
           >
-            <Icon name="chevron-right" size={22} strokeWidth={2} />
+            <Icon name={isEn ? 'chevron-left' : 'chevron-right'} size={22} strokeWidth={2} />
           </button>
         )}
 
@@ -167,9 +172,9 @@ const hasMultiple = safeImages.length > 1;
             type="button"
             class="dandy-pdp-lightbox-nav is-next"
             id="pdp-lightbox-next"
-            aria-label="الصورة التالية"
+            aria-label={isEn ? 'Next image' : 'الصورة التالية'}
           >
-            <Icon name="chevron-left" size={22} strokeWidth={2} />
+            <Icon name={isEn ? 'chevron-right' : 'chevron-left'} size={22} strokeWidth={2} />
           </button>
         )}
       </div>
@@ -228,7 +233,7 @@ const hasMultiple = safeImages.length > 1;
     z-index: 2;
     padding: 5px 11px;
     border-radius: var(--dandy-radius-xs);
-    font-family: var(--dandy-font-ar-sans);
+    font-family: var(--dandy-font-active-sans);
     font-size: 0.75rem;
     font-weight: 700;
     line-height: 1.3;

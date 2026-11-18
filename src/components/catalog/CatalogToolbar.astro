@@ -5,10 +5,11 @@
  * Grounded strictly in actual available catalog flags & prices.
  */
 import Icon from '../ui/Icon.astro';
+import type { Locale } from '../../i18n/types';
 import {
-  CATEGORY_FILTER_OPTIONS,
-  PRICE_RANGE_OPTIONS,
-  SORT_OPTIONS,
+  getCategoryFilterOptions,
+  getPriceRangeOptions,
+  getSortOptions,
 } from '../../scripts/catalog';
 
 export interface Props {
@@ -20,6 +21,7 @@ export interface Props {
   hasBestSellerItems?: boolean;
   hasSoldOutItems?: boolean;
   searchPlaceholder?: string;
+  locale?: Locale;
 }
 
 const {
@@ -30,26 +32,40 @@ const {
   hasSaleItems = false,
   hasBestSellerItems = false,
   hasSoldOutItems = false,
-  searchPlaceholder = 'ابحثي باسم المنتج أو الفئة...',
+  searchPlaceholder,
+  locale = 'ar',
 } = Astro.props;
+
+const isEn = locale === 'en';
+const resolvedPlaceholder =
+  searchPlaceholder || (isEn ? 'Search by product name or category...' : 'ابحثي باسم المنتج أو الفئة...');
+
+const categoryOptions = getCategoryFilterOptions(locale);
+const priceOptions = getPriceRangeOptions(locale);
+const sortOptions = getSortOptions(locale);
 
 const visibleCategories =
   availableCategories && availableCategories.length > 0
-    ? CATEGORY_FILTER_OPTIONS.filter((cat) => availableCategories.includes(cat.slug))
-    : CATEGORY_FILTER_OPTIONS;
+    ? categoryOptions.filter((cat) => availableCategories.includes(cat.slug))
+    : categoryOptions;
 ---
 
-<div class="dandy-cat-controls" aria-label="أدوات البحث والتصفية والترتيب">
+<div
+  class="dandy-cat-controls"
+  aria-label={isEn ? 'Search, filter, and sort controls' : 'أدوات البحث والتصفية والترتيب'}
+>
   <div class="dandy-cat-bar">
     {/* Search Input */}
     <div class="dandy-cat-search">
       <Icon name="search" size={17} strokeWidth={1.85} class="dandy-cat-search-icon" />
-      <label for="dandy-catalog-search" class="dandy-sr-only">البحث في المنتجات</label>
+      <label for="dandy-catalog-search" class="dandy-sr-only">
+        {isEn ? 'Search products' : 'البحث في المنتجات'}
+      </label>
       <input
         id="dandy-catalog-search"
         type="search"
         class="dandy-cat-search-input"
-        placeholder={searchPlaceholder}
+        placeholder={resolvedPlaceholder}
         autocomplete="off"
         data-catalog-search
       />
@@ -57,7 +73,7 @@ const visibleCategories =
         type="button"
         class="dandy-cat-search-clear"
         data-clear-search
-        aria-label="مسح البحث"
+        aria-label={isEn ? 'Clear search' : 'مسح البحث'}
         hidden
       >
         <Icon name="x" size={15} strokeWidth={2} />
@@ -68,10 +84,17 @@ const visibleCategories =
     <div class="dandy-cat-inline-filters">
       {showPriceFilter && (
         <div class="dandy-cat-select-wrap">
-          <label for="dandy-catalog-price" class="dandy-sr-only">نطاق السعر</label>
-          <select id="dandy-catalog-price" class="dandy-cat-select" data-filter-price aria-label="نطاق السعر">
-            {PRICE_RANGE_OPTIONS.map((opt) => (
-              <option value={opt.value}>{opt.labelAr}</option>
+          <label for="dandy-catalog-price" class="dandy-sr-only">
+            {isEn ? 'Price range' : 'نطاق السعر'}
+          </label>
+          <select
+            id="dandy-catalog-price"
+            class="dandy-cat-select"
+            data-filter-price
+            aria-label={isEn ? 'Price range' : 'نطاق السعر'}
+          >
+            {priceOptions.map((opt) => (
+              <option value={opt.value}>{opt.label}</option>
             ))}
           </select>
           <Icon name="chevron-down" size={14} strokeWidth={2} class="dandy-cat-select-arrow" />
@@ -85,7 +108,7 @@ const visibleCategories =
           data-filter-toggle="saleOnly"
           aria-pressed="false"
         >
-          <span>العروض</span>
+          <span>{isEn ? 'Offers' : 'العروض'}</span>
         </button>
       )}
 
@@ -96,7 +119,7 @@ const visibleCategories =
           data-filter-toggle="bestSellerOnly"
           aria-pressed="false"
         >
-          <span>الأكثر مبيعاً</span>
+          <span>{isEn ? 'Best Sellers' : 'الأكثر مبيعاً'}</span>
         </button>
       )}
 
@@ -107,7 +130,7 @@ const visibleCategories =
           data-filter-toggle="inStockOnly"
           aria-pressed="false"
         >
-          <span>المتوفر فقط</span>
+          <span>{isEn ? 'In Stock Only' : 'المتوفر فقط'}</span>
         </button>
       )}
     </div>
@@ -115,10 +138,17 @@ const visibleCategories =
     {/* Right/End Cluster: Sort + Count + Mobile Trigger */}
     <div class="dandy-cat-end-actions">
       <div class="dandy-cat-select-wrap">
-        <label for="dandy-catalog-sort" class="dandy-sr-only">ترتيب المنتجات</label>
-        <select id="dandy-catalog-sort" class="dandy-cat-select" data-catalog-sort aria-label="ترتيب المنتجات">
-          {SORT_OPTIONS.map((opt) => (
-            <option value={opt.value}>{opt.labelAr}</option>
+        <label for="dandy-catalog-sort" class="dandy-sr-only">
+          {isEn ? 'Sort products' : 'ترتيب المنتجات'}
+        </label>
+        <select
+          id="dandy-catalog-sort"
+          class="dandy-cat-select"
+          data-catalog-sort
+          aria-label={isEn ? 'Sort products' : 'ترتيب المنتجات'}
+        >
+          {sortOptions.map((opt) => (
+            <option value={opt.value}>{opt.label}</option>
           ))}
         </select>
         <Icon name="chevron-down" size={14} strokeWidth={2} class="dandy-cat-select-arrow" />
@@ -132,26 +162,32 @@ const visibleCategories =
         aria-expanded="false"
       >
         <Icon name="sliders" size={16} strokeWidth={1.85} />
-        <span>تصفية</span>
+        <span>{isEn ? 'Filter' : 'تصفية'}</span>
         <span class="dandy-cat-trigger-badge dandy-tabular" data-mobile-filter-count hidden>0</span>
       </button>
 
       <span class="dandy-cat-count dandy-tabular" data-catalog-count aria-live="polite">
-        {totalCount} منتج
+        {isEn
+          ? `${totalCount} ${totalCount === 1 ? 'product' : 'products'}`
+          : `${totalCount} منتج`}
       </span>
     </div>
   </div>
 
   {/* Desktop Category Filter Strip */}
   {showCategoryFilter && (
-    <div class="dandy-cat-segments" role="group" aria-label="تصفية حسب القسم">
+    <div
+      class="dandy-cat-segments"
+      role="group"
+      aria-label={isEn ? 'Filter by category' : 'تصفية حسب القسم'}
+    >
       <button
         type="button"
         class="dandy-cat-seg-btn is-active"
         data-filter-category="all"
         aria-pressed="true"
       >
-        <span>جميع الأقسام</span>
+        <span>{isEn ? 'All Categories' : 'جميع الأقسام'}</span>
       </button>
       {visibleCategories.map((cat) => (
         <button
@@ -160,7 +196,7 @@ const visibleCategories =
           data-filter-category={cat.slug}
           aria-pressed="false"
         >
-          <span>{cat.labelAr}</span>
+          <span>{cat.label}</span>
         </button>
       ))}
     </div>
@@ -168,10 +204,12 @@ const visibleCategories =
 
   {/* Applied Filter Chips */}
   <div class="dandy-cat-chips-bar" data-catalog-chips-bar hidden>
-    <span class="dandy-cat-chips-label">الفلاتر المطبقة:</span>
+    <span class="dandy-cat-chips-label">
+      {isEn ? 'Applied filters:' : 'الفلاتر المطبقة:'}
+    </span>
     <div class="dandy-cat-chips-list" data-catalog-chips-list></div>
     <button type="button" class="dandy-cat-chips-clear" data-catalog-reset>
-      إعادة ضبط الكل
+      {isEn ? 'Reset all' : 'إعادة ضبط الكل'}
     </button>
   </div>
 </div>
@@ -236,7 +274,7 @@ const visibleCategories =
     padding: 0;
     margin: 0;
     color: var(--dandy-ink-primary);
-    font-family: var(--dandy-font-ar-sans);
+    font-family: var(--dandy-font-active-sans);
     font-size: var(--dandy-text-sm);
     outline: none;
   }
@@ -307,7 +345,7 @@ const visibleCategories =
     background-color: var(--dandy-bg-page);
     border: 1px solid var(--dandy-border-default);
     border-radius: var(--dandy-radius-sm);
-    font-family: var(--dandy-font-ar-sans);
+    font-family: var(--dandy-font-active-sans);
     font-size: var(--dandy-text-sm);
     font-weight: 500;
     color: var(--dandy-ink-primary);
@@ -339,7 +377,7 @@ const visibleCategories =
     border: 1px solid var(--dandy-border-default);
     background-color: var(--dandy-bg-page);
     color: var(--dandy-ink-secondary);
-    font-family: var(--dandy-font-ar-sans);
+    font-family: var(--dandy-font-active-sans);
     font-size: var(--dandy-text-sm);
     font-weight: 500;
     white-space: nowrap;
@@ -389,7 +427,7 @@ const visibleCategories =
     border: 1px solid var(--dandy-border-default);
     background-color: var(--dandy-bg-page);
     color: var(--dandy-ink-primary);
-    font-family: var(--dandy-font-ar-sans);
+    font-family: var(--dandy-font-active-sans);
     font-size: var(--dandy-text-sm);
     font-weight: 600;
     white-space: nowrap;
@@ -433,7 +471,7 @@ const visibleCategories =
     border: 1px solid var(--dandy-border-subtle);
     background-color: var(--dandy-bg-page);
     color: var(--dandy-ink-secondary);
-    font-family: var(--dandy-font-ar-sans);
+    font-family: var(--dandy-font-active-sans);
     font-size: var(--dandy-text-sm);
     font-weight: 500;
     white-space: nowrap;
@@ -494,7 +532,7 @@ const visibleCategories =
     border: 1px solid var(--dandy-border-default);
     background-color: var(--dandy-bg-editorial);
     color: var(--dandy-ink-primary);
-    font-family: var(--dandy-font-ar-sans);
+    font-family: var(--dandy-font-active-sans);
     font-size: var(--dandy-text-xs);
     font-weight: 600;
     cursor: pointer;
@@ -514,7 +552,7 @@ const visibleCategories =
     padding: 6px 8px;
     min-height: 36px;
     color: var(--dandy-accent-text);
-    font-family: var(--dandy-font-ar-sans);
+    font-family: var(--dandy-font-active-sans);
     font-size: var(--dandy-text-xs);
     font-weight: 700;
     text-decoration: underline;

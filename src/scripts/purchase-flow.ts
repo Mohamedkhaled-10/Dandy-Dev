@@ -13,6 +13,13 @@
 export const FREE_SHIPPING_THRESHOLD = 2000; // Strictly > 2000 EGP matches create-order.js & cart.astro
 export const FALLBACK_CART_IMAGE = '/assets/images/logo.png';
 
+import type { Locale } from '../i18n/types';
+import {
+  resolveClientLocalizedProductName,
+  resolveClientLocalizedVariantName,
+} from '../i18n/content/en/products';
+import { EN_PINK_FRIDAY_OVERLAY } from '../i18n/content/en/pink-friday';
+
 export const GOVERNORATES: ReadonlyArray<{ value: string; labelAr: string; shippingFee: number }> = [
   { value: 'Cairo', labelAr: 'القاهرة', shippingFee: 85 },
   { value: 'Giza', labelAr: 'الجيزة', shippingFee: 85 },
@@ -50,6 +57,20 @@ export const SHIPPING_RATES: Record<string, number> = Object.fromEntries(
 export const GOVERNORATE_LABELS_AR: Record<string, string> = Object.fromEntries(
   GOVERNORATES.map((g) => [g.value, g.labelAr])
 );
+
+export const GOVERNORATE_LABELS_EN: Record<string, string> = Object.fromEntries(
+  GOVERNORATES.map((g) => [g.value, g.value])
+);
+
+export function getGovernorateLabel(governorate?: string | null, locale: Locale = 'ar'): string {
+  const clean = typeof governorate === 'string' ? governorate.trim() : '';
+  if (!clean) return '—';
+  const normalized = clean.toLowerCase() === 'asyut' ? 'Assiut' : clean;
+  if (locale === 'en') {
+    return GOVERNORATE_LABELS_EN[normalized] || normalized;
+  }
+  return GOVERNORATE_LABELS_AR[normalized] || clean;
+}
 
 export interface VariantSelection {
   id?: string;
@@ -212,35 +233,48 @@ export function parseCartArrayFromStrings(
  * so server/unit-tested logic and client runtime agree 100%.
  */
 export function resolveVariantsDisplayInfo(
-  item: Partial<CartItemInput> | null | undefined
+  item: Partial<CartItemInput> | null | undefined,
+  locale: Locale = 'ar'
 ): VariantsDisplayInfo | null {
   if (!item) return null;
+  const prodIdHint =
+    item.productId || (typeof item.id === 'string' ? item.id.split('::')[0] : item.id) || '';
+  const singleLabel = locale === 'en' ? 'Scent' : 'الرائحة';
+  const multiLabel = locale === 'en' ? 'Scents' : 'الروائح';
+  const joiner = locale === 'en' ? ', ' : '، ';
 
   if (Array.isArray(item.selectedVariants) && item.selectedVariants.length > 0) {
     const list = item.selectedVariants
-      .map((v) => (v && typeof v === 'object' ? v.name || v.id : String(v)))
-      .filter(Boolean)
-      .map((s) => String(s).trim())
+      .map((v) => {
+        if (v && typeof v === 'object') {
+          const rawName = String(v.name || v.id || '').trim();
+          return resolveClientLocalizedVariantName(prodIdHint, v.id, rawName, locale);
+        }
+        const raw = String(v || '').trim();
+        return resolveClientLocalizedVariantName(prodIdHint, raw, raw, locale);
+      })
       .filter((s) => s && s !== 'undefined' && s !== 'null');
 
     if (list.length === 0) return null;
     if (list.length === 1) {
-      return { count: 1, label: 'الرائحة', text: list[0], list };
+      return { count: 1, label: singleLabel, text: list[0], list };
     }
-    return { count: list.length, label: 'الروائح', text: list.join('، '), list };
+    return { count: list.length, label: multiLabel, text: list.join(joiner), list };
   }
 
-  if (item.selectedVariant && item.selectedVariant.name) {
-    const name = String(item.selectedVariant.name).trim();
+  if (item.selectedVariant && (item.selectedVariant.name || item.selectedVariant.id)) {
+    const rawName = String(item.selectedVariant.name || item.selectedVariant.id || '').trim();
+    const name = resolveClientLocalizedVariantName(prodIdHint, item.selectedVariant.id, rawName, locale);
     if (name && name !== 'undefined' && name !== 'null') {
-      return { count: 1, label: 'الرائحة', text: name, list: [name] };
+      return { count: 1, label: singleLabel, text: name, list: [name] };
     }
   }
 
   if (item.variantName) {
-    const name = String(item.variantName).trim();
+    const rawName = String(item.variantName).trim();
+    const name = resolveClientLocalizedVariantName(prodIdHint, item.variantId, rawName, locale);
     if (name && name !== 'undefined' && name !== 'null') {
-      return { count: 1, label: 'الرائحة', text: name, list: [name] };
+      return { count: 1, label: singleLabel, text: name, list: [name] };
     }
   }
 
@@ -343,7 +377,10 @@ export function calculateShippingQuote(subtotal: number, governorate?: string | 
   };
 }
 
-export function validateCheckoutForm(input: Partial<CheckoutFormInput>): CheckoutValidationResult {
+export function validateCheckoutForm(
+  input: Partial<CheckoutFormInput>,
+  locale: Locale = 'ar'
+): CheckoutValidationResult {
   const name = typeof input.name === 'string' ? input.name.trim() : '';
   const phone = typeof input.phone === 'string' ? input.phone.trim() : '';
   const email = typeof input.email === 'string' ? input.email.trim() : '';
@@ -354,27 +391,45 @@ export function validateCheckoutForm(input: Partial<CheckoutFormInput>): Checkou
   const errors: Partial<Record<CheckoutFieldKey, string>> = {};
 
   if (!name || name.length < 5) {
-    errors.name = 'يرجى إدخال الاسم بالكامل (5 أحرف على الأقل) لضمان دقة التوصيل.';
+    errors.name =
+      locale === 'en'
+        ? 'Please enter your full name (at least 5 characters) for accurate delivery.'
+        : 'يرجى إدخال الاسم بالكامل (5 أحرف على الأقل) لضمان دقة التوصيل.';
   }
 
   if (!/^01[0125][0-9]{8}$/.test(phone)) {
-    errors.phone = 'يرجى إدخال رقم هاتف مصري صحيح من 11 رقماً يبدأ بـ 010 أو 011 أو 012 أو 015.';
+    errors.phone =
+      locale === 'en'
+        ? 'Please enter a valid 11-digit Egyptian mobile number starting with 010, 011, 012, or 015.'
+        : 'يرجى إدخال رقم هاتف مصري صحيح من 11 رقماً يبدأ بـ 010 أو 011 أو 012 أو 015.';
   }
 
   if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    errors.email = 'صيغة البريد الإلكتروني غير صحيحة (أو اتركيه فارغاً).';
+    errors.email =
+      locale === 'en'
+        ? 'Please enter a valid email address (or leave it blank).'
+        : 'صيغة البريد الإلكتروني غير صحيحة (أو اتركيه فارغاً).';
   }
 
   if (!governorate) {
-    errors.governorate = 'يرجى اختيار المحافظة لحساب تكلفة الشحن بدقة.';
+    errors.governorate =
+      locale === 'en'
+        ? 'Please select your governorate to calculate the exact shipping fee.'
+        : 'يرجى اختيار المحافظة لحساب تكلفة الشحن بدقة.';
   }
 
   if (!city) {
-    errors.city = 'يرجى إدخال اسم المدينة أو المنطقة.';
+    errors.city =
+      locale === 'en'
+        ? 'Please enter your city or district.'
+        : 'يرجى إدخال اسم المدينة أو المنطقة.';
   }
 
   if (!address || address.length < 3) {
-    errors.address = 'يرجى كتابة العنوان بالتفصيل (الشارع، رقم العقار، الدور أو علامة مميزة).';
+    errors.address =
+      locale === 'en'
+        ? 'Please enter your detailed street address (street, building, floor, or landmark).'
+        : 'يرجى كتابة العنوان بالتفصيل (الشارع، رقم العقار، الدور أو علامة مميزة).';
   }
 
   const orderedKeys: CheckoutFieldKey[] = ['name', 'phone', 'email', 'governorate', 'city', 'address'];
@@ -458,14 +513,17 @@ export function buildCreateOrderPayload(params: {
 /**
  * Maps all historical English & Arabic statuses to the 5 canonical order lifecycle states.
  */
-export function normalizeOrderStatusMeta(rawStatus?: string | null): NormalizedOrderStatusMeta {
+export function normalizeOrderStatusMeta(
+  rawStatus?: string | null,
+  locale: Locale = 'ar'
+): NormalizedOrderStatusMeta {
   const s = typeof rawStatus === 'string' ? rawStatus.trim() : 'New';
 
   if (s === 'ملغي' || s === 'Cancelled' || s.toLowerCase() === 'cancelled') {
     return {
       key: 'cancelled',
       isCancelled: true,
-      label: 'تم الإلغاء',
+      label: locale === 'en' ? 'Cancelled' : 'تم الإلغاء',
       badgeTone: 'cancelled',
       progressPercent: 0,
       activeStepIndex: -1,
@@ -483,7 +541,7 @@ export function normalizeOrderStatusMeta(rawStatus?: string | null): NormalizedO
     return {
       key: 'processing',
       isCancelled: false,
-      label: 'قيد التجهيز',
+      label: locale === 'en' ? 'Preparing Order' : 'قيد التجهيز',
       badgeTone: 'processing',
       progressPercent: 33,
       activeStepIndex: 1,
@@ -501,7 +559,7 @@ export function normalizeOrderStatusMeta(rawStatus?: string | null): NormalizedO
     return {
       key: 'shipped',
       isCancelled: false,
-      label: 'تم الشحن',
+      label: locale === 'en' ? 'Shipped' : 'تم الشحن',
       badgeTone: 'shipped',
       progressPercent: 66,
       activeStepIndex: 2,
@@ -511,6 +569,7 @@ export function normalizeOrderStatusMeta(rawStatus?: string | null): NormalizedO
   if (
     s === 'مكتمل' ||
     s === 'تم التوصيل' ||
+    s === 'تم التسليم' ||
     s === 'واصل' ||
     s === 'Delivered' ||
     s.toLowerCase() === 'delivered'
@@ -518,7 +577,7 @@ export function normalizeOrderStatusMeta(rawStatus?: string | null): NormalizedO
     return {
       key: 'delivered',
       isCancelled: false,
-      label: 'تم التوصيل',
+      label: locale === 'en' ? 'Delivered' : 'تم التوصيل',
       badgeTone: 'delivered',
       progressPercent: 100,
       activeStepIndex: 3,
@@ -528,7 +587,7 @@ export function normalizeOrderStatusMeta(rawStatus?: string | null): NormalizedO
   return {
     key: 'new',
     isCancelled: false,
-    label: 'قيد المراجعة',
+    label: locale === 'en' ? 'Pending Review' : 'قيد المراجعة',
     badgeTone: 'new',
     progressPercent: 0,
     activeStepIndex: 0,
@@ -536,7 +595,8 @@ export function normalizeOrderStatusMeta(rawStatus?: string | null): NormalizedO
 }
 
 export function extractCollectionSubItems(
-  item: Partial<CartItemInput> | null | undefined
+  item: Partial<CartItemInput> | null | undefined,
+  locale: Locale = 'ar'
 ): DisplaySubItem[] {
   if (!item) return [];
   const rawList = Array.isArray(item.items)
@@ -545,33 +605,66 @@ export function extractCollectionSubItems(
       ? item.selectedItems
       : [];
 
+  const fallbackProd = locale === 'en' ? 'DANDY Product' : 'منتج داندي';
   return rawList
     .filter((sub) => sub && typeof sub === 'object')
     .map((sub) => {
-      let variantName = '';
+      let rawVarName = '';
+      let varId: string | undefined;
       if (typeof sub.variantName === 'string' && sub.variantName.trim()) {
-        variantName = sub.variantName.trim();
+        rawVarName = sub.variantName.trim();
       } else if (sub.selectedVariant && (sub.selectedVariant.name || sub.selectedVariant.id)) {
-        variantName = String(sub.selectedVariant.name || sub.selectedVariant.id).trim();
+        rawVarName = String(sub.selectedVariant.name || sub.selectedVariant.id).trim();
+        varId = sub.selectedVariant.id;
       } else if (sub.variant) {
-        variantName =
-          typeof sub.variant === 'object'
-            ? String(sub.variant.name || sub.variant.id || '').trim()
-            : String(sub.variant).trim();
+        if (typeof sub.variant === 'object') {
+          rawVarName = String(sub.variant.name || sub.variant.id || '').trim();
+          varId = sub.variant.id;
+        } else {
+          rawVarName = String(sub.variant).trim();
+        }
       }
 
+      const rawProdName = String(sub.productName || sub.name || fallbackProd).trim();
+      const productName = resolveClientLocalizedProductName(sub.productId, rawProdName, locale);
+      const variantName = rawVarName
+        ? resolveClientLocalizedVariantName(sub.productId, varId, rawVarName, locale)
+        : '';
+
       return {
-        productName: String(sub.productName || sub.name || 'منتج داندي').trim(),
+        productName,
         variantName,
       };
     });
 }
 
-export function formatOrderLineItem(rawItem: Record<string, any>): FormattedOrderLineItem {
+function resolveLocalizedItemDisplayName(
+  rawItem: Record<string, any>,
+  locale: Locale
+): string {
+  const fallback = locale === 'en' ? 'DANDY Product' : 'منتج داندي';
+  const rawName = String(rawItem?.name || fallback).trim();
+  if (locale !== 'en') return rawName;
+
+  if (isCollectionCartItem(rawItem)) {
+    const colId = String(rawItem?.collectionId || rawItem?.id || '').trim();
+    const colOv = colId ? EN_PINK_FRIDAY_OVERLAY.collectionTextOverrides?.[colId] : undefined;
+    if (colOv?.name) return colOv.name;
+  }
+
+  const prodId = rawItem?.productId || (rawItem?.id ? String(rawItem.id).split('::')[0] : '');
+  return resolveClientLocalizedProductName(prodId, rawName, 'en');
+}
+
+export function formatOrderLineItem(
+  rawItem: Record<string, any>,
+  locale: Locale = 'ar'
+): FormattedOrderLineItem {
   const quantity = resolveItemQuantity(rawItem?.quantity);
   const priceNum = Number(rawItem?.price) || 0;
   const hasServerLineTotal = typeof rawItem?.lineTotal === 'number' && Number.isFinite(rawItem.lineTotal);
   const lineTotal = hasServerLineTotal ? Number(rawItem.lineTotal) : priceNum * quantity;
+  const localizedName = resolveLocalizedItemDisplayName(rawItem, locale);
 
   let crossedTotal: number | null = null;
   if (rawItem?.discount && !hasServerLineTotal) {
@@ -580,14 +673,14 @@ export function formatOrderLineItem(rawItem: Record<string, any>): FormattedOrde
       const discountedTotal = (priceNum - (priceNum * discPct) / 100) * quantity;
       crossedTotal = priceNum * quantity;
       return {
-        name: String(rawItem?.name || 'منتج داندي').trim(),
+        name: localizedName,
         image: sanitizeImageUrl(rawItem?.image),
         quantity,
         isCollection: isCollectionCartItem(rawItem),
         isPinkFriday: Boolean(rawItem?.isPinkFriday),
-        badgeText: String(rawItem?.badgeText || '').trim(),
-        variants: resolveVariantsDisplayInfo(rawItem),
-        collectionItems: extractCollectionSubItems(rawItem),
+        badgeText: locale === 'en' && rawItem?.isPinkFriday ? 'Pink Friday' : String(rawItem?.badgeText || '').trim(),
+        variants: resolveVariantsDisplayInfo(rawItem, locale),
+        collectionItems: extractCollectionSubItems(rawItem, locale),
         unitPrice: priceNum - (priceNum * discPct) / 100,
         lineTotal: discountedTotal,
         crossedTotal,
@@ -610,14 +703,14 @@ export function formatOrderLineItem(rawItem: Record<string, any>): FormattedOrde
   }
 
   return {
-    name: String(rawItem?.name || 'منتج داندي').trim(),
+    name: localizedName,
     image: sanitizeImageUrl(rawItem?.image),
     quantity,
     isCollection,
     isPinkFriday: Boolean(rawItem?.isPinkFriday),
-    badgeText: String(rawItem?.badgeText || '').trim(),
-    variants: resolveVariantsDisplayInfo(rawItem),
-    collectionItems: extractCollectionSubItems(rawItem),
+    badgeText: locale === 'en' && isCollection ? 'Pink Friday Bundle' : String(rawItem?.badgeText || '').trim(),
+    variants: resolveVariantsDisplayInfo(rawItem, locale),
+    collectionItems: extractCollectionSubItems(rawItem, locale),
     unitPrice: effectiveUnitPrice,
     lineTotal,
     crossedTotal,
@@ -672,12 +765,15 @@ export function upsertRecentLookup(
   return filtered.slice(0, maxItems);
 }
 
-export function formatOrderTimestampAr(timestamp?: string | number | null): string {
+export function formatOrderTimestamp(
+  timestamp?: string | number | null,
+  locale: Locale = 'ar'
+): string {
   if (!timestamp) return '—';
   const date = new Date(timestamp);
   if (Number.isNaN(date.getTime())) return '—';
   try {
-    return new Intl.DateTimeFormat('ar-EG', {
+    return new Intl.DateTimeFormat(locale === 'en' ? 'en-EG' : 'ar-EG', {
       year: 'numeric',
       month: 'short',
       day: 'numeric',
@@ -689,18 +785,34 @@ export function formatOrderTimestampAr(timestamp?: string | number | null): stri
   }
 }
 
-export function buildWhatsappOrderInquiryUrl(params: {
-  invoiceCode: string;
-  customerName: string;
-  statusLabel: string;
-  pageUrl: string;
-}): string {
-  const text = [
-    'مرحباً، أود الاستعلام عن حالة شحن طلب Dandy الخاص بي:',
-    `- كود الفاتورة: ${params.invoiceCode || '-'}`,
-    `- العميل: ${params.customerName || '-'}`,
-    `- الحالة الحالية: ${params.statusLabel || 'قيد المراجعة'}`,
-    `- رابط التتبع: ${params.pageUrl || ''}`,
-  ].join('\n');
+export function formatOrderTimestampAr(timestamp?: string | number | null): string {
+  return formatOrderTimestamp(timestamp, 'ar');
+}
+
+export function buildWhatsappOrderInquiryUrl(
+  params: {
+    invoiceCode: string;
+    customerName: string;
+    statusLabel: string;
+    pageUrl: string;
+  },
+  locale: Locale = 'ar'
+): string {
+  const text =
+    locale === 'en'
+      ? [
+          'Hello, I would like to inquire about my DANDY Cosmetics order status:',
+          `- Invoice Code: ${params.invoiceCode || '-'}`,
+          `- Customer: ${params.customerName || '-'}`,
+          `- Current Status: ${params.statusLabel || 'Pending Review'}`,
+          `- Tracking Link: ${params.pageUrl || ''}`,
+        ].join('\n')
+      : [
+          'مرحباً، أود الاستعلام عن حالة شحن طلب Dandy الخاص بي:',
+          `- كود الفاتورة: ${params.invoiceCode || '-'}`,
+          `- العميل: ${params.customerName || '-'}`,
+          `- الحالة الحالية: ${params.statusLabel || 'قيد المراجعة'}`,
+          `- رابط التتبع: ${params.pageUrl || ''}`,
+        ].join('\n');
   return `https://wa.me/201038941005?text=${encodeURIComponent(text)}`;
 }

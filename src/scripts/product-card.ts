@@ -6,6 +6,10 @@
 import { getCategoryBySlug, getCategorySlugForProduct } from '../utils/categories';
 import { getDeterministicSlug, optimizeCloudinaryUrl, type Product, type VariantItem } from '../utils/products';
 import type { CampaignPricingResult } from '../utils/pink-friday-server';
+import type { Locale } from '../i18n/types';
+import { buildLocalizedPath } from '../i18n/routes';
+import { EN_CATEGORY_CONTENT } from '../i18n/content/en/categories';
+import { EN_PRODUCT_SUMMARY_MAP } from '../i18n/content/en/products';
 
 export const FALLBACK_PRODUCT_IMAGE = '/assets/images/logo.png';
 
@@ -103,12 +107,22 @@ export function resolveProductImage(rawImage?: string): { url: string; isFallbac
   return { url: trimmed, isFallback: false };
 }
 
-export function resolveCategoryArabicLabel(product: Pick<Product, 'id' | 'category'>): {
+export function resolveCategoryArabicLabel(
+  product: Pick<Product, 'id' | 'category'>,
+  locale: Locale = 'ar'
+): {
   slug: string;
   labelAr: string;
 } {
   const slug = getCategorySlugForProduct({ id: product.id || '', category: product.category });
   const taxonomy = getCategoryBySlug(slug);
+  if (locale === 'en') {
+    const enCat = EN_CATEGORY_CONTENT[slug];
+    return {
+      slug,
+      labelAr: enCat?.name || taxonomy?.name || 'Natural Care',
+    };
+  }
   return {
     slug,
     labelAr: taxonomy ? taxonomy.arabicName : 'العناية الطبيعية',
@@ -185,11 +199,14 @@ export function resolveProductPricing(
 
 export function resolveProductCardViewModel(
   product: Product,
-  pinkFridayPricing?: CampaignPricingResult | null
+  pinkFridayPricing?: CampaignPricingResult | null,
+  locale: Locale = 'ar'
 ): ProductCardViewModel {
   const slug = product.resolvedSlug || getDeterministicSlug(product);
-  const href = `/product/${encodeURIComponent(slug)}`;
-  const { slug: categorySlug, labelAr: categoryLabelAr } = resolveCategoryArabicLabel(product);
+  const href = buildLocalizedPath(`/product/${encodeURIComponent(slug)}`, locale);
+  const { slug: categorySlug, labelAr: categoryLabelAr } = resolveCategoryArabicLabel(product, locale);
+  const localizedName =
+    locale === 'en' ? EN_PRODUCT_SUMMARY_MAP[product.id]?.name || product.name : product.name;
   const { url: imageUrl, isFallback: isFallbackImage } = resolveProductImage(product.image);
   const soldOut = isProductSoldOut(product);
   const hasVariants = requiresVariantSelection(product);
@@ -198,16 +215,25 @@ export function resolveProductCardViewModel(
 
   let badge: ProductBadgeModel | null = null;
   if (soldOut) {
-    badge = { text: 'نفذت الكمية', tone: 'soldout' };
+    badge = { text: locale === 'en' ? 'Sold Out' : 'نفذت الكمية', tone: 'soldout' };
   } else if (pricing.isPinkFriday) {
     badge = {
-      text: pricing.campaignBadgeText || (pricing.discountPercent ? `Pink Friday · -${pricing.discountPercent}%` : 'Pink Friday'),
+      text:
+        locale === 'en'
+          ? pricing.discountPercent
+            ? `Pink Friday · -${pricing.discountPercent}%`
+            : 'Pink Friday'
+          : pricing.campaignBadgeText ||
+            (pricing.discountPercent ? `Pink Friday · -${pricing.discountPercent}%` : 'Pink Friday'),
       tone: 'campaign',
     };
   } else if (pricing.oldPrice && pricing.discountPercent) {
-    badge = { text: `خصم ${pricing.discountPercent}%`, tone: 'discount' };
+    badge = {
+      text: locale === 'en' ? `Save ${pricing.discountPercent}%` : `خصم ${pricing.discountPercent}%`,
+      tone: 'discount',
+    };
   } else if (pricing.oldPrice) {
-    badge = { text: 'تخفيض', tone: 'discount' };
+    badge = { text: locale === 'en' ? 'Sale' : 'تخفيض', tone: 'discount' };
   }
 
   const reviewCount = Number(product.reviewCount) || 0;
@@ -215,11 +241,11 @@ export function resolveProductCardViewModel(
   const shouldShowRating = reviewCount > 0 && avgRatingRaw > 0;
   const ratingValue = shouldShowRating ? avgRatingRaw.toFixed(1) : null;
 
-  let ctaLabel = 'أضيفي للسلة';
+  let ctaLabel = locale === 'en' ? 'Add to Bag' : 'أضيفي للسلة';
   if (soldOut) {
-    ctaLabel = 'نفذت الكمية';
+    ctaLabel = locale === 'en' ? 'Sold Out' : 'نفذت الكمية';
   } else if (hasVariants) {
-    ctaLabel = 'اختاري الخيار';
+    ctaLabel = locale === 'en' ? 'Choose Option' : 'اختاري الخيار';
   }
 
   const cartPayload: CartAddPayload | null =
@@ -228,7 +254,7 @@ export function resolveProductCardViewModel(
       : {
           id: product.id,
           productId: product.id,
-          name: product.name,
+          name: localizedName,
           price: pricing.currentPrice,
           image: imageUrl,
           discount: pricing.discountPercent ?? product.discount ?? null,
@@ -238,7 +264,7 @@ export function resolveProductCardViewModel(
 
   return {
     id: product.id,
-    name: product.name,
+    name: localizedName,
     href,
     categorySlug,
     categoryLabelAr,
@@ -330,7 +356,7 @@ export function addDirectProductToCartArray(
   return safeCart;
 }
 
-export function formatEgpPrice(amount: number): string {
+export function formatEgpPrice(amount: number, locale: Locale = 'ar'): string {
   const safe = Number.isFinite(amount) ? Math.round(amount) : 0;
-  return `${safe} ج.م`;
+  return locale === 'en' ? `${safe} EGP` : `${safe} ج.م`;
 }

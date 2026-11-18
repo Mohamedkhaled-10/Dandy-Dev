@@ -5,6 +5,8 @@
  * `STUDIO_UPDATE_STATE`, `STUDIO_SELECT_SECTION`, `STUDIO_SET_MODE`, `STUDIO_RELOAD`).
  */
 
+import { EN_HOMEPAGE_STUDIO_OVERLAY } from '../i18n/content/en/homepage-studio';
+import { resolveLocalizedHomepageStudioState } from '../i18n/content/adapters';
 import type { Product } from '../utils/products';
 import type { CampaignPricingResult } from '../utils/pink-friday-server';
 import { getIconSvg } from './icons';
@@ -15,7 +17,9 @@ import {
 } from './product-card';
 import {
   DEFAULT_HERO_SLIDE,
+  DEFAULT_HERO_SLIDE_EN,
   DEFAULT_PROMO_BANNER,
+  localizeInternalStoreHref,
   mergeStudioPreviewState,
   resolveCategoriesForShowcase,
   resolveDynamicProductSection,
@@ -30,6 +34,18 @@ import {
   type CustomSection,
   type HomepageStudioState,
 } from './homepage-studio';
+
+function getRuntimeLocale(): 'ar' | 'en' {
+  if (typeof document !== 'undefined') {
+    const lang = (document.documentElement.getAttribute('lang') || '').trim().toLowerCase();
+    if (lang.startsWith('en')) return 'en';
+  }
+  if (typeof window !== 'undefined') {
+    const p = (window.location.pathname || '/').toLowerCase();
+    if (p === '/en' || p.startsWith('/en/')) return 'en';
+  }
+  return 'ar';
+}
 
 interface StudioBootstrapPayload {
   state: HomepageStudioState;
@@ -48,6 +64,18 @@ const SECTION_LABELS_AR: Record<string, string> = {
   blog: 'مدونة العناية والجمال',
   reviews: 'آراء وتجارب العميلات',
   'pink-friday': 'حملة Pink Friday',
+};
+
+const SECTION_LABELS_EN: Record<string, string> = {
+  hero: 'Hero Banner',
+  trust: 'Trust Highlights',
+  offers: 'Special Offers',
+  categories: 'Shop by Category',
+  promo: 'Editorial Promo Banner',
+  newArrivals: 'New Arrivals',
+  blog: 'Beauty & Care Journal',
+  reviews: 'Customer Reviews',
+  'pink-friday': 'Pink Friday Campaign',
 };
 
 let heroTimer: number | null = null;
@@ -220,13 +248,19 @@ function renderProductCardHtml(
   product: Product,
   pinkFridayPricing?: CampaignPricingResult | null
 ): string {
-  const vm = resolveProductCardViewModel(product, pinkFridayPricing);
+  const locale = getRuntimeLocale();
+  const isEn = locale === 'en';
+  const vm = resolveProductCardViewModel(product, pinkFridayPricing, locale);
   const tagHtml = vm.badge
     ? `<span class="dandy-pcard-tag is-${vm.badge.tone}">${escapeHtml(vm.badge.text)}</span>`
     : '';
   const ratingHtml =
     vm.shouldShowRating && vm.ratingValue
-      ? `<span class="dandy-pcard-rating" aria-label="تقييم ${escapeHtml(vm.ratingValue)} من 5 بناءً على ${vm.reviewCount} تقييم">
+      ? `<span class="dandy-pcard-rating" aria-label="${escapeHtml(
+          isEn
+            ? `Rated ${vm.ratingValue} out of 5 based on ${vm.reviewCount} reviews`
+            : `تقييم ${vm.ratingValue} من 5 بناءً على ${vm.reviewCount} تقييم`
+        )}">
            <span aria-hidden="true" class="dandy-pcard-sep">·</span>
            ${getIconSvg('star', { size: 12, strokeWidth: 2, className: 'dandy-pcard-star' })}
            <span class="dandy-tabular">${escapeHtml(vm.ratingValue)}</span>
@@ -236,7 +270,7 @@ function renderProductCardHtml(
 
   const oldPriceHtml =
     vm.oldPrice !== null
-      ? `<del class="dandy-pcard-old-price dandy-tabular">${escapeHtml(formatEgpPrice(vm.oldPrice))}</del>`
+      ? `<del class="dandy-pcard-old-price dandy-tabular">${escapeHtml(formatEgpPrice(vm.oldPrice, locale))}</del>`
       : '';
 
   let actionHtml = '';
@@ -247,6 +281,8 @@ function renderProductCardHtml(
   } else {
     actionHtml = `<button type="button" class="dandy-pcard-btn is-add" data-dandy-add-to-cart data-cart-payload="${escapeHtml(JSON.stringify(vm.cartPayload))}">${getIconSvg('shopping-bag', { size: 15, strokeWidth: 1.8 })}<span data-btn-label>${escapeHtml(vm.ctaLabel)}</span></button>`;
   }
+
+  const catHref = localizeInternalStoreHref(`/category/${vm.categorySlug}`, locale);
 
   return `
     <article
@@ -272,12 +308,12 @@ function renderProductCardHtml(
       </a>
       <div class="dandy-pcard-body">
         <div class="dandy-pcard-meta">
-          <a href="/category/${escapeHtml(vm.categorySlug)}" class="dandy-pcard-category">${escapeHtml(vm.categoryLabelAr)}</a>
+          <a href="${escapeHtml(catHref)}" class="dandy-pcard-category">${escapeHtml(vm.categoryLabelAr)}</a>
           ${ratingHtml}
         </div>
         <h3 class="dandy-pcard-title"><a href="${escapeHtml(vm.href)}">${escapeHtml(vm.name)}</a></h3>
         <div class="dandy-pcard-price-row">
-          <span class="dandy-pcard-price dandy-tabular">${escapeHtml(formatEgpPrice(vm.currentPrice))}</span>
+          <span class="dandy-pcard-price dandy-tabular">${escapeHtml(formatEgpPrice(vm.currentPrice, locale))}</span>
           ${oldPriceHtml}
         </div>
         <div class="dandy-pcard-actions">${actionHtml}</div>
@@ -290,8 +326,11 @@ function updateHeroDom(state: HomepageStudioState): void {
   const heroSec = document.querySelector<HTMLElement>('[data-studio-section="hero"]');
   if (!heroSec) return;
 
-  const slides = resolveHeroSlides(state.hero);
+  const locale = getRuntimeLocale();
+  const isEn = locale === 'en';
+  const slides = resolveHeroSlides(state.hero, locale);
   const first = slides[0];
+  const fallbackSlideImg = (isEn ? DEFAULT_HERO_SLIDE_EN : DEFAULT_HERO_SLIDE).desktopImage;
   const carousel = heroSec.querySelector<HTMLElement>('[data-hero-carousel]');
   const slidesContainer = heroSec.querySelector<HTMLElement>('[data-hero-slides]');
   const dotsContainer = heroSec.querySelector<HTMLElement>('[data-hero-dots]');
@@ -322,7 +361,7 @@ function updateHeroDom(state: HomepageStudioState): void {
               decoding="async"
               referrerpolicy="no-referrer"
               class="dandy-hero-img"
-              onerror="this.onerror=null;this.src='${DEFAULT_HERO_SLIDE.desktopImage}';"
+              onerror="this.onerror=null;this.src='${fallbackSlideImg}';"
             />
           </figure>
         `
@@ -335,7 +374,7 @@ function updateHeroDom(state: HomepageStudioState): void {
     dotsContainer.innerHTML = slides
       .map(
         (_, idx) =>
-          `<button type="button" role="tab" class="dandy-hero-dot${idx === 0 ? ' is-active' : ''}" data-hero-dot="${idx}" aria-selected="${idx === 0 ? 'true' : 'false'}" aria-label="الشريحة رقم ${idx + 1}"></button>`
+          `<button type="button" role="tab" class="dandy-hero-dot${idx === 0 ? ' is-active' : ''}" data-hero-dot="${idx}" aria-selected="${idx === 0 ? 'true' : 'false'}" aria-label="${escapeHtml(isEn ? `Slide ${idx + 1}` : `الشريحة رقم ${idx + 1}`)}"></button>`
       )
       .join('');
   }
@@ -371,7 +410,8 @@ function updateTrustDom(state: HomepageStudioState): void {
   const grid = sec.querySelector<HTMLElement>('[data-trust-grid]');
   if (!grid) return;
 
-  const items = resolveTrustItems(state.trust);
+  const locale = getRuntimeLocale();
+  const items = resolveTrustItems(state.trust, undefined, locale);
   const cols = items.length === 2 ? 2 : items.length >= 4 ? 4 : 3;
   grid.className = `dandy-trust-grid dandy-trust-cols-${cols}`;
   grid.innerHTML = items
@@ -397,7 +437,9 @@ function updateCategoriesDom(state: HomepageStudioState): void {
   const grid = sec.querySelector<HTMLElement>('[data-categories-grid]');
   if (!grid) return;
 
-  const categories = resolveCategoriesForShowcase(state.categories);
+  const locale = getRuntimeLocale();
+  const isEn = locale === 'en';
+  const categories = resolveCategoriesForShowcase(state.categories, locale);
   const fallbackCatImg = '/assets/images/index-products/product-2.jpg';
 
   grid.innerHTML = categories
@@ -429,8 +471,8 @@ function updateCategoriesDom(state: HomepageStudioState): void {
             ${metaParts.length > 0 ? `<p class="dandy-cat-meta-line" dir="auto">${metaParts.map((p) => `<span dir="auto">${escapeHtml(p)}</span>`).join(' · ')}</p>` : ''}
             <p class="dandy-cat-desc">${escapeHtml(cat.description)}</p>
             <span class="dandy-cat-link">
-              <span>تصفحي القسم</span>
-              ${getIconSvg('chevron-left', { size: 14, strokeWidth: 2 })}
+              <span>${isEn ? 'Explore Category' : 'تصفحي القسم'}</span>
+              ${getIconSvg(isEn ? 'chevron-right' : 'chevron-left', { size: 14, strokeWidth: 2 })}
             </span>
           </div>
         </a>
@@ -447,7 +489,8 @@ function updateDynamicProductSectionDom(
   const sec = document.querySelector<HTMLElement>(`[data-studio-section="${secKey}"]`);
   if (!sec) return;
 
-  const cfg = resolveDynamicProductSection(state, secKey);
+  const locale = getRuntimeLocale();
+  const cfg = resolveDynamicProductSection(state, secKey, locale);
   const titleEl = sec.querySelector<HTMLElement>('[data-sec-title]');
   const subEl = sec.querySelector<HTMLElement>('[data-sec-subtitle]');
   const moreLinkEl = sec.querySelector<HTMLAnchorElement>('[data-sec-more-link]');
@@ -482,7 +525,8 @@ function updatePromoBannerDom(state: HomepageStudioState): void {
   const sec = document.querySelector<HTMLElement>('[data-studio-section="promo"]');
   if (!sec) return;
 
-  const promo = resolvePromoBanner(state.promoBanner);
+  const locale = getRuntimeLocale();
+  const promo = resolvePromoBanner(state.promoBanner, locale);
   const eyebrowEl = sec.querySelector<HTMLElement>('[data-promo-eyebrow]');
   const titleEl = sec.querySelector<HTMLElement>('[data-promo-title]');
   const descEl = sec.querySelector<HTMLElement>('[data-promo-desc]');
@@ -512,6 +556,7 @@ function updateReviewsDom(state: HomepageStudioState): void {
   const empty = sec.querySelector<HTMLElement>('[data-reviews-empty]');
   if (!grid) return;
 
+  const isEn = getRuntimeLocale() === 'en';
   const fallbackImg = '/assets/images/logo.png';
   const list = (state.reviews || [])
     .filter((r) => r && (r.image || r.text))
@@ -528,7 +573,15 @@ function updateReviewsDom(state: HomepageStudioState): void {
           <div class="dandy-review-media">
             <img
               src="${escapeHtml(review.image)}"
-              alt="${escapeHtml(review.author ? `تجربة ${review.author}` : `تجربة عميلة داندي #${idx + 1}`)}"
+              alt="${escapeHtml(
+                isEn
+                  ? review.author
+                    ? `Review by ${review.author}`
+                    : `DANDY Customer Review #${idx + 1}`
+                  : review.author
+                    ? `تجربة ${review.author}`
+                    : `تجربة عميلة داندي #${idx + 1}`
+              )}"
               width="480"
               height="600"
               loading="lazy"
@@ -561,9 +614,12 @@ function updateReviewsDom(state: HomepageStudioState): void {
 }
 
 function buildCustomSectionHtml(sec: CustomSection, bootstrap: StudioBootstrapPayload | null): string {
+  const locale = getRuntimeLocale();
+  const isEn = locale === 'en';
+  const arrowIcon = isEn ? 'arrow-right' : 'arrow-left';
   const fallbackImg = DEFAULT_PROMO_BANNER.image;
   if (sec.type === 'trust') {
-    const items = resolveTrustItems(undefined, sec.items);
+    const items = resolveTrustItems(undefined, sec.items, locale);
     const cols = items.length === 2 ? 2 : items.length >= 4 ? 4 : 3;
     const hasHeader = Boolean(sec.title?.trim() || sec.subtitle?.trim());
     return `
@@ -609,39 +665,41 @@ function buildCustomSectionHtml(sec: CustomSection, bootstrap: StudioBootstrapPa
         })
       : [];
     const pfMap = bootstrap?.pinkFridayPricingMap || {};
+    const targetLink = localizeInternalStoreHref(sanitizeNavHref(sec.linkUrl, '/all-products'), locale);
     innerHtml = `
       <header class="dandy-section-header">
         <div class="dandy-section-titles">
           ${sec.subtitle ? `<p class="dandy-section-kicker" dir="auto">${escapeHtml(sec.subtitle)}</p>` : ''}
-          <h2 class="dandy-section-heading" dir="auto">${escapeHtml(sec.title || 'منتجات مختارة')}</h2>
+          <h2 class="dandy-section-heading" dir="auto">${escapeHtml(sec.title || (isEn ? 'Selected Products' : 'منتجات مختارة'))}</h2>
         </div>
-        <a href="${escapeHtml(sanitizeNavHref(sec.linkUrl, '/all-products'))}" class="dandy-section-more">
-          <span dir="auto">${escapeHtml(sec.linkText || 'عرض الكل')}</span>
-          ${getIconSvg('arrow-left', { size: 15, strokeWidth: 1.8 })}
+        <a href="${escapeHtml(targetLink)}" class="dandy-section-more">
+          <span dir="auto">${escapeHtml(sec.linkText || (isEn ? 'View All' : 'عرض الكل'))}</span>
+          ${getIconSvg(arrowIcon, { size: 15, strokeWidth: 1.8 })}
         </a>
       </header>
       ${
         products.length > 0
           ? `<div class="dandy-featured-grid">${products.map((p) => renderProductCardHtml(p, pfMap[p.id] || null)).join('')}</div>`
-          : `<div class="dandy-featured-empty"><p>لم يتم تحديد منتجات متاحة في هذا القسم بعد.</p></div>`
+          : `<div class="dandy-featured-empty"><p>${isEn ? 'No products have been selected for this section yet.' : 'لم يتم تحديد منتجات متاحة في هذا القسم بعد.'}</p></div>`
       }
     `;
   } else if (sec.type === 'banner') {
+    const targetCtaLink = localizeInternalStoreHref(sanitizeNavHref(sec.ctaLink, '/all-products'), locale);
     innerHtml = `
       <div class="dandy-custom-banner">
         <div class="dandy-custom-banner-copy">
           ${sec.eyebrow || sec.subtitle ? `<p class="dandy-section-kicker" dir="auto">${escapeHtml(sec.eyebrow || sec.subtitle)}</p>` : ''}
-          <h2 class="dandy-story-title" dir="auto">${escapeHtml(sec.title || 'عرض خاص من داندي')}</h2>
+          <h2 class="dandy-story-title" dir="auto">${escapeHtml(sec.title || (isEn ? 'Special Offer from DANDY' : 'عرض خاص من داندي'))}</h2>
           ${sec.desc ? `<p class="dandy-story-text" dir="auto">${escapeHtml(sec.desc)}</p>` : ''}
           <div class="dandy-story-actions">
-            <a href="${escapeHtml(sanitizeNavHref(sec.ctaLink, '/all-products'))}" class="dandy-btn dandy-btn--editorial">
-              <span dir="auto">${escapeHtml(sec.ctaText || 'اكتشفي المجموعة')}</span>
-              ${getIconSvg('arrow-left', { size: 16, strokeWidth: 1.8 })}
+            <a href="${escapeHtml(targetCtaLink)}" class="dandy-btn dandy-btn--editorial">
+              <span dir="auto">${escapeHtml(sec.ctaText || (isEn ? 'Explore Collection' : 'اكتشفي المجموعة'))}</span>
+              ${getIconSvg(arrowIcon, { size: 16, strokeWidth: 1.8 })}
             </a>
           </div>
         </div>
         <div class="dandy-custom-banner-media">
-          <img src="${escapeHtml(sanitizeMediaUrl(sec.image, fallbackImg))}" alt="${escapeHtml(sec.title || 'عرض داندي')}" width="800" height="600" loading="lazy" decoding="async" referrerpolicy="no-referrer" class="dandy-story-img" onerror="this.onerror=null;this.src='${fallbackImg}';" />
+          <img src="${escapeHtml(sanitizeMediaUrl(sec.image, fallbackImg))}" alt="${escapeHtml(sec.title || (isEn ? 'DANDY Offer' : 'عرض داندي'))}" width="800" height="600" loading="lazy" decoding="async" referrerpolicy="no-referrer" class="dandy-story-img" onerror="this.onerror=null;this.src='${fallbackImg}';" />
         </div>
       </div>
     `;
@@ -649,7 +707,7 @@ function buildCustomSectionHtml(sec: CustomSection, bootstrap: StudioBootstrapPa
     innerHtml = `
       <div class="dandy-custom-story-card">
         ${sec.subtitle ? `<p class="dandy-section-kicker" dir="auto">${escapeHtml(sec.subtitle)}</p>` : ''}
-        <h2 class="dandy-custom-story-title" dir="auto">${escapeHtml(sec.title || 'فلسفتنا الطبيعية')}</h2>
+        <h2 class="dandy-custom-story-title" dir="auto">${escapeHtml(sec.title || (isEn ? 'Our Botanical Philosophy' : 'فلسفتنا الطبيعية'))}</h2>
         ${sec.content ? `<blockquote class="dandy-custom-story-quote" dir="auto">${escapeHtml(sec.content)}</blockquote>` : ''}
         ${sec.author ? `<p class="dandy-custom-story-author" dir="auto">— ${escapeHtml(sec.author)}</p>` : ''}
       </div>
@@ -661,7 +719,7 @@ function buildCustomSectionHtml(sec: CustomSection, bootstrap: StudioBootstrapPa
         <header class="dandy-section-header">
           <div class="dandy-section-titles">
             ${sec.subtitle ? `<p class="dandy-section-kicker" dir="auto">${escapeHtml(sec.subtitle)}</p>` : ''}
-            <h2 class="dandy-section-heading" dir="auto">${escapeHtml(sec.title || 'الأسئلة الشائعة')}</h2>
+            <h2 class="dandy-section-heading" dir="auto">${escapeHtml(sec.title || (isEn ? 'Frequently Asked Questions' : 'الأسئلة الشائعة'))}</h2>
           </div>
         </header>
         <div class="dandy-faq-list" data-faq-accordion>
@@ -670,7 +728,7 @@ function buildCustomSectionHtml(sec: CustomSection, bootstrap: StudioBootstrapPa
               (item, idx) => `
                 <div class="dandy-faq-item">
                   <button type="button" class="dandy-faq-trigger" aria-expanded="${idx === 0 ? 'true' : 'false'}" data-faq-trigger>
-                    <span dir="auto">${escapeHtml(item.q || 'سؤال')}</span>
+                    <span dir="auto">${escapeHtml(item.q || (isEn ? 'Question' : 'سؤال'))}</span>
                     ${getIconSvg('chevron-down', { size: 18, strokeWidth: 1.85, className: 'dandy-faq-chevron' })}
                   </button>
                   <div class="dandy-faq-panel"${idx !== 0 ? ' hidden' : ''} data-faq-panel>
@@ -685,9 +743,9 @@ function buildCustomSectionHtml(sec: CustomSection, bootstrap: StudioBootstrapPa
     `;
   } else if (sec.type === 'video') {
     const media = resolveVideoMedia(sec.videoUrl, sec.poster);
-    let mediaHtml = `<div class="dandy-featured-empty"><p>رابط الفيديو غير متاح حالياً.</p></div>`;
+    let mediaHtml = `<div class="dandy-featured-empty"><p>${isEn ? 'Video is currently unavailable.' : 'رابط الفيديو غير متاح حالياً.'}</p></div>`;
     if (media.kind === 'youtube' || media.kind === 'vimeo') {
-      mediaHtml = `<div class="dandy-video-frame"><iframe src="${escapeHtml(media.embedUrl)}" title="${escapeHtml(sec.title || 'فيديو')}" loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe></div>`;
+      mediaHtml = `<div class="dandy-video-frame"><iframe src="${escapeHtml(media.embedUrl)}" title="${escapeHtml(sec.title || (isEn ? 'Video' : 'فيديو'))}" loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe></div>`;
     } else if (media.kind === 'video') {
       mediaHtml = `<div class="dandy-video-frame is-native"><video src="${escapeHtml(media.src)}" poster="${escapeHtml(media.poster)}" controls playsinline preload="metadata" class="dandy-native-video"></video></div>`;
     }
@@ -696,7 +754,7 @@ function buildCustomSectionHtml(sec: CustomSection, bootstrap: StudioBootstrapPa
         <header class="dandy-section-header">
           <div class="dandy-section-titles">
             ${sec.subtitle ? `<p class="dandy-section-kicker" dir="auto">${escapeHtml(sec.subtitle)}</p>` : ''}
-            <h2 class="dandy-section-heading" dir="auto">${escapeHtml(sec.title || 'شاهدي نتائج داندي')}</h2>
+            <h2 class="dandy-section-heading" dir="auto">${escapeHtml(sec.title || (isEn ? 'Watch DANDY Results' : 'شاهدي نتائج داندي'))}</h2>
           </div>
         </header>
         ${mediaHtml}
@@ -708,15 +766,15 @@ function buildCustomSectionHtml(sec: CustomSection, bootstrap: StudioBootstrapPa
       <header class="dandy-section-header">
         <div class="dandy-section-titles">
           ${sec.subtitle ? `<p class="dandy-section-kicker" dir="auto">${escapeHtml(sec.subtitle)}</p>` : ''}
-          <h2 class="dandy-section-heading" dir="auto">${escapeHtml(sec.title || 'معرض داندي')}</h2>
+          <h2 class="dandy-section-heading" dir="auto">${escapeHtml(sec.title || (isEn ? 'DANDY Gallery' : 'معرض داندي'))}</h2>
         </div>
       </header>
       <div class="dandy-gallery-grid">
         ${items
           .map((item, idx) => {
             const safeImg = sanitizeMediaUrl(item.image, fallbackImg);
-            const safeLink = item.link?.trim() ? sanitizeNavHref(item.link) : '';
-            const imgTag = `<img src="${escapeHtml(safeImg)}" alt="${escapeHtml(item.title || `صورة ${idx + 1}`)}" width="640" height="480" loading="lazy" decoding="async" referrerpolicy="no-referrer" class="dandy-gallery-img" onerror="this.onerror=null;this.src='${fallbackImg}';" />`;
+            const safeLink = item.link?.trim() ? localizeInternalStoreHref(sanitizeNavHref(item.link), locale) : '';
+            const imgTag = `<img src="${escapeHtml(safeImg)}" alt="${escapeHtml(item.title || (isEn ? `Image ${idx + 1}` : `صورة ${idx + 1}`))}" width="640" height="480" loading="lazy" decoding="async" referrerpolicy="no-referrer" class="dandy-gallery-img" onerror="this.onerror=null;this.src='${fallbackImg}';" />`;
             return `
               <figure class="dandy-gallery-card">
                 ${safeLink ? `<a href="${escapeHtml(safeLink)}" class="dandy-gallery-link">${imgTag}</a>` : `<div class="dandy-gallery-link">${imgTag}</div>`}
@@ -792,11 +850,13 @@ function syncOrderAndVisibilityDom(
 }
 
 function decorateStudioSectionBadges(state: HomepageStudioState | null): void {
+  const isEn = getRuntimeLocale() === 'en';
+  const labelsMap = isEn ? SECTION_LABELS_EN : SECTION_LABELS_AR;
   const sections = document.querySelectorAll<HTMLElement>('[data-studio-section]');
   sections.forEach((sec) => {
     const id = sec.getAttribute('data-studio-section') || '';
     const customLabel = state?.customSections?.find((c) => c.id === id)?.title;
-    const label = customLabel || SECTION_LABELS_AR[id] || id;
+    const label = customLabel || labelsMap[id] || id;
     sec.setAttribute('data-studio-label', label);
     sec.classList.toggle('is-studio-selected', id === activeSelectedSectionId);
   });
@@ -881,7 +941,12 @@ function initStudioPreviewBridge(): void {
       const mainEl = document.getElementById('main-content');
       if (!mainEl || !currentState) return;
 
-      currentState = mergeStudioPreviewState(currentState, data.state);
+      const locale = getRuntimeLocale();
+      const merged = mergeStudioPreviewState(currentState, data.state);
+      currentState =
+        locale === 'en'
+          ? resolveLocalizedHomepageStudioState(merged, 'en', EN_HOMEPAGE_STUDIO_OVERLAY)
+          : merged;
       updateHeroDom(currentState);
       updateTrustDom(currentState);
       updateCategoriesDom(currentState);

@@ -6,36 +6,54 @@
  * accessible slide controls, and live STUDIO_UPDATE_STATE preview updates.
  */
 import Icon from '../ui/Icon.astro';
+import type { Locale } from '../../i18n/types';
+import { buildLocalizedPath } from '../../i18n/routes';
 import {
   DEFAULT_HERO_SLIDE,
+  DEFAULT_HERO_SLIDE_EN,
   type ResolvedHeroSlide,
 } from '../../scripts/homepage-studio';
 
 export interface Props {
   slides?: ResolvedHeroSlide[];
   hidden?: boolean;
+  locale?: Locale;
 }
 
-const { slides = [], hidden = false } = Astro.props;
+const { slides = [], hidden = false, locale = 'ar' } = Astro.props;
+const isEn = locale === 'en';
+const defaultHeroSlide = isEn ? DEFAULT_HERO_SLIDE_EN : DEFAULT_HERO_SLIDE;
 const activeSlides: ResolvedHeroSlide[] =
   slides.length > 0
     ? slides
-    : [{ index: 0, ...DEFAULT_HERO_SLIDE, hasCustomCopy: false }];
+    : [{ index: 0, ...defaultHeroSlide, hasCustomCopy: false }];
 
 const firstSlide = activeSlides[0];
 const multiSlide = activeSlides.length > 1;
+const firstCtaHref = firstSlide.link?.startsWith('/')
+  ? buildLocalizedPath(firstSlide.link, locale)
+  : firstSlide.link || buildLocalizedPath('/all-products', locale);
+const aboutHref = buildLocalizedPath('/about-us', locale);
 ---
 
 <section
   class="dandy-hero"
-  aria-label="داندي للعناية الطبيعية بالبشرة والشعر"
+  aria-label={isEn ? 'Dandy Natural Skin & Hair Care' : 'داندي للعناية الطبيعية بالبشرة والشعر'}
   data-studio-section="hero"
   hidden={hidden || undefined}
 >
   <div class="dandy-container dandy-hero-grid">
     <div class="dandy-hero-copy">
       <p class="dandy-hero-kicker" data-hero-kicker data-dandy-entrance="0">
-        Dandy Cosmetics <span aria-hidden="true">·</span> عناية طبيعية برؤية صيدلانية
+        {isEn ? (
+          <>
+            Dandy Cosmetics <span aria-hidden="true">·</span> Pharmacist-Formulated Botanical Care
+          </>
+        ) : (
+          <>
+            Dandy Cosmetics <span aria-hidden="true">·</span> عناية طبيعية برؤية صيدلانية
+          </>
+        )}
       </p>
 
       <h1 class="dandy-hero-title" data-hero-title dir="auto" data-dandy-entrance="1">
@@ -48,30 +66,40 @@ const multiSlide = activeSlides.length > 1;
 
       <div class="dandy-hero-actions" data-dandy-entrance="3">
         <a
-          href={firstSlide.link}
+          href={firstCtaHref}
           class="dandy-btn dandy-btn--editorial dandy-hero-cta"
           data-hero-cta
         >
           <span data-hero-cta-label dir="auto">{firstSlide.buttonText}</span>
-          <Icon name="arrow-left" size={16} strokeWidth={1.85} />
+          <Icon name={isEn ? 'arrow-right' : 'arrow-left'} size={16} strokeWidth={1.85} />
         </a>
-        <a href="/about-us" class="dandy-btn dandy-btn--outline dandy-hero-secondary-cta">
-          <span>فلسفة داندي</span>
+        <a href={aboutHref} class="dandy-btn dandy-btn--outline dandy-hero-secondary-cta">
+          <span>{isEn ? 'Our Philosophy' : 'فلسفة داندي'}</span>
         </a>
       </div>
 
-      <dl class="dandy-hero-facts" aria-label="مميزات المتجر" data-dandy-entrance="4">
+      <dl class="dandy-hero-facts" aria-label={isEn ? 'Store highlights' : 'مميزات المتجر'} data-dandy-entrance="4">
         <div class="dandy-hero-fact">
-          <dt>التركيبات</dt>
-          <dd>زيوت نباتية وزبدات مغذية</dd>
+          <dt>{isEn ? 'Formulations' : 'التركيبات'}</dt>
+          <dd>{isEn ? 'Pure plant oils & rich butters' : 'زيوت نباتية وزبدات مغذية'}</dd>
         </div>
         <div class="dandy-hero-fact">
-          <dt>الشحن والتوصيل</dt>
-          <dd>توصيل لكافة محافظات مصر</dd>
+          <dt>{isEn ? 'Delivery' : 'الشحن والتوصيل'}</dt>
+          <dd>{isEn ? 'All Egypt governorates' : 'توصيل لكافة محافظات مصر'}</dd>
         </div>
         <div class="dandy-hero-fact">
-          <dt>الشحن المجاني</dt>
-          <dd>للطلبات فوق <span class="dandy-tabular">2000</span> ج.م</dd>
+          <dt>{isEn ? 'Free Shipping' : 'الشحن المجاني'}</dt>
+          <dd>
+            {isEn ? (
+              <>
+                Orders over <span class="dandy-tabular">2,000</span> EGP
+              </>
+            ) : (
+              <>
+                للطلبات فوق <span class="dandy-tabular">2000</span> ج.م
+              </>
+            )}
+          </dd>
         </div>
       </dl>
     </div>
@@ -92,14 +120,19 @@ const multiSlide = activeSlides.length > 1;
               data-title={slide.title}
               data-subtitle={slide.subtitle}
               data-button-text={slide.buttonText}
-              data-link={slide.link}
+              data-link={slide.link?.startsWith('/') ? buildLocalizedPath(slide.link, locale) : slide.link}
               aria-hidden={idx === 0 ? 'false' : 'true'}
             >
               <img
                 src={slide.desktopImage}
                 data-desktop-src={slide.desktopImage}
                 data-mobile-src={slide.mobileImage || ''}
-                alt={slide.title || 'مستحضرات داندي للعناية بالبشرة بتركيبات نباتية طبيعية'}
+                alt={
+                  slide.title ||
+                  (isEn
+                    ? 'Dandy Cosmetics natural botanical skincare essentials'
+                    : 'مستحضرات داندي للعناية بالبشرة بتركيبات نباتية طبيعية')
+                }
                 width="1376"
                 height="768"
                 loading={idx === 0 ? 'eager' : 'lazy'}
@@ -118,12 +151,17 @@ const multiSlide = activeSlides.length > 1;
             type="button"
             class="dandy-hero-nav-btn"
             data-hero-prev
-            aria-label="الشريحة السابقة"
+            aria-label={isEn ? 'Previous slide' : 'الشريحة السابقة'}
           >
-            <Icon name="chevron-right" size={16} strokeWidth={2} />
+            <Icon name={isEn ? 'chevron-left' : 'chevron-right'} size={16} strokeWidth={2} />
           </button>
 
-          <div class="dandy-hero-dots" role="tablist" aria-label="اختيار شريحة العرض" data-hero-dots>
+          <div
+            class="dandy-hero-dots"
+            role="tablist"
+            aria-label={isEn ? 'Select slide' : 'اختيار شريحة العرض'}
+            data-hero-dots
+          >
             {activeSlides.map((_, idx) => (
               <button
                 type="button"
@@ -131,7 +169,7 @@ const multiSlide = activeSlides.length > 1;
                 class:list={['dandy-hero-dot', { 'is-active': idx === 0 }]}
                 data-hero-dot={idx}
                 aria-selected={idx === 0 ? 'true' : 'false'}
-                aria-label={`الشريحة رقم ${idx + 1}`}
+                aria-label={isEn ? `Slide ${idx + 1}` : `الشريحة رقم ${idx + 1}`}
               ></button>
             ))}
           </div>
@@ -140,9 +178,9 @@ const multiSlide = activeSlides.length > 1;
             type="button"
             class="dandy-hero-nav-btn"
             data-hero-next
-            aria-label="الشريحة التالية"
+            aria-label={isEn ? 'Next slide' : 'الشريحة التالية'}
           >
-            <Icon name="chevron-left" size={16} strokeWidth={2} />
+            <Icon name={isEn ? 'chevron-right' : 'chevron-left'} size={16} strokeWidth={2} />
           </button>
         </div>
       </div>
@@ -177,7 +215,7 @@ const multiSlide = activeSlides.length > 1;
 
   .dandy-hero-kicker {
     margin: 0;
-    font-family: var(--dandy-font-ar-sans);
+    font-family: var(--dandy-font-active-sans);
     font-size: var(--dandy-text-xs);
     font-weight: 600;
     color: var(--dandy-botanical-deep);
@@ -186,7 +224,7 @@ const multiSlide = activeSlides.length > 1;
 
   .dandy-hero-title {
     margin: 0;
-    font-family: var(--dandy-font-ar-display);
+    font-family: var(--dandy-font-active-display);
     font-size: clamp(2rem, 3.6vw, 3.35rem);
     font-weight: 700;
     line-height: 1.24;

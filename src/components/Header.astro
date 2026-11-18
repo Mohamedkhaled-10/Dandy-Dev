@@ -1,16 +1,24 @@
 ---
 /**
- * DANDY COSMETICS — STOREFRONT HEADER FACADE (PHASE 2)
+ * DANDY COSMETICS — STOREFRONT HEADER FACADE (PHASE 2 / PHASE 11)
  * Preserves BaseLayout integration contract while delegating to modular
- * Botanical Editorial layout components.
+ * Botanical Editorial layout components with bilingual support.
  */
 import AnnouncementBar from './layout/AnnouncementBar.astro';
 import SiteHeader from './layout/SiteHeader.astro';
 import MobileNavDrawer from './layout/MobileNavDrawer.astro';
 import SearchDrawer from './layout/SearchDrawer.astro';
+import type { CounterpartAvailability, Locale } from '../i18n/types';
+
+export interface Props {
+  locale?: Locale;
+  counterpartAvailability?: CounterpartAvailability;
+}
+
+const { locale = 'ar', counterpartAvailability } = Astro.props;
 ---
 
-<AnnouncementBar />
-<SiteHeader />
-<MobileNavDrawer />
-<SearchDrawer />
+<AnnouncementBar locale={locale} />
+<SiteHeader locale={locale} counterpartAvailability={counterpartAvailability} />
+<MobileNavDrawer locale={locale} counterpartAvailability={counterpartAvailability} />
+<SearchDrawer locale={locale} />

@@ -47,10 +47,24 @@ export function initCatalogControllers(): void {
   });
 }
 
+function getRuntimeLocale(): 'ar' | 'en' {
+  if (typeof document !== 'undefined') {
+    const lang = (document.documentElement.getAttribute('lang') || '').trim().toLowerCase();
+    if (lang.startsWith('en')) return 'en';
+  }
+  if (typeof window !== 'undefined') {
+    const p = (window.location.pathname || '/').toLowerCase();
+    if (p === '/en' || p.startsWith('/en/')) return 'en';
+  }
+  return 'ar';
+}
+
 function setupCatalogRoot(root: HTMLElement): void {
   const gridEl = root.querySelector<HTMLElement>('[data-catalog-grid]');
   if (!gridEl) return;
 
+  const locale = getRuntimeLocale();
+  const isEn = locale === 'en';
   const lockedCategorySlug = root.dataset.lockedCategory || null;
   const showCategoryFilter = root.dataset.showCategoryFilter !== 'false';
   const syncUrl = root.dataset.syncUrl !== 'false';
@@ -153,7 +167,7 @@ function setupCatalogRoot(root: HTMLElement): void {
 
   function renderChips(targetState: CatalogFilterState): void {
     if (!chipsBar || !chipsList) return;
-    const chips = buildActiveCatalogChips(targetState, { showCategoryFilter });
+    const chips = buildActiveCatalogChips(targetState, { showCategoryFilter }, locale);
     const activeCount = chips.length;
 
     if (mobileBadge) {
@@ -174,7 +188,7 @@ function setupCatalogRoot(root: HTMLElement): void {
       const chipBtn = document.createElement('button');
       chipBtn.type = 'button';
       chipBtn.className = 'dandy-filter-chip';
-      chipBtn.setAttribute('aria-label', `إزالة فلتر ${chip.label}`);
+      chipBtn.setAttribute('aria-label', isEn ? `Remove filter ${chip.label}` : `إزالة فلتر ${chip.label}`);
 
       const textSpan = document.createElement('span');
       textSpan.textContent = chip.label;
@@ -210,7 +224,7 @@ function setupCatalogRoot(root: HTMLElement): void {
   }
 
   function applyState(options: { updateUrl?: boolean } = {}): void {
-    const filtered = filterAndSortCatalogItems(allMeta, state);
+    const filtered = filterAndSortCatalogItems(allMeta, state, locale);
     const visibleIds = new Set(filtered.map((item) => item.id));
 
     // Toggle visibility on slots
@@ -230,8 +244,11 @@ function setupCatalogRoot(root: HTMLElement): void {
     gridEl.appendChild(fragment);
 
     // Update counts
-    const countText =
-      filtered.length === allMeta.length
+    const countText = isEn
+      ? filtered.length === allMeta.length
+        ? `${filtered.length} ${filtered.length === 1 ? 'product' : 'products'}`
+        : `${filtered.length} of ${allMeta.length} products`
+      : filtered.length === allMeta.length
         ? `${filtered.length} منتج`
         : `${filtered.length} من ${allMeta.length} منتج`;
     countOutputs.forEach((el) => {

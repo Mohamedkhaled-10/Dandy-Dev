@@ -13,6 +13,7 @@
 import {
   GOVERNORATE_LABELS_AR,
   formatOrderLineItem,
+  getGovernorateLabel,
   normalizeOrderStatusMeta,
   type CartItemInput,
   type FormattedOrderLineItem,
@@ -24,6 +25,8 @@ import {
   type ProductCardViewModel,
 } from './product-card';
 import type { Product } from '../utils/products';
+import type { Locale } from '../i18n/types';
+import { buildLocalizedPath } from '../i18n/routes';
 
 export interface LoginInput {
   email: string;
@@ -117,6 +120,14 @@ export const RATING_LABELS_AR: Record<number, string> = {
   5: 'ممتاز، أنصح به بشدة!',
 };
 
+export const RATING_LABELS_EN: Record<number, string> = {
+  1: 'Unsatisfied',
+  2: 'Below Expectations',
+  3: 'Good Experience',
+  4: 'Great & Gentle',
+  5: 'Excellent, Highly Recommend!',
+};
+
 /**
  * Canonical mapping between product slugs (PDP) and their routine article slug on /blog.
  * Reversed cleanly to render "المنتجات المذكورة في الروتين" without invented claims.
@@ -167,7 +178,10 @@ export function normalizeEgyptianPhone(rawPhone?: string | null): string {
   return digits;
 }
 
-export function validateLoginInput(input: Partial<LoginInput>): {
+export function validateLoginInput(
+  input: Partial<LoginInput>,
+  locale: Locale = 'ar'
+): {
   valid: boolean;
   error: string | null;
   email: string;
@@ -177,18 +191,36 @@ export function validateLoginInput(input: Partial<LoginInput>): {
   const password = String(input.password ?? '');
 
   if (!email) {
-    return { valid: false, error: 'يرجى إدخال البريد الإلكتروني.', email, password };
+    return {
+      valid: false,
+      error: locale === 'en' ? 'Please enter your email address.' : 'يرجى إدخال البريد الإلكتروني.',
+      email,
+      password,
+    };
   }
   if (!EMAIL_REGEX.test(email)) {
-    return { valid: false, error: 'يرجى إدخال بريد إلكتروني صحيح.', email, password };
+    return {
+      valid: false,
+      error: locale === 'en' ? 'Please enter a valid email address.' : 'يرجى إدخال بريد إلكتروني صحيح.',
+      email,
+      password,
+    };
   }
   if (!password) {
-    return { valid: false, error: 'يرجى إدخال كلمة المرور.', email, password };
+    return {
+      valid: false,
+      error: locale === 'en' ? 'Please enter your password.' : 'يرجى إدخال كلمة المرور.',
+      email,
+      password,
+    };
   }
   return { valid: true, error: null, email, password };
 }
 
-export function validateSignupInput(input: Partial<SignupInput>): {
+export function validateSignupInput(
+  input: Partial<SignupInput>,
+  locale: Locale = 'ar'
+): {
   valid: boolean;
   error: string | null;
   field: keyof SignupInput | null;
@@ -202,7 +234,10 @@ export function validateSignupInput(input: Partial<SignupInput>): {
   if (name.length < 3) {
     return {
       valid: false,
-      error: 'يرجى إدخال الاسم الكامل (3 أحرف على الأقل).',
+      error:
+        locale === 'en'
+          ? 'Please enter your full name (at least 3 characters).'
+          : 'يرجى إدخال الاسم الكامل (3 أحرف على الأقل).',
       field: 'name',
       sanitized: { name, phone, email, password },
     };
@@ -210,7 +245,10 @@ export function validateSignupInput(input: Partial<SignupInput>): {
   if (!EGYPT_PHONE_REGEX.test(phone)) {
     return {
       valid: false,
-      error: 'يرجى إدخال رقم هاتف مصري صحيح مكون من 11 رقماً يبدأ بـ 01.',
+      error:
+        locale === 'en'
+          ? 'Please enter a valid 11-digit Egyptian mobile number starting with 01.'
+          : 'يرجى إدخال رقم هاتف مصري صحيح مكون من 11 رقماً يبدأ بـ 01.',
       field: 'phone',
       sanitized: { name, phone, email, password },
     };
@@ -218,7 +256,7 @@ export function validateSignupInput(input: Partial<SignupInput>): {
   if (!EMAIL_REGEX.test(email)) {
     return {
       valid: false,
-      error: 'يرجى إدخال بريد إلكتروني صحيح.',
+      error: locale === 'en' ? 'Please enter a valid email address.' : 'يرجى إدخال بريد إلكتروني صحيح.',
       field: 'email',
       sanitized: { name, phone, email, password },
     };
@@ -226,7 +264,10 @@ export function validateSignupInput(input: Partial<SignupInput>): {
   if (password.length < 6) {
     return {
       valid: false,
-      error: 'يجب أن تتكون كلمة المرور من 6 أحرف على الأقل.',
+      error:
+        locale === 'en'
+          ? 'Password must be at least 6 characters long.'
+          : 'يجب أن تتكون كلمة المرور من 6 أحرف على الأقل.',
       field: 'password',
       sanitized: { name, phone, email, password },
     };
@@ -240,8 +281,38 @@ export function validateSignupInput(input: Partial<SignupInput>): {
   };
 }
 
-export function mapFirebaseAuthErrorAr(code?: string | null, context: 'login' | 'signup' | 'reset' = 'login'): string {
+export function mapFirebaseAuthError(
+  code?: string | null,
+  context: 'login' | 'signup' | 'reset' = 'login',
+  locale: Locale = 'ar'
+): string {
   const cleanCode = String(code ?? '').trim();
+  if (locale === 'en') {
+    switch (cleanCode) {
+      case 'auth/user-not-found':
+      case 'auth/invalid-login-credentials':
+      case 'auth/wrong-password':
+      case 'auth/invalid-credential':
+        return 'Incorrect email address or password.';
+      case 'auth/invalid-email':
+        return 'Please enter a valid email address.';
+      case 'auth/user-disabled':
+        return 'This account has been disabled. Please contact support.';
+      case 'auth/too-many-requests':
+        return 'Too many attempts. Please wait a moment and try again.';
+      case 'auth/email-already-in-use':
+        return 'This email is already registered. You can sign in or reset your password.';
+      case 'auth/weak-password':
+        return 'Password is too weak. Please choose at least 6 characters.';
+      case 'auth/network-request-failed':
+        return 'Network connection error. Please check your internet and try again.';
+      default:
+        if (context === 'signup') return 'Unable to create your account right now. Please try again.';
+        if (context === 'reset') return 'Unable to send the password reset link right now.';
+        return 'An error occurred while signing in. Please try again.';
+    }
+  }
+
   switch (cleanCode) {
     case 'auth/user-not-found':
     case 'auth/invalid-login-credentials':
@@ -267,6 +338,10 @@ export function mapFirebaseAuthErrorAr(code?: string | null, context: 'login' | 
   }
 }
 
+export function mapFirebaseAuthErrorAr(code?: string | null, context: 'login' | 'signup' | 'reset' = 'login'): string {
+  return mapFirebaseAuthError(code, context, 'ar');
+}
+
 /**
  * Fixes historical mismatch where legacy account.astro saved 'Asyut' while
  * cart/checkout & create-order.js require 'Assiut'.
@@ -280,17 +355,18 @@ export function normalizeGovernorateCode(rawGov?: string | null): string {
 
 export function normalizeCustomerAddress(
   id: string,
-  raw: CustomerAddressInput | null | undefined
+  raw: CustomerAddressInput | null | undefined,
+  locale: Locale = 'ar'
 ): NormalizedCustomerAddress {
   const safe = raw && typeof raw === 'object' ? raw : {};
   const gov = normalizeGovernorateCode(safe.governorate);
-  const govAr = gov ? GOVERNORATE_LABELS_AR[gov] || gov : '—';
+  const govLabel = gov ? getGovernorateLabel(gov, locale) : '—';
   return {
     id,
-    label: String(safe.label ?? '').trim() || 'عنوان',
+    label: String(safe.label ?? '').trim() || (locale === 'en' ? 'Address' : 'عنوان'),
     phone: String(safe.phone ?? '').trim(),
     governorate: gov,
-    governorateAr: govAr,
+    governorateAr: govLabel,
     city: String(safe.city ?? '').trim(),
     street: String(safe.street ?? safe.address ?? '').trim(),
     isDefault: Boolean(safe.isDefault),
@@ -307,7 +383,10 @@ export function sortAddressesDefaultFirst(
   });
 }
 
-export function validateAddressInput(input: CustomerAddressInput): {
+export function validateAddressInput(
+  input: CustomerAddressInput,
+  locale: Locale = 'ar'
+): {
   valid: boolean;
   error: string | null;
   field: 'label' | 'phone' | 'governorate' | 'city' | 'street' | null;
@@ -330,7 +409,10 @@ export function validateAddressInput(input: CustomerAddressInput): {
   if (label.length < 2) {
     return {
       valid: false,
-      error: 'يرجى إدخال وصف مختصر للعنوان (مثل: المنزل أو العمل).',
+      error:
+        locale === 'en'
+          ? 'Please enter a short label for this address (e.g. Home or Work).'
+          : 'يرجى إدخال وصف مختصر للعنوان (مثل: المنزل أو العمل).',
       field: 'label',
       sanitized: { label, phone, governorate, city, street, isDefault },
     };
@@ -338,7 +420,10 @@ export function validateAddressInput(input: CustomerAddressInput): {
   if (phone && !EGYPT_PHONE_REGEX.test(phone)) {
     return {
       valid: false,
-      error: 'يرجى إدخال رقم هاتف استلام صحيح (11 رقماً يبدأ بـ 01).',
+      error:
+        locale === 'en'
+          ? 'Please enter a valid recipient mobile number (11 digits starting with 01).'
+          : 'يرجى إدخال رقم هاتف استلام صحيح (11 رقماً يبدأ بـ 01).',
       field: 'phone',
       sanitized: { label, phone, governorate, city, street, isDefault },
     };
@@ -346,7 +431,7 @@ export function validateAddressInput(input: CustomerAddressInput): {
   if (!governorate || !GOVERNORATE_LABELS_AR[governorate]) {
     return {
       valid: false,
-      error: 'يرجى اختيار المحافظة.',
+      error: locale === 'en' ? 'Please select a governorate.' : 'يرجى اختيار المحافظة.',
       field: 'governorate',
       sanitized: { label, phone, governorate, city, street, isDefault },
     };
@@ -354,7 +439,7 @@ export function validateAddressInput(input: CustomerAddressInput): {
   if (city.length < 2) {
     return {
       valid: false,
-      error: 'يرجى إدخال اسم المدينة أو الحي.',
+      error: locale === 'en' ? 'Please enter the city or district.' : 'يرجى إدخال اسم المدينة أو الحي.',
       field: 'city',
       sanitized: { label, phone, governorate, city, street, isDefault },
     };
@@ -362,7 +447,10 @@ export function validateAddressInput(input: CustomerAddressInput): {
   if (street.length < 6) {
     return {
       valid: false,
-      error: 'يرجى كتابة العنوان التفصيلي (اسم الشارع ورقم العمارة/الشقة).',
+      error:
+        locale === 'en'
+          ? 'Please enter the full street address (street name, building & apartment).'
+          : 'يرجى كتابة العنوان التفصيلي (اسم الشارع ورقم العمارة/الشقة).',
       field: 'street',
       sanitized: { label, phone, governorate, city, street, isDefault },
     };
@@ -384,8 +472,8 @@ export function extractCustomerInitial(name?: string | null, email?: string | nu
   return 'D';
 }
 
-export function ratingDescriptionLabel(rating: number): string {
-  return RATING_LABELS_AR[rating] || '';
+export function ratingDescriptionLabel(rating: number, locale: Locale = 'ar'): string {
+  return (locale === 'en' ? RATING_LABELS_EN[rating] : RATING_LABELS_AR[rating]) || '';
 }
 
 function normalizeItemsArray(rawItems: unknown): CartItemInput[] {
@@ -407,16 +495,17 @@ export function isOrderStatusDelivered(status?: string | null): boolean {
 
 export function formatCustomerOrderViewModel(
   orderId: string,
-  order: CustomerOrderRecord
+  order: CustomerOrderRecord,
+  locale: Locale = 'ar'
 ): CustomerOrderViewModel {
   const delivered = isOrderStatusDelivered(order?.status);
-  const rawMeta = normalizeOrderStatusMeta(order?.status);
+  const rawMeta = normalizeOrderStatusMeta(order?.status, locale);
   const statusMeta =
     delivered && rawMeta.key !== 'delivered'
       ? {
           key: 'delivered' as const,
           isCancelled: false,
-          label: 'تم التوصيل',
+          label: locale === 'en' ? 'Delivered' : 'تم التوصيل',
           badgeTone: 'delivered' as const,
           progressPercent: 100,
           activeStepIndex: 3,
@@ -424,7 +513,7 @@ export function formatCustomerOrderViewModel(
       : rawMeta;
   const rawItems = normalizeItemsArray(order?.products ?? order?.items);
   const items: CustomerOrderLineItem[] = rawItems.map((item) => ({
-    ...formatOrderLineItem(item),
+    ...formatOrderLineItem(item, locale),
     productId: String(item.productId || item.id || '').trim(),
   }));
 
@@ -437,7 +526,7 @@ export function formatCustomerOrderViewModel(
 
   const dateLabel =
     parsedCreated > 0
-      ? new Date(parsedCreated).toLocaleDateString('ar-EG', {
+      ? new Date(parsedCreated).toLocaleDateString(locale === 'en' ? 'en-EG' : 'ar-EG', {
           year: 'numeric',
           month: 'short',
           day: 'numeric',
@@ -451,7 +540,7 @@ export function formatCustomerOrderViewModel(
   ).trim();
   const totalAmount = Number(order?.totalAmount ?? order?.total ?? order?.subtotal ?? 0) || 0;
   const normGov = normalizeGovernorateCode(order?.governorate);
-  const governorateAr = normGov ? GOVERNORATE_LABELS_AR[normGov] || normGov : '';
+  const governorateAr = normGov ? getGovernorateLabel(normGov, locale) : '';
   const city = String(order?.city ?? '').trim();
 
   return {
@@ -465,8 +554,8 @@ export function formatCustomerOrderViewModel(
     city,
     items,
     totalAmount,
-    invoiceHref: `/invoice?invoice=${encodeURIComponent(code)}`,
-    trackHref: `/track-order?invoice=${encodeURIComponent(code)}`,
+    invoiceHref: buildLocalizedPath(`/invoice?invoice=${encodeURIComponent(code)}`, locale),
+    trackHref: buildLocalizedPath(`/track-order?invoice=${encodeURIComponent(code)}`, locale),
   };
 }
 
@@ -499,7 +588,8 @@ export function computeAccountStats(counts: {
 
 export function resolveWishlistCardModel(
   productId: string,
-  rawProduct: Partial<Product>
+  rawProduct: Partial<Product>,
+  locale: Locale = 'ar'
 ): ProductCardViewModel | null {
   if (!rawProduct || typeof rawProduct !== 'object' || !rawProduct.name) return null;
   if (rawProduct.isHidden === true) return null;
@@ -532,7 +622,7 @@ export function resolveWishlistCardModel(
     variants: rawProduct.variants,
   };
 
-  return resolveProductCardViewModel(product, null);
+  return resolveProductCardViewModel(product, null, locale);
 }
 
 /**

@@ -5,36 +5,67 @@
  * Preserves legacy DOM IDs, Firebase Auth state handling, cart sync, and Pink Friday integration.
  */
 import Icon from '../ui/Icon.astro';
+import LanguageSwitcher from './LanguageSwitcher.astro';
 import { getPublishedPinkFridayCampaign, shouldDisplayCampaignToCustomers } from '../../utils/pink-friday-server';
 import { isNavHrefActive } from '../../scripts/shell';
+import { getLocaleDirection } from '../../i18n/config';
+import { buildLocalizedPath } from '../../i18n/routes';
+import { t } from '../../i18n/translator';
+import type { CounterpartAvailability, Locale } from '../../i18n/types';
 
+export interface Props {
+  locale?: Locale;
+  counterpartAvailability?: CounterpartAvailability;
+}
+
+const { locale = 'ar', counterpartAvailability } = Astro.props;
+const dir = getLocaleDirection(locale);
 const publishedCampaign = await getPublishedPinkFridayCampaign();
 const showPinkFriday = shouldDisplayCampaignToCustomers(publishedCampaign);
 const currentPath = Astro.url.pathname || '/';
 
-const shopActive = isNavHrefActive(currentPath, '/all-products');
-const categoriesActive = isNavHrefActive(currentPath, '/category', ['/category']);
-const offersActive = isNavHrefActive(currentPath, '/special-offers', ['/pink-friday']);
-const aboutActive = isNavHrefActive(currentPath, '/about-us');
-const trackActive = isNavHrefActive(currentPath, '/track-order');
+const homeHref = buildLocalizedPath('/', locale);
+const allProductsHref = buildLocalizedPath('/all-products', locale);
+const categoryPrefix = buildLocalizedPath('/category', locale);
+const offersHref = buildLocalizedPath('/special-offers', locale);
+const pinkFridayHref = buildLocalizedPath('/pink-friday', locale);
+const aboutHref = buildLocalizedPath('/about-us', locale);
+const trackHref = buildLocalizedPath('/track-order', locale);
+const loginHref = buildLocalizedPath('/account-login', locale);
+const accountHref = buildLocalizedPath('/account', locale);
+const cartHref = buildLocalizedPath('/cart', locale);
 
-const CATEGORY_LINKS = [
-  { href: '/category/skin-care', label: 'العناية بالبشرة', desc: 'سيروم، كريمات، وتنظيف لطيف' },
-  { href: '/category/hair-care', label: 'العناية بالشعر', desc: 'زيوت مغذية وعناية يومية' },
-  { href: '/category/body-care', label: 'العناية بالجسم', desc: 'ترطيب عميق وملمس ناعم' },
-  { href: '/category/fragrance', label: 'العطور والمعطرات', desc: 'روائح ناعمة وثبات متوازن' },
-];
+const shopActive = isNavHrefActive(currentPath, allProductsHref);
+const categoriesActive = isNavHrefActive(currentPath, categoryPrefix, [categoryPrefix]);
+const offersActive = isNavHrefActive(currentPath, offersHref, [pinkFridayHref]);
+const aboutActive = isNavHrefActive(currentPath, aboutHref);
+const trackActive = isNavHrefActive(currentPath, trackHref);
+
+const CATEGORY_LINKS =
+  locale === 'en'
+    ? [
+        { href: '/en/category/skin-care', label: 'Skin Care', desc: 'Serums, creams & gentle cleansers' },
+        { href: '/en/category/hair-care', label: 'Hair Care', desc: 'Botanical oils & daily scalp care' },
+        { href: '/en/category/body-care', label: 'Body Care', desc: 'Deep hydration & silky butters' },
+        { href: '/en/category/fragrance', label: 'Fragrance', desc: 'Soft mists & lasting solid perfumes' },
+      ]
+    : [
+        { href: '/category/skin-care', label: 'العناية بالبشرة', desc: 'سيروم، كريمات، وتنظيف لطيف' },
+        { href: '/category/hair-care', label: 'العناية بالشعر', desc: 'زيوت مغذية وعناية يومية' },
+        { href: '/category/body-care', label: 'العناية بالجسم', desc: 'ترطيب عميق وملمس ناعم' },
+        { href: '/category/fragrance', label: 'العطور والمعطرات', desc: 'روائح ناعمة وثبات متوازن' },
+      ];
 ---
 
-<header class="dandy-header" id="site-header" dir="rtl">
+<header class="dandy-header" id="site-header" dir={dir}>
   <div class="dandy-header-inner">
-    <!-- START ZONE (RTL Right): Mobile Hamburger (below 1024px) & Brand Logo (Desktop) -->
+    <!-- START ZONE: Mobile Hamburger (below 1024px) & Brand Logo (Desktop) -->
     <div class="dandy-header-start">
       <button
         type="button"
         class="dandy-utility-btn dandy-mobile-menu-trigger"
         id="mobile-menu-trigger"
-        aria-label="القائمة الرئيسية"
+        aria-label={t(locale, 'header.menuTriggerLabel')}
         aria-expanded="false"
         aria-controls="menubar"
         onclick="window.toggleNav()"
@@ -43,9 +74,9 @@ const CATEGORY_LINKS = [
       </button>
 
       <a
-        href="/"
+        href={homeHref}
         class="dandy-brand-logo dandy-brand-logo--desktop"
-        title="Dandy Cosmetics - الصفحة الرئيسية"
+        title={`Dandy Cosmetics - ${t(locale, 'navigation.home')}`}
         id="header-brand-logo"
       >
         <img
@@ -62,10 +93,10 @@ const CATEGORY_LINKS = [
     <!-- CENTER ZONE: 5 Concise Navigation Groups (Desktop) | Centered Logo (< 1024px) -->
     <div class="dandy-header-center">
       <a
-        href="/"
+        href={homeHref}
         class="dandy-brand-logo dandy-brand-logo--compact"
-        title="Dandy Cosmetics - الصفحة الرئيسية"
-        aria-label="Dandy Cosmetics - الصفحة الرئيسية"
+        title={`Dandy Cosmetics - ${t(locale, 'navigation.home')}`}
+        aria-label={`Dandy Cosmetics - ${t(locale, 'navigation.home')}`}
       >
         <img
           src="/assets/images/logo.png"
@@ -77,14 +108,14 @@ const CATEGORY_LINKS = [
         />
       </a>
 
-      <nav class="dandy-desktop-nav" aria-label="التنقل الرئيسي" id="desktop-primary-nav">
+      <nav class="dandy-desktop-nav" aria-label={locale === 'en' ? 'Primary navigation' : 'التنقل الرئيسي'} id="desktop-primary-nav">
         <a
-          href="/all-products"
+          href={allProductsHref}
           class:list={['dandy-nav-link', shopActive && 'active']}
-          data-nav-href="/all-products"
+          data-nav-href={allProductsHref}
           aria-current={shopActive ? 'page' : undefined}
         >
-          المتجر
+          {t(locale, 'navigation.shop')}
         </a>
 
         <div class="dandy-nav-dropdown" data-dandy-dropdown="categories">
@@ -94,9 +125,9 @@ const CATEGORY_LINKS = [
             id="nav-categories-trigger"
             aria-expanded="false"
             aria-controls="desktop-categories-menu"
-            data-nav-prefix="/category"
+            data-nav-prefix={categoryPrefix}
           >
-            <span>التصنيفات</span>
+            <span>{t(locale, 'navigation.categories')}</span>
             <Icon name="chevron-down" size={14} strokeWidth={1.9} class="dandy-nav-chevron" />
           </button>
 
@@ -104,7 +135,7 @@ const CATEGORY_LINKS = [
             class="dandy-nav-popover"
             id="desktop-categories-menu"
             role="region"
-            aria-label="تصنيفات المتجر"
+            aria-label={locale === 'en' ? 'Store categories' : 'تصنيفات المتجر'}
             hidden
           >
             <div class="dandy-popover-list">
@@ -123,9 +154,9 @@ const CATEGORY_LINKS = [
               ))}
             </div>
             <div class="dandy-popover-footer">
-              <a href="/all-products" class="dandy-popover-all">
-                <span>تصفح جميع المنتجات</span>
-                <Icon name="chevron-left" size={14} strokeWidth={1.9} />
+              <a href={allProductsHref} class="dandy-popover-all">
+                <span>{locale === 'en' ? 'Browse All Products' : 'تصفح جميع المنتجات'}</span>
+                <Icon name={locale === 'en' ? 'chevron-right' : 'chevron-left'} size={14} strokeWidth={1.9} />
               </a>
             </div>
           </div>
@@ -139,10 +170,10 @@ const CATEGORY_LINKS = [
               id="nav-offers-trigger"
               aria-expanded="false"
               aria-controls="desktop-offers-menu"
-              data-nav-href="/special-offers"
-              data-nav-prefix="/pink-friday"
+              data-nav-href={offersHref}
+              data-nav-prefix={pinkFridayHref}
             >
-              <span>العروض</span>
+              <span>{t(locale, 'navigation.offers')}</span>
               <Icon name="chevron-down" size={14} strokeWidth={1.9} class="dandy-nav-chevron" />
             </button>
 
@@ -150,89 +181,95 @@ const CATEGORY_LINKS = [
               class="dandy-nav-popover dandy-nav-popover--compact"
               id="desktop-offers-menu"
               role="region"
-              aria-label="العروض المتاحة"
+              aria-label={locale === 'en' ? 'Available offers' : 'العروض المتاحة'}
               hidden
             >
               <div class="dandy-popover-list">
                 <a
-                  href="/special-offers"
-                  class:list={['dandy-popover-item', isNavHrefActive(currentPath, '/special-offers') && 'is-active']}
-                  data-nav-href="/special-offers"
+                  href={offersHref}
+                  class:list={['dandy-popover-item', isNavHrefActive(currentPath, offersHref) && 'is-active']}
+                  data-nav-href={offersHref}
                 >
-                  <span class="dandy-popover-title">العروض الخاصة</span>
-                  <span class="dandy-popover-desc">مجموعات وتخفيضات متجددة</span>
+                  <span class="dandy-popover-title">{t(locale, 'navigation.specialOffers')}</span>
+                  <span class="dandy-popover-desc">
+                    {locale === 'en' ? 'Curated sets & seasonal markdowns' : 'مجموعات وتخفيضات متجددة'}
+                  </span>
                 </a>
                 <a
-                  href="/pink-friday"
-                  class:list={['dandy-popover-item dandy-popover-item--accent', isNavHrefActive(currentPath, '/pink-friday') && 'is-active']}
-                  data-nav-href="/pink-friday"
+                  href={pinkFridayHref}
+                  class:list={['dandy-popover-item dandy-popover-item--accent', isNavHrefActive(currentPath, pinkFridayHref) && 'is-active']}
+                  data-nav-href={pinkFridayHref}
                 >
-                  <span class="dandy-popover-title">Pink Friday</span>
-                  <span class="dandy-popover-desc">عروض الحملة الموسمية الحالية</span>
+                  <span class="dandy-popover-title">{t(locale, 'navigation.pinkFriday')}</span>
+                  <span class="dandy-popover-desc">
+                    {locale === 'en' ? 'Limited-time seasonal campaign' : 'عروض الحملة الموسمية الحالية'}
+                  </span>
                 </a>
               </div>
             </div>
           </div>
         ) : (
           <a
-            href="/special-offers"
+            href={offersHref}
             class:list={['dandy-nav-link', offersActive && 'active']}
-            data-nav-href="/special-offers"
+            data-nav-href={offersHref}
             aria-current={offersActive ? 'page' : undefined}
           >
-            العروض
+            {t(locale, 'navigation.offers')}
           </a>
         )}
 
         <a
-          href="/about-us"
+          href={aboutHref}
           class:list={['dandy-nav-link', aboutActive && 'active']}
-          data-nav-href="/about-us"
+          data-nav-href={aboutHref}
           aria-current={aboutActive ? 'page' : undefined}
         >
-          قصتنا
+          {t(locale, 'navigation.aboutUs')}
         </a>
 
         <a
-          href="/track-order"
+          href={trackHref}
           class:list={['dandy-nav-link', trackActive && 'active']}
-          data-nav-href="/track-order"
+          data-nav-href={trackHref}
           aria-current={trackActive ? 'page' : undefined}
         >
-          تتبع الطلب
+          {t(locale, 'navigation.trackOrder')}
         </a>
       </nav>
     </div>
 
-    <!-- END ZONE (RTL Left): Search, Account & Shopping Bag -->
+    <!-- END ZONE: Language Switcher, Search, Account & Shopping Bag -->
     <div class="dandy-header-end">
+      <LanguageSwitcher locale={locale} availability={counterpartAvailability} variant="header" />
+
       <button
         type="button"
         class="dandy-utility-btn"
         id="desktop-search-btn"
         onclick="window.toggleSearchPanel()"
-        aria-label="البحث عن منتجات"
-        title="بحث"
+        aria-label={t(locale, 'header.searchTriggerLabel')}
+        title={t(locale, 'header.searchTriggerLabel')}
       >
         <Icon name="search" size={19} strokeWidth={1.75} />
       </button>
 
       <a
-        href="/account-login"
+        href={loginHref}
         id="header-auth-guest"
         class="dandy-utility-btn dandy-desktop-only-utility"
-        title="تسجيل الدخول"
-        aria-label="تسجيل الدخول"
+        title={t(locale, 'header.loginTitle')}
+        aria-label={t(locale, 'header.loginTitle')}
       >
         <Icon name="user" size={19} strokeWidth={1.75} />
       </a>
 
       <div id="header-auth-user" class="dandy-header-auth-user dandy-desktop-only-utility" style="display:none;">
         <a
-          href="/account"
+          href={accountHref}
           class="dandy-utility-btn dandy-utility-btn--active-user"
-          title="حسابي"
-          aria-label="حسابي الشخصي"
+          title={t(locale, 'header.accountTitle')}
+          aria-label={t(locale, 'header.accountTitle')}
         >
           <Icon name="user" size={19} strokeWidth={1.85} />
         </a>
@@ -240,19 +277,19 @@ const CATEGORY_LINKS = [
           type="button"
           class="dandy-utility-btn dandy-utility-btn--logout"
           onclick="window.headerSignOut()"
-          title="تسجيل خروج"
-          aria-label="تسجيل خروج"
+          title={t(locale, 'header.logoutTitle')}
+          aria-label={t(locale, 'header.logoutTitle')}
         >
           <Icon name="log-out" size={17} strokeWidth={1.75} />
         </button>
       </div>
 
       <a
-        href="/cart"
+        href={cartHref}
         class="dandy-utility-btn dandy-header-cart-btn"
         id="header-cart-link"
-        aria-label="سلة التسوق"
-        title="سلة التسوق"
+        aria-label={t(locale, 'header.cartLabel')}
+        title={t(locale, 'header.cartLabel')}
       >
         <Icon name="shopping-bag" size={19} strokeWidth={1.75} />
         <span class="dandy-cart-badge dandy-tabular" id="cart-count">0</span>
@@ -294,13 +331,14 @@ const CATEGORY_LINKS = [
   window.updateCartCount = window.updateSharedCartCount;
   window.updateSharedCartCount();
 
-  // Sign out helper
+  // Sign out helper (locale-aware home redirect)
   window.headerSignOut = async function () {
     const auth = window.auth || (typeof firebase !== 'undefined' && firebase.auth ? firebase.auth() : null);
+    const isEn = (document.documentElement.lang || '').toLowerCase().startsWith('en') || (window.location.pathname || '').startsWith('/en');
     if (auth) {
       try {
         await auth.signOut();
-        window.location.href = '/';
+        window.location.href = isEn ? '/en/' : '/';
       } catch (err) {
         console.error('Sign out error:', err);
         window.location.reload();
@@ -478,7 +516,10 @@ const CATEGORY_LINKS = [
         let active = false;
         if (href) {
           const cleanHref = href.replace(/\/+$/, '') || '/';
-          active = cleanHref === '/' ? current === '/' : current === cleanHref || current.startsWith(cleanHref + '/');
+          active =
+            cleanHref === '/' || cleanHref === '/en'
+              ? current === cleanHref
+              : current === cleanHref || current.startsWith(cleanHref + '/');
         }
         if (!active && prefix) {
           const cleanPrefix = prefix.replace(/\/+$/, '') || '/';
@@ -516,7 +557,7 @@ const CATEGORY_LINKS = [
     -webkit-backdrop-filter: blur(12px);
     border-bottom: 1px solid var(--dandy-border-subtle);
     transition: box-shadow var(--dandy-transition-base), border-color var(--dandy-transition-base);
-    font-family: var(--dandy-font-ar-sans);
+    font-family: var(--dandy-font-active-sans);
   }
 
   .dandy-header.is-scrolled {
@@ -607,7 +648,7 @@ const CATEGORY_LINKS = [
     display: inline-flex;
     align-items: center;
     gap: 5px;
-    font-family: var(--dandy-font-ar-sans);
+    font-family: var(--dandy-font-active-sans);
     font-size: 0.875rem;
     font-weight: 500;
     color: var(--dandy-ink-secondary);

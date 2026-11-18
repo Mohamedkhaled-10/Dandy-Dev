@@ -5,7 +5,9 @@
  * while preserving the Botanical Editorial pharmaceutical philosophy as verified default content.
  */
 import Icon from '../ui/Icon.astro';
-import { DEFAULT_PROMO_BANNER } from '../../scripts/homepage-studio';
+import type { Locale } from '../../i18n/types';
+import { buildLocalizedPath } from '../../i18n/routes';
+import { DEFAULT_PROMO_BANNER, DEFAULT_PROMO_BANNER_EN } from '../../scripts/homepage-studio';
 
 export interface Props {
   sectionId?: string;
@@ -17,19 +19,32 @@ export interface Props {
   image?: string;
   isCustomized?: boolean;
   hidden?: boolean;
+  locale?: Locale;
 }
 
 const {
   sectionId = 'promo',
-  eyebrow = DEFAULT_PROMO_BANNER.eyebrow,
-  title = DEFAULT_PROMO_BANNER.title,
-  desc = DEFAULT_PROMO_BANNER.desc,
-  ctaText = DEFAULT_PROMO_BANNER.ctaText,
-  ctaLink = DEFAULT_PROMO_BANNER.ctaLink,
-  image = DEFAULT_PROMO_BANNER.image,
+  eyebrow,
+  title,
+  desc,
+  ctaText,
+  ctaLink,
+  image,
   isCustomized = false,
   hidden = false,
+  locale = 'ar',
 } = Astro.props;
+
+const isEn = locale === 'en';
+const defaults = isEn ? DEFAULT_PROMO_BANNER_EN : DEFAULT_PROMO_BANNER;
+const resolvedEyebrow = eyebrow || defaults.eyebrow;
+const resolvedTitle = title || defaults.title;
+const resolvedDesc = desc || defaults.desc;
+const resolvedCtaText = ctaText || defaults.ctaText;
+const rawCtaLink = ctaLink || defaults.ctaLink;
+const resolvedCtaLink = rawCtaLink.startsWith('/') ? buildLocalizedPath(rawCtaLink, locale) : rawCtaLink;
+const resolvedImage = image || defaults.image;
+const aboutHref = buildLocalizedPath('/about-us', locale);
 
 const headingId = `home-story-heading-${sectionId}`;
 ---
@@ -44,8 +59,8 @@ const headingId = `home-story-heading-${sectionId}`;
     <div class="dandy-story-media" data-dandy-media-settle>
       <figure class="dandy-story-frame">
         <img
-          src={image}
-          alt={title}
+          src={resolvedImage}
+          alt={resolvedTitle}
           width="900"
           height="1200"
           loading="lazy"
@@ -53,47 +68,57 @@ const headingId = `home-story-heading-${sectionId}`;
           referrerpolicy="no-referrer"
           class="dandy-story-img"
           data-promo-image
-          onerror={`this.onerror=null;this.src='${DEFAULT_PROMO_BANNER.image}';`}
+          onerror={`this.onerror=null;this.src='${defaults.image}';`}
         />
       </figure>
     </div>
 
     <div class="dandy-story-copy" data-dandy-reveal>
-      <p class="dandy-section-kicker" data-promo-eyebrow dir="auto">{eyebrow}</p>
+      <p class="dandy-section-kicker" data-promo-eyebrow dir="auto">{resolvedEyebrow}</p>
       <h2 id={headingId} class="dandy-story-title" data-promo-title dir="auto">
-        {title}
+        {resolvedTitle}
       </h2>
 
       <p class="dandy-story-text" data-promo-desc dir="auto">
-        {desc}
+        {resolvedDesc}
       </p>
 
       {!isCustomized && (
         <>
           <blockquote class="dandy-story-quote" data-promo-default-extra>
-            «مهمتنا هي جعل منتجات الجمال عالية الجودة في متناول الجميع، بتركيبات تنافس المعايير العالمية وبقيمة محلية عادلة.»
+            {isEn
+              ? '“Our mission is to make high-quality botanical beauty accessible to everyone — formulas crafted to international standards at fair local value.”'
+              : '«مهمتنا هي جعل منتجات الجمال عالية الجودة في متناول الجميع، بتركيبات تنافس المعايير العالمية وبقيمة محلية عادلة.»'}
           </blockquote>
 
           <ul class="dandy-story-pillars" data-promo-default-pillars>
             <li>
               <Icon name="leaf" size={18} strokeWidth={1.75} class="dandy-story-icon" />
-              <span>زيوت نباتية وزبدات مغذية مختارة بعناية للاستخدام اليومي اللطيف</span>
+              <span>
+                {isEn
+                  ? 'Carefully selected pure botanical oils and nourishing butters for gentle everyday rituals'
+                  : 'زيوت نباتية وزبدات مغذية مختارة بعناية للاستخدام اليومي اللطيف'}
+              </span>
             </li>
             <li>
               <Icon name="truck" size={18} strokeWidth={1.75} class="dandy-story-icon" />
-              <span>القاهرة، مصر — شحن وتوصيل موثوق لجميع المحافظات</span>
+              <span>
+                {isEn
+                  ? 'Cairo, Egypt — Reliable door-to-door delivery across all Egyptian governorates'
+                  : 'القاهرة، مصر — شحن وتوصيل موثوق لجميع المحافظات'}
+              </span>
             </li>
           </ul>
         </>
       )}
 
       <div class="dandy-story-actions">
-        <a href={ctaLink} class="dandy-btn dandy-btn--editorial" data-promo-cta>
-          <span data-promo-cta-text dir="auto">{ctaText}</span>
-          <Icon name="arrow-left" size={16} strokeWidth={1.8} />
+        <a href={resolvedCtaLink} class="dandy-btn dandy-btn--editorial" data-promo-cta>
+          <span data-promo-cta-text dir="auto">{resolvedCtaText}</span>
+          <Icon name={isEn ? 'arrow-right' : 'arrow-left'} size={16} strokeWidth={1.8} />
         </a>
-        <a href="/about-us" class="dandy-btn dandy-btn--outline">
-          <span>اقرئي قصة داندي</span>
+        <a href={aboutHref} class="dandy-btn dandy-btn--outline">
+          <span>{isEn ? 'Read Our Story' : 'اقرئي قصة داندي'}</span>
         </a>
       </div>
     </div>
@@ -145,7 +170,7 @@ const headingId = `home-story-heading-${sectionId}`;
 
   .dandy-story-title {
     margin: 0;
-    font-family: var(--dandy-font-ar-display);
+    font-family: var(--dandy-font-active-display);
     font-size: clamp(1.625rem, 2.6vw, 2.35rem);
     font-weight: 700;
     line-height: 1.32;

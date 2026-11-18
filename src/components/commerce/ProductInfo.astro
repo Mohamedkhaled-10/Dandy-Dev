@@ -9,6 +9,8 @@ import VariantSwatches from './VariantSwatches.astro';
 import QuantityStepper from './QuantityStepper.astro';
 import BotanicalFeatureGrid from './BotanicalFeatureGrid.astro';
 import { formatEgpPrice } from '../../scripts/product-card';
+import type { Locale } from '../../i18n/types';
+import { buildLocalizedPath } from '../../i18n/index';
 import type {
   ParsedDescriptionResult,
   PdpEffectivePricing,
@@ -35,6 +37,7 @@ export interface Props {
   shareIgLink: string;
   shareMessengerLink: string;
   canonicalUrl: string;
+  locale?: Locale;
 }
 
 const {
@@ -55,7 +58,11 @@ const {
   shareIgLink,
   shareMessengerLink,
   canonicalUrl,
+  locale = 'ar',
 } = Astro.props;
+
+const isEn = locale === 'en';
+const categoryHref = buildLocalizedPath(`/category/${categorySlug}`, locale);
 
 function truncateLead(text: string, maxLen = 148): string {
   const clean = (text || '').trim();
@@ -75,12 +82,18 @@ const hasReviews = reviewStats.count > 0;
 <div class="dandy-pdp-info">
   <!-- 1. Clean Unboxed Category + Availability Metadata -->
   <div class="dandy-pdp-meta-row" id="product-category" data-dandy-entrance="1">
-    <a href={`/category/${categorySlug}`} class="dandy-pdp-cat-link">
+    <a href={categoryHref} class="dandy-pdp-cat-link">
       {categoryLabelAr}
     </a>
     <span class="dandy-pdp-meta-sep" aria-hidden="true">·</span>
     <span class:list={['dandy-pdp-stock-text', { 'is-soldout': isSoldOut }]}>
-      {isSoldOut ? 'نفدت الكمية حالياً' : 'متوفر للطلب'}
+      {isSoldOut
+        ? isEn
+          ? 'Currently out of stock'
+          : 'نفدت الكمية حالياً'
+        : isEn
+          ? 'In stock & ready to ship'
+          : 'متوفر للطلب'}
     </span>
   </div>
 
@@ -95,8 +108,12 @@ const hasReviews = reviewStats.count > 0;
     data-dandy-entrance="3"
     aria-label={
       hasReviews
-        ? `تقييم المنتج ${reviewStats.averageFormatted} من 5 بناءً على ${reviewStats.count} تقييم`
-        : 'لا توجد تقييمات بعد لهذا المنتج'
+        ? isEn
+          ? `Rated ${reviewStats.averageFormatted} out of 5 based on ${reviewStats.count} ${reviewStats.count === 1 ? 'review' : 'reviews'}`
+          : `تقييم المنتج ${reviewStats.averageFormatted} من 5 بناءً على ${reviewStats.count} تقييم`
+        : isEn
+          ? 'No reviews yet for this product'
+          : 'لا توجد تقييمات بعد لهذا المنتج'
     }
   >
     <span class="dandy-pdp-rating-stars" id="header-rating-stars" aria-hidden="true">
@@ -117,10 +134,16 @@ const hasReviews = reviewStats.count > 0;
       {hasReviews ? (
         <>
           <strong>{reviewStats.averageFormatted}</strong>
-          <span class="dandy-pdp-rating-count">({reviewStats.count} تقييم)</span>
+          <span class="dandy-pdp-rating-count">
+            {isEn
+              ? `(${reviewStats.count} ${reviewStats.count === 1 ? 'review' : 'reviews'})`
+              : `(${reviewStats.count} تقييم)`}
+          </span>
         </>
       ) : (
-        <span class="p-rating-no-reviews">لا توجد تقييمات بعد</span>
+        <span class="p-rating-no-reviews">
+          {isEn ? 'No reviews yet' : 'لا توجد تقييمات بعد'}
+        </span>
       )}
     </span>
   </a>
@@ -133,7 +156,7 @@ const hasReviews = reviewStats.count > 0;
   <div class="dandy-pdp-price-block" id="product-price-section">
     <div class="dandy-pdp-price-row">
       <span class="dandy-pdp-price-current dandy-tabular" id="product-price">
-        {formatEgpPrice(pricing.effectiveUnitPrice)}
+        {formatEgpPrice(pricing.effectiveUnitPrice, locale)}
       </span>
 
       <del
@@ -142,11 +165,13 @@ const hasReviews = reviewStats.count > 0;
         hidden={pricing.effectiveOldPrice === null}
         aria-label={
           pricing.effectiveOldPrice !== null
-            ? `السعر قبل الخصم ${formatEgpPrice(pricing.effectiveOldPrice)}`
+            ? isEn
+              ? `Original price ${formatEgpPrice(pricing.effectiveOldPrice, locale)}`
+              : `السعر قبل الخصم ${formatEgpPrice(pricing.effectiveOldPrice)}`
             : undefined
         }
       >
-        {pricing.effectiveOldPrice !== null ? formatEgpPrice(pricing.effectiveOldPrice) : ''}
+        {pricing.effectiveOldPrice !== null ? formatEgpPrice(pricing.effectiveOldPrice, locale) : ''}
       </del>
 
       {(pricing.isPinkFriday || pricing.discountPercent || pricing.savingsAmount) && (
@@ -155,13 +180,19 @@ const hasReviews = reviewStats.count > 0;
           id="product-discount-note"
         >
           {pricing.isPinkFriday
-            ? `${pricing.campaignBadgeText || 'Pink Friday'}${pricing.savingsAmount ? ` · توفير ${formatEgpPrice(pricing.savingsAmount)}` : ''}`
+            ? `${pricing.campaignBadgeText || 'Pink Friday'}${pricing.savingsAmount ? (isEn ? ` · Save ${formatEgpPrice(pricing.savingsAmount, locale)}` : ` · توفير ${formatEgpPrice(pricing.savingsAmount)}`) : ''}`
             : pricing.savingsAmount && pricing.discountPercent
-              ? `خصم ${pricing.discountPercent}% · توفير ${formatEgpPrice(pricing.savingsAmount)}`
+              ? isEn
+                ? `${pricing.discountPercent}% OFF · Save ${formatEgpPrice(pricing.savingsAmount, locale)}`
+                : `خصم ${pricing.discountPercent}% · توفير ${formatEgpPrice(pricing.savingsAmount)}`
               : pricing.discountPercent
-                ? `خصم ${pricing.discountPercent}%`
+                ? isEn
+                  ? `${pricing.discountPercent}% OFF`
+                  : `خصم ${pricing.discountPercent}%`
                 : pricing.savingsAmount
-                  ? `توفير ${formatEgpPrice(pricing.savingsAmount)}`
+                  ? isEn
+                    ? `Save ${formatEgpPrice(pricing.savingsAmount, locale)}`
+                    : `توفير ${formatEgpPrice(pricing.savingsAmount)}`
                   : ''}
         </span>
       )}
@@ -176,11 +207,11 @@ const hasReviews = reviewStats.count > 0;
   </div>
 
   <!-- 5. Variant / Scent Selector (only shown for multi-scent products) -->
-  <VariantSwatches variants={variants} hasVariants={hasVariants} />
+  <VariantSwatches variants={variants} hasVariants={hasVariants} locale={locale} />
 
   <!-- 6. Quantity + Primary Add-to-Cart Action -->
   <div class="dandy-pdp-purchase-row">
-    <QuantityStepper disabled={isSoldOut} />
+    <QuantityStepper disabled={isSoldOut} locale={locale} />
 
     <button
       type="button"
@@ -192,12 +223,12 @@ const hasReviews = reviewStats.count > 0;
       {isSoldOut ? (
         <>
           <Icon name="ban" size={18} strokeWidth={1.9} />
-          <span data-add-label>نفذت الكمية</span>
+          <span data-add-label>{isEn ? 'Sold Out' : 'نفذت الكمية'}</span>
         </>
       ) : (
         <>
           <Icon name="shopping-bag" size={18} strokeWidth={1.9} />
-          <span data-add-label>أضيفي للسلة</span>
+          <span data-add-label>{isEn ? 'Add to Bag' : 'أضيفي للسلة'}</span>
         </>
       )}
     </button>
@@ -210,11 +241,11 @@ const hasReviews = reviewStats.count > 0;
       class="dandy-pdp-utility-btn"
       id="actionWishlistBtn"
       data-product-id={productId}
-      aria-label="إضافة إلى المفضلة"
+      aria-label={isEn ? 'Add to Wishlist' : 'إضافة إلى المفضلة'}
       aria-pressed="false"
     >
       <Icon name="heart" size={16} strokeWidth={1.85} />
-      <span id="actionWishlistText">إضافة إلى المفضلة</span>
+      <span id="actionWishlistText">{isEn ? 'Add to Wishlist' : 'إضافة إلى المفضلة'}</span>
     </button>
 
     <a
@@ -223,10 +254,10 @@ const hasReviews = reviewStats.count > 0;
       href={waLink}
       target="_blank"
       rel="noopener noreferrer"
-      aria-label="استفسار عن المنتج عبر واتساب"
+      aria-label={isEn ? 'Inquire on WhatsApp' : 'استفسار عن المنتج عبر واتساب'}
     >
       <Icon name="message-circle" size={16} strokeWidth={1.85} />
-      <span>استفسار عبر واتساب</span>
+      <span>{isEn ? 'Ask on WhatsApp' : 'استفسار عبر واتساب'}</span>
     </a>
 
     <div class="dandy-pdp-share-wrap">
@@ -238,14 +269,14 @@ const hasReviews = reviewStats.count > 0;
         aria-controls="share-popover-menu"
       >
         <Icon name="share-2" size={16} strokeWidth={1.85} />
-        <span>مشاركة</span>
+        <span>{isEn ? 'Share' : 'مشاركة'}</span>
       </button>
 
       <div
         class="dandy-pdp-share-popover"
         id="share-popover-menu"
         role="region"
-        aria-label="خيارات مشاركة المنتج"
+        aria-label={isEn ? 'Product share options' : 'خيارات مشاركة المنتج'}
         hidden
       >
         <button
@@ -255,7 +286,7 @@ const hasReviews = reviewStats.count > 0;
           data-copy-url={canonicalUrl}
         >
           <Icon name="copy" size={15} strokeWidth={1.8} />
-          <span>نسخ الرابط</span>
+          <span>{isEn ? 'Copy link' : 'نسخ الرابط'}</span>
         </button>
 
         <a
@@ -266,7 +297,7 @@ const hasReviews = reviewStats.count > 0;
           class="dandy-pdp-share-item"
         >
           <Icon name="message-circle" size={15} strokeWidth={1.8} />
-          <span>واتساب</span>
+          <span>{isEn ? 'WhatsApp' : 'واتساب'}</span>
         </a>
 
         <a
@@ -277,7 +308,7 @@ const hasReviews = reviewStats.count > 0;
           class="dandy-pdp-share-item"
         >
           <Icon name="share-2" size={15} strokeWidth={1.8} />
-          <span>فيسبوك</span>
+          <span>{isEn ? 'Facebook' : 'فيسبوك'}</span>
         </a>
 
         <a
@@ -288,7 +319,7 @@ const hasReviews = reviewStats.count > 0;
           class="dandy-pdp-share-item"
         >
           <Icon name="message-circle" size={15} strokeWidth={1.8} />
-          <span>ماسنجر</span>
+          <span>{isEn ? 'Messenger' : 'ماسنجر'}</span>
         </a>
 
         <a
@@ -299,14 +330,14 @@ const hasReviews = reviewStats.count > 0;
           class="dandy-pdp-share-item"
         >
           <Icon name="sparkles" size={15} strokeWidth={1.8} />
-          <span>انستجرام</span>
+          <span>{isEn ? 'Instagram' : 'انستجرام'}</span>
         </a>
       </div>
     </div>
   </div>
 
   <!-- 8. Verified Product Specifications Grid -->
-  <BotanicalFeatureGrid items={highlights} />
+  <BotanicalFeatureGrid items={highlights} locale={locale} />
 </div>
 
 <style>
@@ -358,7 +389,7 @@ const hasReviews = reviewStats.count > 0;
   /* Title */
   .dandy-pdp-title {
     margin: 0;
-    font-family: var(--dandy-font-ar-sans);
+    font-family: var(--dandy-font-active-sans);
     font-size: clamp(1.5rem, 2.5vw, 2.125rem);
     font-weight: 700;
     line-height: var(--dandy-leading-heading-ar);
@@ -487,7 +518,7 @@ const hasReviews = reviewStats.count > 0;
     border-radius: var(--dandy-radius-pill);
     background-color: var(--dandy-accent-primary);
     color: #FFFFFF;
-    font-family: var(--dandy-font-ar-sans);
+    font-family: var(--dandy-font-active-sans);
     font-size: var(--dandy-text-base);
     font-weight: 700;
     line-height: 1.3;
@@ -538,7 +569,7 @@ const hasReviews = reviewStats.count > 0;
     border: 1px solid var(--dandy-border-default);
     background-color: var(--dandy-bg-page);
     color: var(--dandy-ink-primary);
-    font-family: var(--dandy-font-ar-sans);
+    font-family: var(--dandy-font-active-sans);
     font-size: var(--dandy-text-sm);
     font-weight: 600;
     text-decoration: none;
@@ -612,7 +643,7 @@ const hasReviews = reviewStats.count > 0;
     padding: 8px 10px;
     border-radius: var(--dandy-radius-sm);
     color: var(--dandy-ink-primary);
-    font-family: var(--dandy-font-ar-sans);
+    font-family: var(--dandy-font-active-sans);
     font-size: var(--dandy-text-sm);
     font-weight: 500;
     text-decoration: none;

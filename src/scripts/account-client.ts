@@ -18,7 +18,7 @@ import {
   extractCustomerInitial,
   formatCustomerOrderViewModel,
   isOrderStatusDelivered,
-  mapFirebaseAuthErrorAr,
+  mapFirebaseAuthError,
   normalizeCustomerAddress,
   ratingDescriptionLabel,
   resolveWishlistCardModel,
@@ -40,6 +40,18 @@ interface ReviewRecord {
   createdAt?: number;
 }
 
+function getRuntimeLocale(): 'ar' | 'en' {
+  if (typeof document !== 'undefined') {
+    const lang = (document.documentElement.getAttribute('lang') || '').trim().toLowerCase();
+    if (lang.startsWith('en')) return 'en';
+  }
+  if (typeof window !== 'undefined') {
+    const p = (window.location.pathname || '/').toLowerCase();
+    if (p === '/en' || p.startsWith('/en/')) return 'en';
+  }
+  return 'ar';
+}
+
 declare global {
   interface Window {
     auth?: any;
@@ -56,11 +68,17 @@ export function initCustomerAccountPage(): void {
   if (!mainContainer || mainContainer.dataset.bound === 'true') return;
   mainContainer.dataset.bound = 'true';
 
+  const locale = getRuntimeLocale();
+  const isEn = locale === 'en';
+  const loginHref = isEn ? '/en/account-login' : '/account-login';
+  const catalogHref = isEn ? '/en/all-products' : '/all-products';
+  const prefix = isEn ? '/en' : '';
+
   const auth = window.auth || (typeof (window as any).firebase !== 'undefined' ? (window as any).firebase.auth() : null);
   const db = window.db || (typeof (window as any).firebase !== 'undefined' ? (window as any).firebase.database() : null);
 
   if (!auth || !db) {
-    window.location.href = '/account-login';
+    window.location.href = loginHref;
     return;
   }
 
@@ -191,7 +209,7 @@ export function initCustomerAccountPage(): void {
   // --------------------------------------------------------------------------
   auth.onAuthStateChanged(async (user: any) => {
     if (!user) {
-      window.location.href = '/account-login';
+      window.location.href = loginHref;
       return;
     }
     currentUser = user;
@@ -206,9 +224,9 @@ export function initCustomerAccountPage(): void {
   document.getElementById('logoutBtn')?.addEventListener('click', async () => {
     try {
       await auth.signOut();
-      window.location.href = '/account-login';
+      window.location.href = loginHref;
     } catch {
-      notify('تعذر تسجيل الخروج. يرجى المحاولة مرة أخرى.', 'error');
+      notify(isEn ? 'Unable to sign out. Please try again.' : 'تعذر تسجيل الخروج. يرجى المحاولة مرة أخرى.', 'error');
     }
   });
 
@@ -240,13 +258,19 @@ export function initCustomerAccountPage(): void {
     const phone = String(cachedProfile.phone || '').trim();
 
     if (greetingEl) {
-      greetingEl.textContent = name ? `أهلاً بكِ، ${name}` : 'مرحباً بكِ في حسابكِ';
+      greetingEl.textContent = isEn
+        ? name
+          ? `Welcome, ${name}`
+          : 'Welcome to your account'
+        : name
+          ? `أهلاً بكِ، ${name}`
+          : 'مرحباً بكِ في حسابكِ';
     }
     if (avatarEl) {
       avatarEl.textContent = extractCustomerInitial(name, currentUser.email);
     }
     if (profNameInput) profNameInput.value = name;
-    if (profPhoneInput) profPhoneInput.value = phone || 'غير مسجل';
+    if (profPhoneInput) profPhoneInput.value = phone || (isEn ? 'Not registered' : 'غير مسجل');
   }
 
   const profileForm = document.getElementById('profileForm') as HTMLFormElement | null;
@@ -259,14 +283,17 @@ export function initCustomerAccountPage(): void {
     const newName = (profNameInput?.value || '').trim();
 
     if (newName.length < 3) {
-      notify('يرجى إدخال الاسم الكامل (3 أحرف على الأقل).', 'error');
+      notify(
+        isEn ? 'Please enter your full name (at least 3 characters).' : 'يرجى إدخال الاسم الكامل (3 أحرف على الأقل).',
+        'error'
+      );
       profNameInput?.focus();
       return;
     }
 
     if (saveProfileBtn) {
       saveProfileBtn.disabled = true;
-      saveProfileBtn.textContent = 'جاري الحفظ...';
+      saveProfileBtn.textContent = isEn ? 'Saving...' : 'جاري الحفظ...';
     }
 
     try {
@@ -278,16 +305,16 @@ export function initCustomerAccountPage(): void {
       cachedProfile.name = newName;
       const greetingEl = document.getElementById('customerGreetingName');
       const avatarEl = document.getElementById('customerAvatar');
-      if (greetingEl) greetingEl.textContent = `أهلاً بكِ، ${newName}`;
+      if (greetingEl) greetingEl.textContent = isEn ? `Welcome, ${newName}` : `أهلاً بكِ، ${newName}`;
       if (avatarEl) avatarEl.textContent = extractCustomerInitial(newName, currentUser.email);
-      notify('تم تحديث اسم الحساب بنجاح.', 'success');
+      notify(isEn ? 'Account name updated successfully.' : 'تم تحديث اسم الحساب بنجاح.', 'success');
     } catch (err) {
       console.error('Profile update error:', err);
-      notify('تعذر تحديث البيانات. يرجى المحاولة مرة أخرى.', 'error');
+      notify(isEn ? 'Unable to update details. Please try again.' : 'تعذر تحديث البيانات. يرجى المحاولة مرة أخرى.', 'error');
     } finally {
       if (saveProfileBtn) {
         saveProfileBtn.disabled = false;
-        saveProfileBtn.textContent = 'حفظ التغييرات';
+        saveProfileBtn.textContent = isEn ? 'Save Changes' : 'حفظ التغييرات';
       }
     }
   });
@@ -298,9 +325,14 @@ export function initCustomerAccountPage(): void {
     if (btn) btn.disabled = true;
     try {
       await auth.sendPasswordResetEmail(currentUser.email);
-      notify(`تم إرسال رابط تغيير كلمة المرور إلى ${currentUser.email}`, 'success');
+      notify(
+        isEn
+          ? `Password reset link sent to ${currentUser.email}`
+          : `تم إرسال رابط تغيير كلمة المرور إلى ${currentUser.email}`,
+        'success'
+      );
     } catch (err: any) {
-      notify(mapFirebaseAuthErrorAr(err?.code, 'reset'), 'error');
+      notify(mapFirebaseAuthError(err?.code, 'reset', locale), 'error');
     } finally {
       if (btn) btn.disabled = false;
     }
@@ -339,8 +371,8 @@ export function initCustomerAccountPage(): void {
       const latest = cachedOrders[0];
       if (!latest) {
         latestOrderBox.innerHTML = `
-          <p class="dandy-ov-empty">لا توجد طلبات مسجلة حتى الآن.</p>
-          <a href="/all-products" class="dandy-btn dandy-btn--outline">تصفح المنتجات</a>
+          <p class="dandy-ov-empty">${isEn ? 'No orders placed yet.' : 'لا توجد طلبات مسجلة حتى الآن.'}</p>
+          <a href="${catalogHref}" class="dandy-btn dandy-btn--outline">${isEn ? 'Browse Products' : 'تصفح المنتجات'}</a>
         `;
       } else {
         latestOrderBox.innerHTML = `
@@ -352,12 +384,12 @@ export function initCustomerAccountPage(): void {
             <span class="dandy-status-badge is-${escapeHtml(latest.statusMeta.badgeTone)}">${escapeHtml(latest.statusMeta.label)}</span>
           </div>
           <div class="dandy-ov-order-meta">
-            <span>الإجمالي: <strong class="dandy-tabular">${formatEgpPrice(latest.totalAmount)}</strong></span>
+            <span>${isEn ? 'Total:' : 'الإجمالي:'} <strong class="dandy-tabular">${formatEgpPrice(latest.totalAmount, locale)}</strong></span>
             ${latest.governorateAr ? `<span>· ${escapeHtml(latest.governorateAr)}</span>` : ''}
           </div>
           <div class="dandy-ov-actions">
-            <a href="${escapeHtml(latest.trackHref)}" class="dandy-btn dandy-btn--outline">تتبع الطلب</a>
-            <button type="button" class="dandy-btn dandy-btn--editorial" data-jump-tab="orders">عرض كل الطلبات</button>
+            <a href="${escapeHtml(latest.trackHref)}" class="dandy-btn dandy-btn--outline">${isEn ? 'Track Order' : 'تتبع الطلب'}</a>
+            <button type="button" class="dandy-btn dandy-btn--editorial" data-jump-tab="orders">${isEn ? 'View All Orders' : 'عرض كل الطلبات'}</button>
           </div>
         `;
       }
@@ -369,20 +401,20 @@ export function initCustomerAccountPage(): void {
       const primary = sorted[0];
       if (!primary) {
         defaultAddressBox.innerHTML = `
-          <p class="dandy-ov-empty">لم تقومي بحفظ أي عنوان توصيل بعد.</p>
-          <button type="button" class="dandy-btn dandy-btn--outline" data-jump-tab="addresses">إضافة عنوان</button>
+          <p class="dandy-ov-empty">${isEn ? 'You have not saved any delivery addresses yet.' : 'لم تقومي بحفظ أي عنوان توصيل بعد.'}</p>
+          <button type="button" class="dandy-btn dandy-btn--outline" data-jump-tab="addresses">${isEn ? 'Add Address' : 'إضافة عنوان'}</button>
         `;
       } else {
         defaultAddressBox.innerHTML = `
           <div class="dandy-ov-addr-title">
             <strong>${escapeHtml(primary.label)}</strong>
-            ${primary.isDefault ? '<span class="dandy-ov-default-tag">العنوان الافتراضي</span>' : ''}
+            ${primary.isDefault ? `<span class="dandy-ov-default-tag">${isEn ? 'Default Address' : 'العنوان الافتراضي'}</span>` : ''}
           </div>
           <p class="dandy-ov-addr-lines">
             ${escapeHtml(primary.governorateAr)}${primary.city ? ` · ${escapeHtml(primary.city)}` : ''}<br />
             ${escapeHtml(primary.street)}
           </p>
-          <button type="button" class="dandy-btn dandy-btn--outline" data-jump-tab="addresses">إدارة العناوين</button>
+          <button type="button" class="dandy-btn dandy-btn--outline" data-jump-tab="addresses">${isEn ? 'Manage Addresses' : 'إدارة العناوين'}</button>
         `;
       }
     }
@@ -410,7 +442,7 @@ export function initCustomerAccountPage(): void {
 
       const rawOrders = snap.val() || {};
       const models = Object.entries(rawOrders)
-        .map(([id, rec]) => formatCustomerOrderViewModel(id, rec as any))
+        .map(([id, rec]) => formatCustomerOrderViewModel(id, rec as any, locale))
         .sort((a, b) => b.createdAtMs - a.createdAtMs);
 
       const deliveredIds = new Set<string>();
@@ -487,7 +519,15 @@ export function initCustomerAccountPage(): void {
                   data-product-img="${escapeHtml(item.image)}"
                 >
                   ${getIconSvg('star', { size: 15, strokeWidth: 1.9 })}
-                  <span>${existing ? `تعديل التقييم (${existing.rating}/5)` : 'قيّمي المنتج'}</span>
+                  <span>${
+                    existing
+                      ? isEn
+                        ? `Edit Review (${existing.rating}/5)`
+                        : `تعديل التقييم (${existing.rating}/5)`
+                      : isEn
+                        ? 'Rate Product'
+                        : 'قيّمي المنتج'
+                  }</span>
                 </button>
               `;
             }
@@ -507,9 +547,9 @@ export function initCustomerAccountPage(): void {
                 <div class="dandy-ord-item-info">
                   <div class="dandy-ord-item-title">${escapeHtml(item.name)}</div>
                   <div class="dandy-ord-item-meta dandy-tabular">
-                    <span>الكمية: ${item.quantity}</span>
+                    <span>${isEn ? 'Qty:' : 'الكمية:'} ${item.quantity}</span>
                     <span aria-hidden="true">·</span>
-                    <span>${formatEgpPrice(item.lineTotal)}</span>
+                    <span>${formatEgpPrice(item.lineTotal, locale)}</span>
                     ${item.variants ? `<span aria-hidden="true">·</span><span>${escapeHtml(item.variants.label)}: ${escapeHtml(item.variants.text)}</span>` : ''}
                   </div>
                   ${subItemsHtml}
@@ -524,7 +564,7 @@ export function initCustomerAccountPage(): void {
           <article class="dandy-order-card">
             <header class="dandy-order-head">
               <div>
-                <div class="dandy-order-code dandy-tabular">طلب #${escapeHtml(ord.code)}</div>
+                <div class="dandy-order-code dandy-tabular">${isEn ? 'Order' : 'طلب'} #${escapeHtml(ord.code)}</div>
                 <div class="dandy-order-date">${escapeHtml(ord.dateLabel)}</div>
               </div>
               <span class="dandy-status-badge is-${escapeHtml(ord.statusMeta.badgeTone)}">
@@ -534,15 +574,15 @@ export function initCustomerAccountPage(): void {
 
             <div class="dandy-order-summary-row">
               <div>
-                <span class="dandy-order-label">إجمالي الفاتورة</span>
-                <strong class="dandy-order-total dandy-tabular">${formatEgpPrice(ord.totalAmount)}</strong>
+                <span class="dandy-order-label">${isEn ? 'Order Total' : 'إجمالي الفاتورة'}</span>
+                <strong class="dandy-order-total dandy-tabular">${formatEgpPrice(ord.totalAmount, locale)}</strong>
               </div>
               <div>
-                <span class="dandy-order-label">عدد العناصر</span>
+                <span class="dandy-order-label">${isEn ? 'Items' : 'عدد العناصر'}</span>
                 <strong class="dandy-tabular">${ord.items.length}</strong>
               </div>
               <div>
-                <span class="dandy-order-label">الوجهة</span>
+                <span class="dandy-order-label">${isEn ? 'Destination' : 'الوجهة'}</span>
                 <strong>${escapeHtml(ord.governorateAr || '—')}${ord.city ? ` - ${escapeHtml(ord.city)}` : ''}</strong>
               </div>
             </div>
@@ -552,11 +592,11 @@ export function initCustomerAccountPage(): void {
             <footer class="dandy-order-foot">
               <a href="${escapeHtml(ord.invoiceHref)}" class="dandy-btn dandy-btn--editorial">
                 ${getIconSvg('receipt', { size: 16, strokeWidth: 1.85 })}
-                <span>عرض الفاتورة</span>
+                <span>${isEn ? 'View Invoice' : 'عرض الفاتورة'}</span>
               </a>
               <a href="${escapeHtml(ord.trackHref)}" class="dandy-btn dandy-btn--outline">
                 ${getIconSvg('truck', { size: 16, strokeWidth: 1.85 })}
-                <span>تتبع الطلب</span>
+                <span>${isEn ? 'Track Order' : 'تتبع الطلب'}</span>
               </a>
             </footer>
           </article>
@@ -579,7 +619,7 @@ export function initCustomerAccountPage(): void {
     });
     const descEl = document.getElementById('reviewRatingDesc');
     if (descEl) {
-      descEl.textContent = `${ratingDescriptionLabel(rating)} (${rating}/5)`;
+      descEl.textContent = `${ratingDescriptionLabel(rating, locale)} (${rating}/5)`;
     }
   }
 
@@ -600,19 +640,19 @@ export function initCustomerAccountPage(): void {
     const commentEl = document.getElementById('reviewComment') as HTMLTextAreaElement | null;
     const submitLabel = document.getElementById('saveReviewBtnLabel');
 
-    if (nameEl) nameEl.textContent = productName || 'منتج داندي';
+    if (nameEl) nameEl.textContent = productName || (isEn ? 'DANDY Product' : 'منتج داندي');
     if (thumbEl) thumbEl.src = productImg || '/assets/images/logo.png';
-    if (orderRefEl) orderRefEl.textContent = `طلب رقم: #${orderCode}`;
+    if (orderRefEl) orderRefEl.textContent = isEn ? `Order: #${orderCode}` : `طلب رقم: #${orderCode}`;
 
     const existing = userReviews[productId];
     if (existing) {
-      if (titleEl) titleEl.textContent = 'تعديل تقييمكِ للمنتج';
-      if (submitLabel) submitLabel.textContent = 'تحديث التقييم';
+      if (titleEl) titleEl.textContent = isEn ? 'Edit Your Product Review' : 'تعديل تقييمكِ للمنتج';
+      if (submitLabel) submitLabel.textContent = isEn ? 'Update Review' : 'تحديث التقييم';
       activeReviewRating = Number(existing.rating) || 5;
       if (commentEl) commentEl.value = existing.comment || '';
     } else {
-      if (titleEl) titleEl.textContent = 'تقييم المنتج';
-      if (submitLabel) submitLabel.textContent = 'إرسال التقييم';
+      if (titleEl) titleEl.textContent = isEn ? 'Rate Product' : 'تقييم المنتج';
+      if (submitLabel) submitLabel.textContent = isEn ? 'Submit Review' : 'إرسال التقييم';
       activeReviewRating = 5;
       if (commentEl) commentEl.value = '';
     }
@@ -652,13 +692,13 @@ export function initCustomerAccountPage(): void {
     const customerName =
       cachedProfile.name ||
       currentUser.displayName ||
-      (currentUser.email ? currentUser.email.split('@')[0] : 'عميلة داندي');
+      (currentUser.email ? currentUser.email.split('@')[0] : isEn ? 'DANDY Customer' : 'عميلة داندي');
     const saveBtn = document.getElementById('saveReviewBtn') as HTMLButtonElement | null;
     const submitLabel = document.getElementById('saveReviewBtnLabel');
-    const prevText = submitLabel?.textContent || 'إرسال التقييم';
+    const prevText = submitLabel?.textContent || (isEn ? 'Submit Review' : 'إرسال التقييم');
 
     if (saveBtn) saveBtn.disabled = true;
-    if (submitLabel) submitLabel.textContent = 'جاري الحفظ...';
+    if (submitLabel) submitLabel.textContent = isEn ? 'Saving...' : 'جاري الحفظ...';
 
     try {
       const idToken = await currentUser.getIdToken();
@@ -676,7 +716,7 @@ export function initCustomerAccountPage(): void {
       });
       const result = await response.json().catch(() => ({}));
       if (!response.ok || !result.success) {
-        throw new Error(result.message || 'فشل حفظ التقييم.');
+        throw new Error(result.message || (isEn ? 'Failed to save review.' : 'فشل حفظ التقييم.'));
       }
 
       userReviews[activeReviewProductId] = {
@@ -689,9 +729,12 @@ export function initCustomerAccountPage(): void {
 
       closeDialogClean(reviewDialog);
       renderOrdersList(cachedOrders);
-      notify('تم حفظ تقييمكِ بنجاح! شكراً لمشاركة تجربتكِ.', 'success');
+      notify(
+        isEn ? 'Your review has been saved! Thank you for sharing.' : 'تم حفظ تقييمكِ بنجاح! شكراً لمشاركة تجربتكِ.',
+        'success'
+      );
     } catch (err: any) {
-      notify(err?.message || 'حدث خطأ أثناء حفظ التقييم.', 'error');
+      notify(err?.message || (isEn ? 'An error occurred while saving your review.' : 'حدث خطأ أثناء حفظ التقييم.'), 'error');
     } finally {
       if (saveBtn) saveBtn.disabled = false;
       if (submitLabel) submitLabel.textContent = prevText;
@@ -714,7 +757,7 @@ export function initCustomerAccountPage(): void {
       if (snap.exists()) {
         const raw = snap.val() || {};
         Object.entries(raw).forEach(([key, val]) => {
-          cachedAddresses[key] = normalizeCustomerAddress(key, val as any);
+          cachedAddresses[key] = normalizeCustomerAddress(key, val as any, locale);
         });
       }
 
@@ -749,26 +792,26 @@ export function initCustomerAccountPage(): void {
               ${getIconSvg('map-pin', { size: 16, strokeWidth: 1.85 })}
               <span>${escapeHtml(addr.label)}</span>
             </h3>
-            ${addr.isDefault ? '<span class="dandy-addr-default-flag">افتراضي</span>' : ''}
+            ${addr.isDefault ? `<span class="dandy-addr-default-flag">${isEn ? 'Default' : 'افتراضي'}</span>` : ''}
           </div>
           <div class="dandy-addr-body">
-            <div><strong>المحافظة:</strong> ${escapeHtml(addr.governorateAr)}</div>
-            <div><strong>المدينة / الحي:</strong> ${escapeHtml(addr.city)}</div>
-            <div><strong>العنوان:</strong> ${escapeHtml(addr.street)}</div>
+            <div><strong>${isEn ? 'Governorate:' : 'المحافظة:'}</strong> ${escapeHtml(addr.governorateAr)}</div>
+            <div><strong>${isEn ? 'City / District:' : 'المدينة / الحي:'}</strong> ${escapeHtml(addr.city)}</div>
+            <div><strong>${isEn ? 'Address:' : 'العنوان:'}</strong> ${escapeHtml(addr.street)}</div>
           </div>
           <div class="dandy-addr-actions">
             <button type="button" class="dandy-btn dandy-btn--outline" data-addr-edit="${escapeHtml(addr.id)}">
               ${getIconSvg('pencil', { size: 14, strokeWidth: 1.85 })}
-              <span>تعديل</span>
+              <span>${isEn ? 'Edit' : 'تعديل'}</span>
             </button>
             ${
               !addr.isDefault
-                ? `<button type="button" class="dandy-btn dandy-btn--outline" data-addr-default="${escapeHtml(addr.id)}">تعيين كافتراضي</button>`
+                ? `<button type="button" class="dandy-btn dandy-btn--outline" data-addr-default="${escapeHtml(addr.id)}">${isEn ? 'Set as Default' : 'تعيين كافتراضي'}</button>`
                 : ''
             }
             <button type="button" class="dandy-btn dandy-btn--outline dandy-addr-del-btn" data-addr-delete="${escapeHtml(addr.id)}">
               ${getIconSvg('trash', { size: 14, strokeWidth: 1.85 })}
-              <span>حذف</span>
+              <span>${isEn ? 'Delete' : 'حذف'}</span>
             </button>
           </div>
         </article>
@@ -796,7 +839,7 @@ export function initCustomerAccountPage(): void {
 
     const existing = editKey ? cachedAddresses[editKey] : null;
     if (existing) {
-      if (titleEl) titleEl.textContent = 'تعديل العنوان';
+      if (titleEl) titleEl.textContent = isEn ? 'Edit Address' : 'تعديل العنوان';
       if (editIdEl) editIdEl.value = existing.id;
       if (labelEl) labelEl.value = existing.label;
       if (govEl) govEl.value = existing.governorate;
@@ -805,7 +848,7 @@ export function initCustomerAccountPage(): void {
       if (defaultEl) defaultEl.checked = existing.isDefault;
     } else {
       addressForm?.reset();
-      if (titleEl) titleEl.textContent = 'إضافة عنوان جديد';
+      if (titleEl) titleEl.textContent = isEn ? 'Add New Address' : 'إضافة عنوان جديد';
       if (editIdEl) editIdEl.value = '';
       if (defaultEl) defaultEl.checked = Object.keys(cachedAddresses).length === 0;
     }
@@ -827,17 +870,21 @@ export function initCustomerAccountPage(): void {
     if (!currentUser) return;
 
     const editId = (document.getElementById('editAddressId') as HTMLInputElement | null)?.value || '';
-    const validation = validateAddressInput({
-      label: (document.getElementById('addrLabel') as HTMLInputElement | null)?.value,
-      governorate: (document.getElementById('addrGov') as HTMLSelectElement | null)?.value,
-      city: (document.getElementById('addrCity') as HTMLInputElement | null)?.value,
-      street: (document.getElementById('addrDetail') as HTMLTextAreaElement | null)?.value,
-      isDefault: (document.getElementById('addrIsDefault') as HTMLInputElement | null)?.checked,
-    });
+    const validation = validateAddressInput(
+      {
+        label: (document.getElementById('addrLabel') as HTMLInputElement | null)?.value,
+        governorate: (document.getElementById('addrGov') as HTMLSelectElement | null)?.value,
+        city: (document.getElementById('addrCity') as HTMLInputElement | null)?.value,
+        street: (document.getElementById('addrDetail') as HTMLTextAreaElement | null)?.value,
+        isDefault: (document.getElementById('addrIsDefault') as HTMLInputElement | null)?.checked,
+      },
+      locale
+    );
 
     if (!validation.valid) {
       if (addressFormError) {
-        addressFormError.textContent = validation.error || 'يرجى التحقق من الحقول المطلوبة.';
+        addressFormError.textContent =
+          validation.error || (isEn ? 'Please fill in all required fields.' : 'يرجى التحقق من الحقول المطلوبة.');
         addressFormError.hidden = false;
       }
       return;
@@ -846,7 +893,7 @@ export function initCustomerAccountPage(): void {
     const saveBtn = document.getElementById('saveAddressBtn') as HTMLButtonElement | null;
     if (saveBtn) {
       saveBtn.disabled = true;
-      saveBtn.textContent = 'جاري الحفظ...';
+      saveBtn.textContent = isEn ? 'Saving...' : 'جاري الحفظ...';
     }
 
     try {
@@ -880,22 +927,22 @@ export function initCustomerAccountPage(): void {
 
       if (editId) {
         await addrRef.child(editId).update(payload);
-        notify('تم تحديث العنوان بنجاح.', 'success');
+        notify(isEn ? 'Address updated successfully.' : 'تم تحديث العنوان بنجاح.', 'success');
       } else {
         payload.createdAt = fb?.database?.ServerValue?.TIMESTAMP || Date.now();
         await addrRef.push(payload);
-        notify('تمت إضافة العنوان بنجاح.', 'success');
+        notify(isEn ? 'Address added successfully.' : 'تمت إضافة العنوان بنجاح.', 'success');
       }
 
       closeDialogClean(addressDialog);
       await loadAddresses();
     } catch (err) {
       console.error('Error saving address:', err);
-      notify('حدث خطأ أثناء حفظ العنوان.', 'error');
+      notify(isEn ? 'An error occurred while saving the address.' : 'حدث خطأ أثناء حفظ العنوان.', 'error');
     } finally {
       if (saveBtn) {
         saveBtn.disabled = false;
-        saveBtn.textContent = 'حفظ العنوان';
+        saveBtn.textContent = isEn ? 'Save Address' : 'حفظ العنوان';
       }
     }
   });
@@ -921,10 +968,10 @@ export function initCustomerAccountPage(): void {
           });
           await addrRef.update(updates);
           await loadAddresses();
-          notify('تم تعيين العنوان الافتراضي.', 'success');
+          notify(isEn ? 'Default address updated.' : 'تم تعيين العنوان الافتراضي.', 'success');
         }
       } catch {
-        notify('تعذر تحديث العنوان الافتراضي.', 'error');
+        notify(isEn ? 'Could not update default address.' : 'تعذر تحديث العنوان الافتراضي.', 'error');
       }
       return;
     }
@@ -953,9 +1000,9 @@ export function initCustomerAccountPage(): void {
       pendingDeleteAddressKey = null;
       closeDialogClean(deleteAddressDialog);
       await loadAddresses();
-      notify('تم حذف العنوان.', 'info');
+      notify(isEn ? 'Address deleted.' : 'تم حذف العنوان.', 'info');
     } catch {
-      notify('تعذر حذف العنوان.', 'error');
+      notify(isEn ? 'Could not delete address.' : 'تعذر حذف العنوان.', 'error');
     }
   });
 
@@ -988,7 +1035,7 @@ export function initCustomerAccountPage(): void {
           try {
             const pSnap = await db.ref(`products/${pid}`).once('value');
             if (pSnap.exists()) {
-              const vm = resolveWishlistCardModel(pid, pSnap.val());
+              const vm = resolveWishlistCardModel(pid, pSnap.val(), locale);
               if (vm) models.set(pid, vm);
             }
           } catch (pErr) {
@@ -1050,12 +1097,12 @@ export function initCustomerAccountPage(): void {
             </a>
             <div class="dandy-pcard-body">
               <div class="dandy-pcard-meta">
-                <a href="/category/${escapeHtml(vm.categorySlug)}" class="dandy-pcard-category">${escapeHtml(vm.categoryLabelAr)}</a>
+                <a href="${prefix}/category/${escapeHtml(vm.categorySlug)}" class="dandy-pcard-category">${escapeHtml(vm.categoryLabelAr)}</a>
               </div>
               <h3 class="dandy-pcard-title"><a href="${escapeHtml(vm.href)}">${escapeHtml(vm.name)}</a></h3>
               <div class="dandy-pcard-price-row">
-                <span class="dandy-pcard-price dandy-tabular">${formatEgpPrice(vm.currentPrice)}</span>
-                ${vm.oldPrice !== null ? `<del class="dandy-pcard-old-price dandy-tabular">${formatEgpPrice(vm.oldPrice)}</del>` : ''}
+                <span class="dandy-pcard-price dandy-tabular">${formatEgpPrice(vm.currentPrice, locale)}</span>
+                ${vm.oldPrice !== null ? `<del class="dandy-pcard-old-price dandy-tabular">${formatEgpPrice(vm.oldPrice, locale)}</del>` : ''}
               </div>
               <div class="dandy-pcard-actions dandy-wish-card-actions">
                 ${actionHtml}
@@ -1063,10 +1110,10 @@ export function initCustomerAccountPage(): void {
                   type="button"
                   class="dandy-btn dandy-btn--outline dandy-wish-remove-btn"
                   data-wishlist-remove="${escapeHtml(vm.id)}"
-                  aria-label="إزالة ${escapeHtml(vm.name)} من المفضلة"
+                  aria-label="${escapeHtml(isEn ? `Remove ${vm.name} from wishlist` : `إزالة ${vm.name} من المفضلة`)}"
                 >
                   ${getIconSvg('trash', { size: 14, strokeWidth: 1.85 })}
-                  <span>إزالة</span>
+                  <span>${isEn ? 'Remove' : 'إزالة'}</span>
                 </button>
               </div>
             </div>
@@ -1111,9 +1158,12 @@ export function initCustomerAccountPage(): void {
           category: vm.categorySlug,
           quantity: 1,
         });
-        notify(`تمت إضافة «${vm.name}» إلى حقيبة التسوق.`, 'success');
+        notify(
+          isEn ? `Added “${vm.name}” to your shopping bag.` : `تمت إضافة «${vm.name}» إلى حقيبة التسوق.`,
+          'success'
+        );
       } catch {
-        notify('تعذر إضافة المنتج إلى السلة.', 'error');
+        notify(isEn ? 'Could not add product to bag.' : 'تعذر إضافة المنتج إلى السلة.', 'error');
       }
       return;
     }
@@ -1127,9 +1177,9 @@ export function initCustomerAccountPage(): void {
         wishlistModels.delete(pid);
         renderWishlistList();
         renderOverviewSummary();
-        notify('تمت إزالة المنتج من قائمة المفضلة.', 'info');
+        notify(isEn ? 'Removed from your wishlist.' : 'تمت إزالة المنتج من قائمة المفضلة.', 'info');
       } catch {
-        notify('تعذر إزالة المنتج من المفضلة.', 'error');
+        notify(isEn ? 'Could not remove from wishlist.' : 'تعذر إزالة المنتج من المفضلة.', 'error');
       }
     }
   });

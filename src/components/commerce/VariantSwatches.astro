@@ -6,13 +6,16 @@
  */
 import Icon from '../ui/Icon.astro';
 import type { VariantItem } from '../../utils/products';
+import type { Locale } from '../../i18n/types';
 
 export interface Props {
   variants: VariantItem[];
   hasVariants: boolean;
+  locale?: Locale;
 }
 
-const { variants = [], hasVariants = false } = Astro.props;
+const { variants = [], hasVariants = false, locale = 'ar' } = Astro.props;
+const isEn = locale === 'en';
 ---
 
 <div
@@ -26,10 +29,10 @@ const { variants = [], hasVariants = false } = Astro.props;
       <div class="dandy-pdp-variants-head">
         <span class="dandy-pdp-variants-label">
           <Icon name="sliders" size={15} strokeWidth={1.9} />
-          <span>اختاري الرائحة المفضلة</span>
+          <span>{isEn ? 'Choose Your Scent' : 'اختاري الرائحة المفضلة'}</span>
         </span>
         <span class="dandy-pdp-variants-hint" id="selected-variants-summary" aria-live="polite">
-          يمكنكِ اختيار رائحة أو أكثر
+          {isEn ? 'You may choose one or more scents' : 'يمكنكِ اختيار رائحة أو أكثر'}
         </span>
       </div>
 
@@ -37,7 +40,7 @@ const { variants = [], hasVariants = false } = Astro.props;
         class="dandy-pdp-variants-list"
         id="variant-pills-container"
         role="group"
-        aria-label="اختيار الرائحة"
+        aria-label={isEn ? 'Choose scent' : 'اختيار الرائحة'}
       >
         {variants.map((v) => {
           const isAvail = v.isAvailable !== false;
@@ -56,7 +59,11 @@ const { variants = [], hasVariants = false } = Astro.props;
                 <Icon name="check" size={14} strokeWidth={2.3} />
               </span>
               <span class="dandy-pdp-variant-name">{v.name}</span>
-              {!isAvail && <span class="dandy-pdp-variant-sold">(نفدت)</span>}
+              {!isAvail && (
+                <span class="dandy-pdp-variant-sold">
+                  {isEn ? '(Sold out)' : '(نفدت)'}
+                </span>
+              )}
             </button>
           );
         })}
@@ -122,7 +129,7 @@ const { variants = [], hasVariants = false } = Astro.props;
     border: 1.5px solid var(--dandy-border-default);
     background-color: var(--dandy-bg-page);
     color: var(--dandy-ink-primary);
-    font-family: var(--dandy-font-ar-sans);
+    font-family: var(--dandy-font-active-sans);
     font-size: var(--dandy-text-sm);
     font-weight: 500;
     line-height: 1.3;

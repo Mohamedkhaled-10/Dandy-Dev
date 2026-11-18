@@ -334,6 +334,9 @@ export function resolveLocalizedHomepageStudioState(
         title: ov.title ?? slide.title,
         subtitle: ov.subtitle ?? slide.subtitle,
         buttonText: ov.buttonText ?? slide.buttonText,
+        link: ov.link ?? slide.link,
+        desktopImage: ov.desktopImage ?? slide.desktopImage,
+        mobileImage: ov.mobileImage ?? slide.mobileImage,
       };
     }),
     sections: state.sections.map((sec) => {
@@ -368,6 +371,15 @@ export function resolveLocalizedHomepageStudioState(
           }
         : undefined,
     },
+    reviews: state.reviews.map((rev, idx) => {
+      const ov = overlay.reviews?.[idx];
+      if (!ov) return { ...rev };
+      return {
+        ...rev,
+        author: ov.author ?? rev.author,
+        text: ov.text ?? rev.text,
+      };
+    }),
     promoBanner: state.promoBanner
       ? {
           ...state.promoBanner,
@@ -375,6 +387,7 @@ export function resolveLocalizedHomepageStudioState(
           title: overlay.promoBanner?.title ?? state.promoBanner.title,
           desc: overlay.promoBanner?.desc ?? state.promoBanner.desc,
           ctaText: overlay.promoBanner?.ctaText ?? state.promoBanner.ctaText,
+          ctaLink: overlay.promoBanner?.ctaLink ?? state.promoBanner.ctaLink,
         }
       : undefined,
     categories: Object.fromEntries(
@@ -404,7 +417,23 @@ export function resolveLocalizedHomepageStudioState(
         eyebrow: ov.eyebrow ?? cs.eyebrow,
         desc: ov.desc ?? cs.desc,
         ctaText: ov.ctaText ?? cs.ctaText,
+        ctaLink: ov.ctaLink ?? cs.ctaLink,
         linkText: ov.linkText ?? cs.linkText,
+        linkUrl: ov.linkUrl ?? cs.linkUrl,
+        items: Array.isArray(cs.items)
+          ? cs.items.map((item, idx) => {
+              const itemOv = ov.items?.[idx];
+              if (!itemOv) return { ...item };
+              return {
+                ...item,
+                title: itemOv.title ?? item.title,
+                desc: itemOv.desc ?? item.desc,
+                q: itemOv.q ?? item.q,
+                a: itemOv.a ?? item.a,
+                link: itemOv.link ?? item.link,
+              };
+            })
+          : cs.items,
       };
     }),
   };
@@ -431,6 +460,8 @@ export function resolveLocalizedPinkFridayCampaign(
           ...campaign.visuals,
           ctaText: overlay.ctaText || campaign.visuals.ctaText,
           badgeText: overlay.badgeText || campaign.visuals.badgeText,
+          headline: overlay.headline || campaign.visuals.headline,
+          heroImageUrl: overlay.heroImageOverride || campaign.visuals.heroImageUrl,
         }
       : campaign.visuals,
     collections: campaign.collections?.map((col) => {

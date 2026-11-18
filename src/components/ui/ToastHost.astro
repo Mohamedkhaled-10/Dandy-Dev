@@ -1,8 +1,16 @@
 ---
 /**
- * DANDY COSMETICS — GLOBAL TOAST HOST COMPONENT (PHASE 1)
+ * DANDY COSMETICS — GLOBAL TOAST HOST COMPONENT (PHASE 1 / PHASE 11)
  * Provides accessible live-regions and visible toast container.
  */
+import type { Locale } from '../../i18n/types';
+
+export interface Props {
+  locale?: Locale;
+}
+
+const { locale = 'ar' } = Astro.props;
+const notificationsLabel = locale === 'en' ? 'Notifications' : 'الإشعارات';
 ---
 
 <div class="dandy-sr-only" id="dandy-toast-live-polite" aria-live="polite" aria-atomic="true"></div>
@@ -10,7 +18,7 @@
 <div
   id="dandy-toast-host"
   class="dandy-toast-host"
-  aria-label="الإشعارات"
+  aria-label={notificationsLabel}
 ></div>
 
 <script>

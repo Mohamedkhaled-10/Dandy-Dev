@@ -222,7 +222,8 @@ export function createDandyToastController(doc: Document = document) {
       const closeBtn = doc.createElement('button');
       closeBtn.type = 'button';
       closeBtn.className = 'dandy-toast__close';
-      closeBtn.setAttribute('aria-label', 'إغلاق الإشعار');
+      const isEnglishDoc = (doc.documentElement?.lang || '').toLowerCase().startsWith('en');
+      closeBtn.setAttribute('aria-label', isEnglishDoc ? 'Close notification' : 'إغلاق الإشعار');
       closeBtn.appendChild(createIconElement(doc, 'x', { size: 15, strokeWidth: 2 }));
       closeBtn.addEventListener('click', () => dismiss(id));
       toastEl.appendChild(closeBtn);

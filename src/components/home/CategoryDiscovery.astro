@@ -5,6 +5,8 @@
  * while honoring Studio overrides for responsive images, taglines, counts, and layouts.
  */
 import Icon from '../ui/Icon.astro';
+import type { Locale } from '../../i18n/types';
+import { buildLocalizedPath } from '../../i18n/routes';
 import {
   resolveCategoriesForShowcase,
   type ResolvedCategoryCard,
@@ -13,11 +15,14 @@ import {
 export interface Props {
   categories?: ResolvedCategoryCard[];
   hidden?: boolean;
+  locale?: Locale;
 }
 
-const { categories, hidden = false } = Astro.props;
+const { categories, hidden = false, locale = 'ar' } = Astro.props;
+const isEn = locale === 'en';
 const activeCategories =
-  categories && categories.length > 0 ? categories : resolveCategoriesForShowcase();
+  categories && categories.length > 0 ? categories : resolveCategoriesForShowcase(undefined, locale);
+const allProductsHref = buildLocalizedPath('/all-products', locale);
 const fallbackCatImg = '/assets/images/index-products/product-2.jpg';
 ---
 
@@ -30,14 +35,14 @@ const fallbackCatImg = '/assets/images/index-products/product-2.jpg';
   <div class="dandy-container">
     <header class="dandy-section-header" data-dandy-reveal>
       <div class="dandy-section-titles">
-        <p class="dandy-section-kicker">الأقسام الرئيسية</p>
+        <p class="dandy-section-kicker">{isEn ? 'Primary Categories' : 'الأقسام الرئيسية'}</p>
         <h2 id="home-categories-heading" class="dandy-section-heading">
-          تسوقي حسب الروتين
+          {isEn ? 'Shop by Routine' : 'تسوقي حسب الروتين'}
         </h2>
       </div>
-      <a href="/all-products" class="dandy-section-more">
-        <span>كل المنتجات</span>
-        <Icon name="arrow-left" size={15} strokeWidth={1.8} />
+      <a href={allProductsHref} class="dandy-section-more">
+        <span>{isEn ? 'All Products' : 'كل المنتجات'}</span>
+        <Icon name={isEn ? 'arrow-right' : 'arrow-left'} size={15} strokeWidth={1.8} />
       </a>
     </header>
 
@@ -69,7 +74,7 @@ const fallbackCatImg = '/assets/images/index-products/product-2.jpg';
           <div class="dandy-cat-body">
             <div class="dandy-cat-title-row">
               <h3 class="dandy-cat-title" dir="auto">{cat.name}</h3>
-              {cat.englishName && cat.englishName !== cat.name && (
+              {!isEn && cat.englishName && cat.englishName !== cat.name && (
                 <span class="dandy-cat-en" dir="ltr">{cat.englishName}</span>
               )}
             </div>
@@ -82,8 +87,8 @@ const fallbackCatImg = '/assets/images/index-products/product-2.jpg';
             )}
             <p class="dandy-cat-desc">{cat.description}</p>
             <span class="dandy-cat-link">
-              <span>تصفحي القسم</span>
-              <Icon name="chevron-left" size={14} strokeWidth={2} />
+              <span>{isEn ? 'Explore Category' : 'تصفحي القسم'}</span>
+              <Icon name={isEn ? 'chevron-right' : 'chevron-left'} size={14} strokeWidth={2} />
             </span>
           </div>
         </a>
@@ -179,7 +184,7 @@ const fallbackCatImg = '/assets/images/index-products/product-2.jpg';
 
   .dandy-cat-title {
     margin: 0;
-    font-family: var(--dandy-font-ar-sans);
+    font-family: var(--dandy-font-active-sans);
     font-size: 1.05rem;
     font-weight: 700;
     color: var(--dandy-ink-primary);

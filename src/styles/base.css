@@ -12,20 +12,21 @@ html {
 }
 
 body {
-  font-family: var(--dandy-font-ar-sans);
+  font-family: var(--dandy-font-active-sans);
   color: var(--dandy-ink-primary);
   background-color: var(--dandy-bg-page);
   line-height: var(--dandy-leading-body-ar);
 }
 
 html[lang="en"] body {
-  font-family: var(--dandy-font-en-sans);
+  font-family: var(--dandy-font-active-sans);
   line-height: var(--dandy-leading-body-en);
 }
 
 /* Editorial Display & Heading Helpers */
-.dandy-font-ar-display {
-  font-family: var(--dandy-font-ar-display);
+.dandy-font-ar-display,
+.dandy-font-localized-display {
+  font-family: var(--dandy-font-active-display);
   line-height: var(--dandy-leading-display-ar);
   letter-spacing: 0;
 }
@@ -50,7 +51,7 @@ html[dir="rtl"] .dandy-prose h4 {
   text-align: start;
 }
 
-/* English LTR Typography Compatibility (Phase 10 Groundwork) */
+/* English LTR Typography Compatibility */
 html[dir="ltr"] .dandy-prose,
 html[dir="ltr"] .dandy-prose p,
 html[dir="ltr"] .dandy-prose h1,
@@ -60,8 +61,9 @@ html[dir="ltr"] .dandy-prose h4 {
   text-align: start;
 }
 
+html[lang="en"] .dandy-font-ar-display,
 html[lang="en"] .dandy-font-localized-display {
-  font-family: var(--dandy-font-en-display);
+  font-family: var(--dandy-font-active-display);
   line-height: var(--dandy-leading-display-en);
 }
 

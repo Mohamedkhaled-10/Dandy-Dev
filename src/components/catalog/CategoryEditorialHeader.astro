@@ -5,49 +5,73 @@
  */
 import Icon from '../ui/Icon.astro';
 import type { CategoryTaxonomy } from '../../utils/categories';
+import type { Locale } from '../../i18n/types';
+import { buildLocalizedPath } from '../../i18n/index';
+import { EN_CATEGORY_CONTENT } from '../../i18n/content/en/categories';
 
 export interface Props {
   category: CategoryTaxonomy;
   productCount: number;
+  locale?: Locale;
 }
 
-const { category, productCount } = Astro.props;
+const { category, productCount, locale = 'ar' } = Astro.props;
+const isEn = locale === 'en';
+const enOverlay = isEn ? EN_CATEGORY_CONTENT[category.slug] : undefined;
+const catName = enOverlay ? enOverlay.name : category.arabicName;
+const h1Title = enOverlay ? enOverlay.h1Title : category.h1Title;
+const introText = enOverlay ? enOverlay.introText : category.introText;
+
+const homeHref = buildLocalizedPath('/', locale);
+const allProductsHref = buildLocalizedPath('/all-products', locale);
 const fallbackImage = '/assets/images/logo.png';
 ---
 
 <header class="dandy-cat-header">
   <div class="dandy-container">
-    <nav class="dandy-cat-breadcrumb" aria-label="مسار التنقل" data-dandy-entrance="0">
+    <nav
+      class="dandy-cat-breadcrumb"
+      aria-label={isEn ? 'Breadcrumb' : 'مسار التنقل'}
+      data-dandy-entrance="0"
+    >
       <ol class="dandy-cat-breadcrumb-list">
         <li>
-          <a href="/" class="dandy-cat-crumb-link">الرئيسية</a>
+          <a href={homeHref} class="dandy-cat-crumb-link">{isEn ? 'Home' : 'الرئيسية'}</a>
         </li>
         <li aria-hidden="true" class="dandy-cat-crumb-sep">
-          <Icon name="chevron-left" size={14} strokeWidth={1.8} />
+          <Icon name={isEn ? 'chevron-right' : 'chevron-left'} size={14} strokeWidth={1.8} />
         </li>
         <li>
-          <a href="/all-products" class="dandy-cat-crumb-link">جميع المنتجات</a>
+          <a href={allProductsHref} class="dandy-cat-crumb-link">
+            {isEn ? 'All Products' : 'جميع المنتجات'}
+          </a>
         </li>
         <li aria-hidden="true" class="dandy-cat-crumb-sep">
-          <Icon name="chevron-left" size={14} strokeWidth={1.8} />
+          <Icon name={isEn ? 'chevron-right' : 'chevron-left'} size={14} strokeWidth={1.8} />
         </li>
         <li aria-current="page" class="dandy-cat-crumb-current">
-          {category.arabicName}
+          {catName}
         </li>
       </ol>
     </nav>
 
     <div class="dandy-cat-hero-grid">
       <div class="dandy-cat-hero-copy">
-        <p class="dandy-cat-eyebrow" data-dandy-entrance="1">قسم {category.arabicName}</p>
-        <h1 class="dandy-cat-h1 dandy-font-ar-display" data-dandy-entrance="2">{category.h1Title}</h1>
-        <p class="dandy-cat-intro" data-dandy-entrance="3">{category.introText}</p>
+        <p class="dandy-cat-eyebrow" data-dandy-entrance="1">
+          {isEn ? `${catName} Collection` : `قسم ${catName}`}
+        </p>
+        <h1 class="dandy-cat-h1 dandy-font-ar-display" data-dandy-entrance="2">{h1Title}</h1>
+        <p class="dandy-cat-intro" data-dandy-entrance="3">{introText}</p>
         <div class="dandy-cat-meta-line" data-dandy-entrance="4">
-          <span class="dandy-tabular">{productCount} منتج متاح</span>
+          <span class="dandy-tabular">
+            {isEn
+              ? `${productCount} ${productCount === 1 ? 'product' : 'products'} available`
+              : `${productCount} منتج متاح`}
+          </span>
           <span aria-hidden="true" class="dandy-cat-meta-dot">·</span>
-          <a href="/all-products" class="dandy-cat-all-link">
-            <span>تصفح كامل المتجر</span>
-            <Icon name="arrow-left" size={14} strokeWidth={1.85} />
+          <a href={allProductsHref} class="dandy-cat-all-link">
+            <span>{isEn ? 'Browse full store' : 'تصفح كامل المتجر'}</span>
+            <Icon name={isEn ? 'arrow-right' : 'arrow-left'} size={14} strokeWidth={1.85} />
           </a>
         </div>
       </div>
@@ -55,7 +79,7 @@ const fallbackImage = '/assets/images/logo.png';
       <div class="dandy-cat-hero-media" data-dandy-media-settle>
         <img
           src={category.image}
-          alt={category.h1Title}
+          alt={h1Title}
           width="1200"
           height="630"
           loading="eager"

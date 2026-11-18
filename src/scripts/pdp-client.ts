@@ -4,6 +4,7 @@
  * Cart Persistence, DandyToast, Meta Pixel, Share Popover, and Auth-Safe Wishlist.
  */
 
+import { resolveClientLocalizedProductName, resolveClientLocalizedVariantName } from '../i18n/content/en/products';
 import { formatEgpPrice } from './product-card';
 import {
   buildPdpCartPayload,
@@ -12,6 +13,18 @@ import {
 } from './product-pdp';
 import type { Product } from '../utils/products';
 import type { CampaignPricingResult } from '../utils/pink-friday-server';
+
+function getRuntimeLocale(): 'ar' | 'en' {
+  if (typeof document !== 'undefined') {
+    const lang = (document.documentElement.getAttribute('lang') || '').trim().toLowerCase();
+    if (lang.startsWith('en')) return 'en';
+  }
+  if (typeof window !== 'undefined') {
+    const p = (window.location.pathname || '/').toLowerCase();
+    if (p === '/en' || p.startsWith('/en/')) return 'en';
+  }
+  return 'ar';
+}
 
 interface BootstrapPayload {
   product: Product;
@@ -70,6 +83,9 @@ export function initProductDetailPage(): void {
   const bootstrapEl = document.getElementById('pdp-bootstrap-data');
   if (!bootstrapEl || !bootstrapEl.textContent) return;
 
+  const locale = getRuntimeLocale();
+  const isEn = locale === 'en';
+
   let bootstrap: BootstrapPayload;
   try {
     bootstrap = JSON.parse(bootstrapEl.textContent) as BootstrapPayload;
@@ -113,25 +129,36 @@ export function initProductDetailPage(): void {
     const pricing = computePdpEffectivePricing(product, selectedVariants.length, livePf);
 
     if (priceEl) {
-      priceEl.textContent = formatEgpPrice(pricing.effectiveUnitPrice);
+      priceEl.textContent = formatEgpPrice(pricing.effectiveUnitPrice, locale);
     }
     if (oldPriceEl) {
       if (pricing.effectiveOldPrice !== null) {
-        oldPriceEl.textContent = formatEgpPrice(pricing.effectiveOldPrice);
+        oldPriceEl.textContent = formatEgpPrice(pricing.effectiveOldPrice, locale);
         oldPriceEl.hidden = false;
-        oldPriceEl.setAttribute('aria-label', `السعر قبل الخصم ${formatEgpPrice(pricing.effectiveOldPrice)}`);
+        oldPriceEl.setAttribute(
+          'aria-label',
+          isEn
+            ? `Regular price ${formatEgpPrice(pricing.effectiveOldPrice, locale)}`
+            : `السعر قبل الخصم ${formatEgpPrice(pricing.effectiveOldPrice, locale)}`
+        );
       } else {
         oldPriceEl.hidden = true;
       }
     }
     if (discountNoteEl && pricing.savingsAmount !== null && !pricing.isPinkFriday) {
-      discountNoteEl.textContent = pricing.discountPercent
-        ? `خصم ${pricing.discountPercent}% · توفير ${formatEgpPrice(pricing.savingsAmount)}`
-        : `توفير ${formatEgpPrice(pricing.savingsAmount)}`;
+      discountNoteEl.textContent = isEn
+        ? pricing.discountPercent
+          ? `${pricing.discountPercent}% off · Save ${formatEgpPrice(pricing.savingsAmount, locale)}`
+          : `Save ${formatEgpPrice(pricing.savingsAmount, locale)}`
+        : pricing.discountPercent
+          ? `خصم ${pricing.discountPercent}% · توفير ${formatEgpPrice(pricing.savingsAmount, locale)}`
+          : `توفير ${formatEgpPrice(pricing.savingsAmount, locale)}`;
     }
     if (multiScentNoteEl) {
       if (selectedVariants.length > 1) {
-        multiScentNoteEl.textContent = `الإجمالي لعدد ${selectedVariants.length} روائح (سعر الرائحة الواحدة ${formatEgpPrice(pricing.unitBasePrice)})`;
+        multiScentNoteEl.textContent = isEn
+          ? `Total for ${selectedVariants.length} scents (${formatEgpPrice(pricing.unitBasePrice, locale)} each)`
+          : `الإجمالي لعدد ${selectedVariants.length} روائح (سعر الرائحة الواحدة ${formatEgpPrice(pricing.unitBasePrice, locale)})`;
         multiScentNoteEl.hidden = false;
       } else {
         multiScentNoteEl.hidden = true;
@@ -140,10 +167,13 @@ export function initProductDetailPage(): void {
     }
     if (variantsSummaryEl) {
       if (selectedVariants.length > 0) {
-        variantsSummaryEl.textContent = `المختار: ${selectedVariants.map((v) => v.name).join('، ')}`;
+        const namesText = selectedVariants
+          .map((v) => resolveClientLocalizedVariantName(product.id, v.id, v.name, locale))
+          .join(isEn ? ', ' : '، ');
+        variantsSummaryEl.textContent = isEn ? `Selected: ${namesText}` : `المختار: ${namesText}`;
         variantsSummaryEl.classList.add('is-selected');
       } else {
-        variantsSummaryEl.textContent = 'يمكنكِ اختيار رائحة أو أكثر';
+        variantsSummaryEl.textContent = isEn ? 'Choose one or more scents' : 'يمكنكِ اختيار رائحة أو أكثر';
         variantsSummaryEl.classList.remove('is-selected');
       }
     }
@@ -211,10 +241,14 @@ export function initProductDetailPage(): void {
         selectedVariants,
         quantity: qty,
         pinkFridayPricing: livePf,
+        locale,
       });
 
       if (!built.ok || !built.item) {
-        showToast('error', built.errorMessage || 'تعذر إضافة المنتج للسلة.');
+        showToast(
+          'error',
+          built.errorMessage || (isEn ? 'Could not add product to bag.' : 'تعذر إضافة المنتج للسلة.')
+        );
         if (built.errorReason === 'missing_variant') {
           const variantSection = document.getElementById('variant-section-container');
           variantSection?.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -254,16 +288,27 @@ export function initProductDetailPage(): void {
         window.dispatchEvent(new CustomEvent('cart-updated', { detail: { productId: product.id } }));
 
         const labelEl = addBtn.querySelector<HTMLElement>('[data-add-label]');
-        const defaultLabel = labelEl?.textContent || 'أضيفي للسلة';
+        const defaultLabel = labelEl?.textContent || (isEn ? 'Add to Bag' : 'أضيفي للسلة');
         addBtn.classList.add('is-added');
-        if (labelEl) labelEl.textContent = 'تمت الإضافة للسلة';
+        if (labelEl) labelEl.textContent = isEn ? 'Added to Bag' : 'تمت الإضافة للسلة';
 
-        const variantSuffix = built.item.variantName ? ` (${built.item.variantName})` : '';
+        const displayName = resolveClientLocalizedProductName(product.id, product.name, locale);
+        const displayVariantText =
+          Array.isArray(built.item.selectedVariants) && built.item.selectedVariants.length > 0
+            ? built.item.selectedVariants
+                .map((sv: any) => resolveClientLocalizedVariantName(product.id, sv.id, sv.name, locale))
+                .join(isEn ? ', ' : '، ')
+            : built.item.variantName
+              ? resolveClientLocalizedVariantName(product.id, built.item.variantId, built.item.variantName, locale)
+              : '';
+        const variantSuffix = displayVariantText ? ` (${displayVariantText})` : '';
         showToast(
           'success',
-          `تمت إضافة «${product.name}${variantSuffix}» إلى سلة التسوق.`,
-          'عرض السلة',
-          '/cart'
+          isEn
+            ? `Added “${displayName}${variantSuffix}” to your shopping bag.`
+            : `تمت إضافة «${displayName}${variantSuffix}» إلى سلة التسوق.`,
+          isEn ? 'View Bag' : 'عرض السلة',
+          isEn ? '/en/cart' : '/cart'
         );
 
         window.setTimeout(() => {
@@ -273,16 +318,21 @@ export function initProductDetailPage(): void {
         }, 1200);
       } catch {
         isAddCooldown = false;
-        showToast('error', 'تعذر حفظ المنتج في السلة، تأكدي من إعدادات المتصفح.');
+        showToast(
+          'error',
+          isEn
+            ? 'Could not save the product to your bag. Please check browser settings.'
+            : 'تعذر حفظ المنتج في السلة، تأكدي من إعدادات المتصفح.'
+        );
       }
     });
   }
 
   // 6. Share Popover & Copy Link
-  initShareControls(bootstrap.canonicalUrl);
+  initShareControls(bootstrap.canonicalUrl, locale);
 
   // 7. Auth-safe Wishlist Controls (no window.alert fallback)
-  initWishlistControls(product.id);
+  initWishlistControls(product.id, locale);
 }
 
 function initGalleryAndLightbox(): void {
@@ -401,7 +451,8 @@ function initGalleryAndLightbox(): void {
   }
 }
 
-function initShareControls(canonicalUrl: string): void {
+function initShareControls(canonicalUrl: string, locale: 'ar' | 'en'): void {
+  const isEn = locale === 'en';
   const shareToggle = document.getElementById('share-toggle') as HTMLButtonElement | null;
   const shareMenu = document.getElementById('share-popover-menu');
   const copyBtn = document.getElementById('copy-product-link') as HTMLButtonElement | null;
@@ -448,9 +499,9 @@ function initShareControls(canonicalUrl: string): void {
           document.execCommand('copy');
           tempInput.remove();
         }
-        showToast('success', 'تم نسخ رابط المستحضر بنجاح.');
+        showToast('success', isEn ? 'Product link copied.' : 'تم نسخ رابط المستحضر بنجاح.');
       } catch {
-        showToast('error', 'تعذر نسخ الرابط تلقائياً.');
+        showToast('error', isEn ? 'Could not copy the link automatically.' : 'تعذر نسخ الرابط تلقائياً.');
       } finally {
         if (shareMenu && shareToggle) {
           shareMenu.hidden = true;
@@ -461,7 +512,8 @@ function initShareControls(canonicalUrl: string): void {
   }
 }
 
-function initWishlistControls(productId: string): void {
+function initWishlistControls(productId: string, locale: 'ar' | 'en'): void {
+  const isEn = locale === 'en';
   const detailBtn = document.getElementById('detailWishlistBtn') as HTMLButtonElement | null;
   const actionBtn = document.getElementById('actionWishlistBtn') as HTMLButtonElement | null;
   const actionText = document.getElementById('actionWishlistText');
@@ -474,13 +526,22 @@ function initWishlistControls(productId: string): void {
     if (detailBtn) {
       detailBtn.classList.toggle('active', fav);
       detailBtn.setAttribute('aria-pressed', fav ? 'true' : 'false');
-      detailBtn.setAttribute('aria-label', fav ? 'إزالة من المفضلة' : 'حفظ في المفضلة');
+      detailBtn.setAttribute(
+        'aria-label',
+        isEn ? (fav ? 'Remove from wishlist' : 'Save to wishlist') : fav ? 'إزالة من المفضلة' : 'حفظ في المفضلة'
+      );
     }
     if (actionBtn) {
       actionBtn.classList.toggle('active', fav);
       actionBtn.setAttribute('aria-pressed', fav ? 'true' : 'false');
       if (actionText) {
-        actionText.textContent = fav ? 'في قائمة المفضلة' : 'إضافة إلى المفضلة';
+        actionText.textContent = isEn
+          ? fav
+            ? 'Saved in Wishlist'
+            : 'Add to Wishlist'
+          : fav
+            ? 'في قائمة المفضلة'
+            : 'إضافة إلى المفضلة';
       }
     }
   }
@@ -493,9 +554,9 @@ function initWishlistControls(productId: string): void {
     if (!auth || !user || !db) {
       showToast(
         'info',
-        'سجّلي دخولك لحفظ المستحضرات في قائمة المفضلة.',
-        'تسجيل الدخول',
-        '/account-login'
+        isEn ? 'Sign in to save products to your wishlist.' : 'سجّلي دخولك لحفظ المستحضرات في قائمة المفضلة.',
+        isEn ? 'Sign In' : 'تسجيل الدخول',
+        isEn ? '/en/account-login' : '/account-login'
       );
       return;
     }
@@ -506,15 +567,15 @@ function initWishlistControls(productId: string): void {
         await ref.remove();
         wishlistSet.delete(productId);
         updateWishlistUI(false);
-        showToast('info', 'تمت إزالة المستحضر من المفضلة.');
+        showToast('info', isEn ? 'Removed from your wishlist.' : 'تمت إزالة المستحضر من المفضلة.');
       } else {
         await ref.set(true);
         wishlistSet.add(productId);
         updateWishlistUI(true);
-        showToast('success', 'تمت إضافة المستحضر إلى قائمة المفضلة.');
+        showToast('success', isEn ? 'Added to your wishlist.' : 'تمت إضافة المستحضر إلى قائمة المفضلة.');
       }
     } catch {
-      showToast('error', 'تعذر تحديث قائمة المفضلة حالياً.');
+      showToast('error', isEn ? 'Unable to update wishlist right now.' : 'تعذر تحديث قائمة المفضلة حالياً.');
     }
   }
 

@@ -4,12 +4,15 @@
  * Minimum 44x44px hit targets, tabular numbers, and legacy DOM IDs (#qty-minus, #qty-input, #qty-plus).
  */
 import Icon from '../ui/Icon.astro';
+import type { Locale } from '../../i18n/types';
 
 export interface Props {
   disabled?: boolean;
+  locale?: Locale;
 }
 
-const { disabled = false } = Astro.props;
+const { disabled = false, locale = 'ar' } = Astro.props;
+const isEn = locale === 'en';
 ---
 
 <div class:list={['dandy-pdp-qty', { 'is-disabled': disabled }]}>
@@ -17,7 +20,7 @@ const { disabled = false } = Astro.props;
     type="button"
     class="dandy-pdp-qty-btn"
     id="qty-minus"
-    aria-label="تقليل الكمية"
+    aria-label={isEn ? 'Decrease quantity' : 'تقليل الكمية'}
     disabled={disabled}
   >
     <Icon name="minus" size={16} strokeWidth={2} />
@@ -31,7 +34,7 @@ const { disabled = false } = Astro.props;
     min="1"
     max="99"
     inputmode="numeric"
-    aria-label="الكمية المطلوبة"
+    aria-label={isEn ? 'Requested quantity' : 'الكمية المطلوبة'}
     disabled={disabled}
   />
 
@@ -39,7 +42,7 @@ const { disabled = false } = Astro.props;
     type="button"
     class="dandy-pdp-qty-btn"
     id="qty-plus"
-    aria-label="زيادة الكمية"
+    aria-label={isEn ? 'Increase quantity' : 'زيادة الكمية'}
     disabled={disabled}
   >
     <Icon name="plus" size={16} strokeWidth={2} />
@@ -93,7 +96,7 @@ const { disabled = false } = Astro.props;
     border: 0;
     background: transparent;
     text-align: center;
-    font-family: var(--dandy-font-ar-sans);
+    font-family: var(--dandy-font-active-sans);
     font-size: var(--dandy-text-base);
     font-weight: 700;
     color: var(--dandy-ink-primary);

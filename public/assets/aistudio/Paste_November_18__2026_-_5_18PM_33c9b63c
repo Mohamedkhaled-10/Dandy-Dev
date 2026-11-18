@@ -1,0 +1,2244 @@
+# DANDY COSMETICS
+# PHASE 11 — COMPLETE ENGLISH STOREFRONT & LANGUAGE SWITCHING
+
+## Full English Localization · Bilingual Storefront · Locale-Aware Components · RTL/LTR · Multilingual SEO · Shared Commerce Integration
+
+---
+
+# 1. ROLE & PROJECT CONTEXT
+
+Act as a Principal Software Architect, Senior Astro Engineer, Professional English UX Writer, Internationalization Specialist, and Premium E-commerce Frontend Architect.
+
+You are continuing the reconstruction and modernization of:
+
+**DANDY COSMETICS**
+
+Approved brand identity:
+
+**BOTANICAL EDITORIAL COMMERCE**
+
+The following phases have been completed:
+
+- Phase 0 — Architecture Audit & Master Blueprint.
+- Phase 1 — Design System Foundation.
+- Phase 2 — Global Storefront Shell.
+- Phase 3 — Homepage & Product Card Reconstruction.
+- Phase 4 — Product Detail Page Reconstruction.
+- Phase 5 — Catalog, Categories & Campaigns Reconstruction.
+- Phase 6 — Cart, Checkout, Invoice & Order Tracking.
+- Phase 7 — Global Page Entrance & Progressive Content Reveal.
+- Phase 8 — Customer Accounts, Editorial Content & Support.
+- Phase 9 — Final UI/UX Audit & Production Polish.
+- Phase 10 — Multilingual Architecture & Localization Foundation.
+
+Additional completed work:
+
+- Homepage synchronization with Admin Studio.
+- Responsive Homepage Hero refinement.
+- Full Arabic storefront reconstruction.
+
+Read the existing phase reports before implementation, especially:
+
+`DANDY_PHASE_10_FINAL_REPORT_AR.md`
+
+Also read:
+
+`DANDY_PHASE_10_PRE_IMPLEMENTATION_AUDIT_AR.md`
+
+The current workspace is the authoritative source of truth.
+
+Do not search GitHub for newer changes.
+
+Do not assume the remote repository contains the latest implementation.
+
+---
+
+# 2. PHASE 11 MISSION
+
+Transform DANDY into a complete bilingual Arabic/English e-commerce storefront.
+
+The final experience must include:
+
+- Complete Arabic storefront.
+- Complete English storefront.
+- Global language switcher.
+- English homepage.
+- English catalog.
+- English category pages.
+- English product details.
+- English offers and Pink Friday.
+- English shopping cart.
+- English checkout.
+- English invoice.
+- English order tracking.
+- English authentication.
+- English customer account.
+- English blog and articles.
+- English customer reviews.
+- English support pages.
+- English legal pages.
+- Multilingual SEO.
+- Proper RTL/LTR behavior.
+
+The two storefronts must share the same commerce system.
+
+**This is one store serving two languages, not two independent stores.**
+
+The Arabic version must remain completely functional and visually consistent with its existing design.
+
+The English version must not look like a machine-translated copy of the Arabic interface.
+
+It should feel like a professionally designed international beauty and skincare brand.
+
+---
+
+# 3. PRE-IMPLEMENTATION AUDIT
+
+Before changing any code, inspect the existing Phase 10 localization implementation.
+
+Read:
+
+- `src/i18n/types.ts`
+- `src/i18n/config.ts`
+- `src/i18n/resolve-locale.ts`
+- `src/i18n/routes.ts`
+- `src/i18n/translator.ts`
+- `src/i18n/format.ts`
+- `src/i18n/metadata.ts`
+- `src/i18n/translation-check.ts`
+- `src/i18n/content/adapters.ts`
+- `src/i18n/messages/ar.ts`
+- `src/i18n/messages/en.ts`
+- All files under `src/i18n/content/`.
+
+Also inspect:
+
+- `src/layouts/BaseLayout.astro`
+- `src/components/layout/SiteHeader.astro`
+- `src/components/layout/SiteFooter.astro`
+- `src/components/layout/AnnouncementBar.astro`
+- `src/components/layout/SearchDrawer.astro`
+- `src/components/layout/MobileNavDrawer.astro`
+- `src/components/layout/BottomMobileNav.astro`
+- `src/components/ConsentBanner.astro`
+- `src/utils/products.ts`
+- `src/utils/categories.ts`
+- `src/utils/articles.ts`
+- `src/utils/pink-friday-server.ts`
+- `src/utils/animations.ts`
+- `src/scripts/page-entrance.ts`
+
+Review the current implementation rather than recreating any existing localization utility.
+
+## 3.1 Audit Deliverable
+
+Create:
+
+`DANDY_PHASE_11_PRE_IMPLEMENTATION_AUDIT_AR.md`
+
+Include:
+
+1. Phase 10 infrastructure verification.
+2. Current English translation completeness.
+3. Complete active product inventory.
+4. Existing localized product entries.
+5. Category translation completeness.
+6. Article localization inventory.
+7. Remaining hardcoded Arabic UI strings.
+8. Remaining hardcoded RTL attributes.
+9. Dynamic JavaScript-generated Arabic messages.
+10. Admin Studio localization requirements.
+11. Pink Friday localization requirements.
+12. Existing SEO and hreflang behavior.
+13. Public locale publication-gate status.
+14. Expected modified and created files.
+15. Risks to Arabic storefront compatibility.
+16. Phase 11 implementation plan.
+
+Do not begin implementation before completing this audit.
+
+---
+
+# 4. APPROVED URL AND LANGUAGE STRATEGY
+
+Preserve the Phase 10 route architecture.
+
+## 4.1 Arabic — Existing URLs
+
+Arabic remains the default language.
+
+Existing paths must remain unchanged.
+
+Examples:
+
+- `/`
+- `/all-products`
+- `/category/skin-care`
+- `/category/hair-care`
+- `/product/facial-serum-3x1-30ml`
+- `/cart`
+- `/account`
+- `/blog`
+
+Do not introduce `/ar/`.
+
+Do not redirect existing Arabic pages to `/ar/`.
+
+## 4.2 English — New Public Routes
+
+The English storefront uses the `/en/` prefix.
+
+Required routes include:
+
+| Page | English Route |
+|---|---|
+| Homepage | `/en/` |
+| All Products | `/en/all-products` |
+| Categories | `/en/category/[category]` |
+| Product Details | `/en/product/[...slug]` |
+| Special Offers | `/en/special-offers` |
+| Pink Friday | `/en/pink-friday` |
+| Cart & Checkout | `/en/cart` |
+| Invoice | `/en/invoice` |
+| Order Tracking | `/en/track-order` |
+| Login | `/en/account-login` |
+| Registration | `/en/account-signup` |
+| Account | `/en/account` |
+| Blog | `/en/blog` |
+| Article Details | `/en/blog/[...slug]` |
+| Customer Reviews | `/en/client-reviews` |
+| About DANDY | `/en/about-us` |
+| Contact | `/en/contact-us` |
+| Help | `/en/help` |
+| Privacy | `/en/privacy-policy` |
+| Terms | `/en/terms` |
+| 404 | Localized English error presentation |
+
+Use the existing locale route utilities.
+
+Do not create a duplicate business logic implementation for every English page.
+
+---
+
+# 5. COMPLETE THE ENGLISH TRANSLATION DICTIONARY
+
+This is a mandatory first implementation task.
+
+The current English dictionary in:
+
+`src/i18n/messages/en.ts`
+
+is intentionally incomplete.
+
+The Phase 10 report confirms that only the foundational namespaces are currently populated.
+
+Complete the English dictionary using the established `TranslationCatalog` contract.
+
+## 5.1 Required Namespaces
+
+Complete all existing 20 namespaces:
+
+1. `common`
+2. `navigation`
+3. `header`
+4. `footer`
+5. `home`
+6. `catalog`
+7. `categories`
+8. `product`
+9. `cart`
+10. `checkout`
+11. `orders`
+12. `account`
+13. `auth`
+14. `blog`
+15. `reviews`
+16. `support`
+17. `forms`
+18. `errors`
+19. `legal`
+20. `consent`
+
+Do not omit nested keys.
+
+Maintain strict TypeScript compatibility.
+
+Use a complete `TranslationCatalog` implementation rather than leaving the final English dictionary as a partial placeholder.
+
+## 5.2 Translation Quality
+
+English content must be professionally written.
+
+The language should be:
+
+- Natural.
+- Clear.
+- Grammatically correct.
+- Commercially appropriate.
+- Consistent.
+- Appropriate for an international skincare and cosmetics store.
+
+Do not translate Arabic phrases word-for-word when doing so produces unnatural English.
+
+Use professional beauty and skincare terminology.
+
+Maintain consistent terminology across:
+
+- Product cards.
+- Product detail pages.
+- Cart.
+- Checkout.
+- Support.
+- Blog.
+- Product benefits.
+- Product instructions.
+
+Avoid unnecessarily exaggerated marketing expressions.
+
+Do not invent medical claims, clinical claims, certifications, guarantees, or product capabilities.
+
+Translate only what is supported by the existing content.
+
+## 5.3 No Mixed-Language UI
+
+A publicly visible English page must not display Arabic UI labels accidentally.
+
+Do not allow untranslated markers such as:
+
+`[untranslated:en:...]`
+
+to appear in the public storefront.
+
+The Arabic fallback strategy must never silently introduce Arabic text into an English interface.
+
+If a translation is missing, the publication gate must catch it before public activation.
+
+---
+
+# 6. LOCALIZE ALL ACTIVE PRODUCTS
+
+Complete the English product content adapters under:
+
+`src/i18n/content/en/products.ts`
+
+The current project previously contained approximately 32 visible products.
+
+Do not hardcode this historical count.
+
+Inspect the actual current product inventory and process every active, visible product that is intended for publication.
+
+Use stable existing RTDB product IDs as the translation keys.
+
+## 6.1 Required Product Content
+
+For each publishable product, provide the supported English equivalents of:
+
+- Product name.
+- Short description.
+- Long description.
+- Product highlights.
+- Product features.
+- Usage instructions.
+- Ingredients presentation where available.
+- Relevant product information.
+- SEO title.
+- SEO description.
+
+Preserve the original meaning.
+
+Do not invent missing ingredients, usage instructions, product benefits, or suitability claims.
+
+## 6.2 Product Description Structure
+
+The previous report identified a limitation in:
+
+`src/utils/products.ts`
+
+The existing `parseDescriptionToHtml()` function contains Arabic section headings and presentation assumptions.
+
+The English storefront must not reuse Arabic hardcoded section headings.
+
+Use the existing localized structured content architecture where appropriate.
+
+Preserve the existing product-description structure while allowing localized section headings and labels.
+
+Possible sections include:
+
+- Overview.
+- Features.
+- Ingredients.
+- How to Use.
+- Results or benefits only when supported by the source.
+
+Do not add an unsupported section simply to complete the layout.
+
+## 6.3 Product Identity
+
+Maintain the same:
+
+- `product.id`
+- `resolvedSlug` relationship.
+- Existing product URLs where applicable.
+- Price.
+- Original price.
+- Discount.
+- Stock.
+- Availability.
+- Image.
+- Variants.
+- Variant IDs.
+
+A language change must not generate a different commercial product.
+
+## 6.4 Product Image Handling
+
+Reuse genuine existing product images.
+
+Do not create duplicate product records or random stock images.
+
+Where an existing promotional image contains Arabic text embedded in the image itself:
+
+- Do not display that Arabic-text image as an English campaign visual.
+- Use a genuine English equivalent if already available.
+- Otherwise use an appropriate image asset without embedded Arabic text, with the English message rendered separately in the page UI.
+- Preserve actual product packaging images unless there is a genuine alternative.
+
+Never crop product packaging or labels aggressively.
+
+---
+
+# 7. LOCALIZE PRODUCT VARIANTS & SCENTS
+
+Variants are shared commercial entities.
+
+Their IDs must remain unchanged.
+
+Complete the relevant `variantLabels` mappings under the existing English content adapters.
+
+Translate:
+
+- Scent names.
+- Variant display names.
+- Selection instructions.
+- Empty selection states.
+- Variant stock messages.
+
+Use stable variant IDs as the translation keys.
+
+Do not use translated names to generate new variant IDs.
+
+## Important Cart Rule
+
+The cart currently relies on existing variant IDs and selected-variant structures.
+
+Keep those structures unchanged.
+
+The interface should resolve localized names for display while preserving the original identifiers.
+
+Selecting a scent in Arabic must remain the same selection when switching to English.
+
+Selecting multiple scents must continue calculating the existing price correctly.
+
+---
+
+# 8. LOCALIZE ALL FOUR CATEGORIES
+
+Complete:
+
+`src/i18n/content/en/categories.ts`
+
+The four existing categories are:
+
+- Hair Care.
+- Body Care.
+- Fragrance.
+- Skin Care.
+
+For each category, provide:
+
+- Localized display name.
+- `h1Title`.
+- `introText`.
+- `seoTitle`.
+- `seoDescription`.
+- Any additional supported category-specific editorial content.
+
+Preserve the existing category IDs and slugs where appropriate.
+
+Keep the actual category image references shared unless a genuine language-specific promotional image is required.
+
+Do not change category membership rules.
+
+Do not change the existing `PRODUCT_CATEGORY_OVERRIDES` logic.
+
+Do not modify product counts or product filtering rules.
+
+The English category pages must display the same correct product inventory as the corresponding Arabic categories.
+
+---
+
+# 9. ENGLISH HOMEPAGE RECONSTRUCTION
+
+Create the public English homepage:
+
+`src/pages/en/index.astro`
+
+Reuse the existing homepage component architecture wherever possible.
+
+Existing components include:
+
+- `HeroEditorial.astro`
+- `CategoryDiscovery.astro`
+- `FeaturedProducts.astro`
+- `PinkFridayHomeSection.astro`
+- `EditorialBrandStory.astro`
+
+Do not build an unrelated second homepage.
+
+Do not redesign the existing Arabic homepage.
+
+## 9.1 English Editorial Hero
+
+Create an English editorial composition with:
+
+- English headline.
+- Supporting description.
+- Primary CTA.
+- Secondary CTA where supported.
+- Properly localized product or brand text.
+- Existing approved imagery.
+
+The layout must be intentionally composed for LTR.
+
+Do not merely reverse the Arabic design by changing direction.
+
+Maintain the same visual identity and premium presentation.
+
+## 9.2 Homepage Sections
+
+Localize:
+
+- Hero.
+- Category discovery.
+- Featured products.
+- Editorial story.
+- Trust indicators.
+- Customizable content.
+- Promotional banners.
+- FAQ or other supported dynamic sections.
+
+Use actual product data.
+
+Do not invent social proof or business statistics.
+
+The English version must preserve the existing homepage section ordering and visibility configuration.
+
+---
+
+# 10. ADMIN STUDIO — BILINGUAL HOMEPAGE CONTENT
+
+This requirement is critical.
+
+The Arabic homepage is already synchronized with the existing Admin Studio.
+
+That integration must remain fully functional.
+
+Do not build a second independent English homepage configuration system.
+
+## 10.1 Shared Studio Configuration
+
+Preserve the existing shared configuration:
+
+- `sectionOrder`
+- `sectionsVisibility`
+- `manualProducts`
+- `limit`
+- Image URLs.
+- Video URLs.
+- Existing section identifiers.
+- Existing preview communication.
+
+These values must remain shared across languages.
+
+## 10.2 English Text Overlay
+
+Implement the existing Phase 10 architecture:
+
+`HomepageStudioLocalizedOverlay`
+
+Use the existing adapters and identifiers, including where supported:
+
+- `heroSlides`
+- `trustItems`
+- `sections`
+- `promoBanner`
+- `categories`
+- `customSections`
+
+The English content overlay must provide localized text without changing the underlying shared section configuration.
+
+The English page should use:
+
+- Shared images when language-independent.
+- Shared products.
+- Shared ordering.
+- Shared visibility.
+- English text overlays.
+- English CTA labels and destinations.
+
+## 10.3 Custom Sections
+
+Inspect the real Admin Studio section types.
+
+Ensure that English pages do not accidentally expose Arabic section text.
+
+For every supported dynamic section, determine how its English content is resolved.
+
+If an optional custom section has no valid English translation:
+
+- Do not silently display the Arabic content.
+- Do not display an untranslated marker.
+- Use a valid translated equivalent if available.
+- Otherwise omit that localized text block safely and document the missing content.
+
+Do not invent fake English customization controls.
+
+Do not modify Firebase schemas.
+
+Do not modify administrative publishing behavior.
+
+Do not redesign Admin Studio.
+
+The existing Arabic preview and publishing workflow must remain fully intact.
+
+## 10.4 Preview Verification
+
+Test the existing Studio synchronization independently for:
+
+- Arabic preview.
+- English preview.
+
+Verify that language-specific content does not overwrite the shared section order or visibility.
+
+Do not publish test changes to production RTDB.
+
+---
+
+# 11. PINK FRIDAY & PROMOTIONAL CONTENT LOCALIZATION
+
+Complete the existing English campaign overlay:
+
+`PinkFridayLocalizedOverlay`
+
+Localize:
+
+- Campaign heading.
+- Supporting description.
+- Banner text.
+- CTA labels.
+- Package names.
+- Package descriptions.
+- Scent selection messages.
+- Discount labels.
+- Countdown labels.
+- Active, upcoming, and ended campaign states.
+
+## Strict Business Preservation
+
+Keep unchanged:
+
+- `startAt`
+- `endAt`
+- Africa/Cairo time interpretation.
+- Product prices.
+- Bundle prices.
+- Discount calculations.
+- Product eligibility.
+- Collection IDs.
+- Selected item IDs.
+- Variant IDs.
+- Campaign status logic.
+
+Do not introduce an English-specific pricing system.
+
+Do not calculate discounts independently.
+
+Use existing Pink Friday utilities.
+
+If the campaign image contains Arabic text, provide an appropriate English presentation without misrepresenting the actual offer.
+
+Test all supported campaign display states through isolated fixtures where needed.
+
+---
+
+# 12. ENGLISH PRODUCT CARDS & CATALOG
+
+All English product grids must reuse:
+
+`src/components/product/ProductCard.astro`
+
+Add locale-aware presentation without creating a competing English card component.
+
+The card must correctly display:
+
+- English product name.
+- Localized category.
+- Current price.
+- Previous price when valid.
+- Discount percentage.
+- Campaign badge.
+- Best-seller badge when genuinely configured.
+- Sold-out state.
+- Variant selection action.
+- Add-to-cart action.
+- Wishlist interaction.
+- Accessible labels.
+
+## 12.1 Catalog
+
+Create:
+
+`src/pages/en/all-products.astro`
+
+Preserve the existing catalog architecture.
+
+Localize:
+
+- Search placeholder.
+- Search results.
+- Category filters.
+- Price filters.
+- Availability.
+- Best-seller filtering.
+- Special-offer filtering.
+- Sorting options.
+- Active filter chips.
+- Results count.
+- Reset button.
+- Empty states.
+- Mobile filter drawer.
+
+Do not change filtering behavior.
+
+Do not change URL query parameter contracts.
+
+## 12.2 Category Pages
+
+Create:
+
+`src/pages/en/category/[category].astro`
+
+Reuse existing category filtering and catalog components.
+
+Display the English category content and correct product inventory.
+
+Preserve category-specific SEO and JSON-LD.
+
+---
+
+# 13. ENGLISH PRODUCT DETAIL PAGES
+
+Create:
+
+`src/pages/en/product/[...slug].astro`
+
+Reuse existing PDP architecture and components:
+
+- `ProductGallery.astro`
+- `ProductInfo.astro`
+- `VariantSwatches.astro`
+- `QuantityStepper.astro`
+- `BotanicalFeatureGrid.astro`
+- `ReviewSummaryPanel.astro`
+- Existing related-product components.
+
+Do not duplicate the PDP business logic.
+
+## Required Localization
+
+- English product title.
+- Category.
+- Short description.
+- Price labels.
+- Discount messages.
+- Variant selection.
+- Scent names.
+- Quantity controls.
+- Add-to-cart CTA.
+- Wishlist accessibility labels.
+- Share options.
+- Product highlights.
+- Product descriptions.
+- Review labels.
+- Related product sections.
+
+## Preserve
+
+- Existing pricing utilities.
+- Multiple-variant pricing.
+- Pink Friday pricing.
+- Cart payload.
+- Product ID.
+- Selected variant IDs.
+- Wishlist behavior.
+- Review data.
+- Related article relationships.
+
+Ensure that the same product displays correctly in both languages.
+
+Do not create new pricing or inventory rules.
+
+---
+
+# 14. ENGLISH SHOPPING CART & CHECKOUT
+
+Create:
+
+`src/pages/en/cart.astro`
+
+This page is particularly sensitive because it handles actual customer purchases.
+
+Reuse the Phase 6 checkout architecture.
+
+Do not create a second checkout implementation.
+
+## 14.1 Cart Presentation
+
+Localize:
+
+- Page heading.
+- Empty cart.
+- Product details.
+- Variant labels.
+- Collection details.
+- Quantity controls.
+- Remove item dialog.
+- Subtotal.
+- Shipping.
+- Free shipping progress.
+- Total.
+- Continue shopping.
+- Checkout buttons.
+
+Keep the same cart item structure.
+
+## 14.2 Shared Cart
+
+The following storage keys must remain shared:
+
+- `localStorage.cart`
+- `localStorage.dandy_cart`
+
+Do not create:
+
+- `cart_en`
+- `cart_ar`
+- Separate language-specific cart databases.
+
+When the customer switches languages:
+
+- Preserve every item.
+- Preserve quantities.
+- Preserve selected scents.
+- Preserve collections.
+- Preserve prices.
+- Preserve campaign properties.
+
+Resolve display names through the localized product adapter wherever stable product or variant IDs are available.
+
+Do not change the persistent cart payload structure.
+
+## 14.3 Checkout
+
+Localize:
+
+- Checkout step names.
+- Customer field labels.
+- Address labels.
+- Governorate display names.
+- Validation messages.
+- COD payment label.
+- Final review.
+- Submit button.
+- Submission feedback.
+
+Preserve the exact existing checkout behavior.
+
+### Business Rules
+
+Keep unchanged:
+
+- Shipping fees.
+- The free-shipping threshold of strictly greater than 2,000 EGP.
+- Governorate codes.
+- COD payment.
+- Existing customer validation.
+- Existing phone validation.
+- Turnstile.
+- Order creation API.
+- Existing request payload.
+- Meta Pixel events.
+
+The customer must be able to complete guest checkout without registering.
+
+**Guest checkout must remain fully available in both languages.**
+
+## 14.4 Egyptian Phone & Address Inputs
+
+Do not change the underlying expected phone format.
+
+Do not change governorate identifiers.
+
+Translate the displayed governorate names only.
+
+Keep `Assiut` and all existing standardized codes unchanged.
+
+---
+
+# 15. ENGLISH INVOICE & ORDER TRACKING
+
+Create:
+
+- `src/pages/en/invoice.astro`
+- `src/pages/en/track-order.astro`
+
+Preserve the existing APIs and data structures.
+
+## Invoice
+
+Localize:
+
+- Invoice heading.
+- Customer information labels.
+- Order items.
+- Product and collection presentation.
+- Subtotal.
+- Shipping.
+- Total.
+- Payment method.
+- Status labels.
+- Print button.
+- Tracking button.
+- WhatsApp link.
+
+Preserve historical order records.
+
+Do not rewrite old invoice data to match the selected language.
+
+Where a stable product ID can resolve a translated name, display a localized presentation without altering the saved transaction.
+
+Preserve:
+
+- Existing public invoice access.
+- Query parameters.
+- Access token handling.
+- Print formatting.
+- Order identifiers.
+- DandyMeta purchase tracking.
+
+Never transfer secret access tokens through language-switching links.
+
+## Order Tracking
+
+Localize:
+
+- Tracking form.
+- Invoice code labels.
+- Phone input labels.
+- Search button.
+- Error messages.
+- Order status timeline.
+- Delivery information.
+- Product and collection names.
+
+Preserve the existing invoice lookup and phone verification behavior.
+
+Do not alter status identifiers.
+
+Translate status labels only.
+
+---
+
+# 16. ENGLISH CUSTOMER ACCOUNTS & AUTHENTICATION
+
+Create the corresponding English pages:
+
+- `/en/account-login`
+- `/en/account-signup`
+- `/en/account`
+
+Reuse the existing account architecture.
+
+Preserve:
+
+- Firebase Authentication.
+- Existing customer identity.
+- Session persistence.
+- Turnstile.
+- Account access protection.
+- Orders.
+- Wishlist.
+- Saved addresses.
+- Profile editing.
+- Verified reviews.
+
+Localize all visible text.
+
+Ensure that customers switching from Arabic to English remain authenticated.
+
+Do not create language-specific Firebase accounts.
+
+Do not change customer IDs or account records.
+
+## Saved Addresses
+
+Keep the same stored address structure.
+
+Only the displayed governorate names and interface labels change.
+
+Ensure the existing Arabic checkout can still read the same saved address after an English session.
+
+## Orders
+
+Use existing shared order records.
+
+Localize their presentation without modifying the stored transactions.
+
+## Wishlist
+
+Keep the same product IDs and customer ownership.
+
+Only product presentation changes by locale.
+
+---
+
+# 17. ENGLISH BLOG, REVIEWS & BRAND CONTENT
+
+Implement English versions of:
+
+- `/en/blog`
+- `/en/blog/[...slug]`
+- `/en/about-us`
+- `/en/client-reviews`
+- `/en/contact-us`
+- `/en/help`
+- `/en/privacy-policy`
+- `/en/terms`
+
+## 17.1 Articles
+
+Complete the English article adapters:
+
+`src/i18n/content/en/articles.ts`
+
+Use stable existing Firestore article IDs.
+
+Translate only articles intended for English publication.
+
+Use:
+
+`publishedInLocale: true`
+
+only when the article has complete English content and the necessary metadata.
+
+A missing English article must not produce a fake 404 or leak Arabic content into the English version.
+
+Where no English counterpart exists, redirect language-switcher navigation to the appropriate English blog index.
+
+Preserve original Arabic article URLs.
+
+## 17.2 About DANDY
+
+Translate the existing verified brand story.
+
+Use professional editorial English.
+
+Do not invent business history, laboratory claims, certifications, or manufacturing guarantees.
+
+## 17.3 Customer Reviews
+
+Display genuine review data.
+
+Where a review contains Arabic customer-generated text:
+
+- Do not fabricate an English translation.
+- Prefer a genuine English review when available.
+- Otherwise use an appropriately labeled original-language presentation only if it is intentionally supported and clearly indicated.
+- Never represent a translated review as an original English customer statement.
+
+Preserve ratings, identities, and purchase verification information.
+
+## 17.4 Contact and Help
+
+Translate the verified contact information and existing FAQ content.
+
+Do not invent contact channels, services, policies, or operating hours.
+
+Preserve existing form and support behavior.
+
+## 17.5 Legal Pages
+
+Translate the actual privacy and terms content faithfully.
+
+Maintain the meaning of every legal condition.
+
+Do not create new guarantees or legal obligations.
+
+Recommend a human legal-language review before production where appropriate.
+
+Do not omit important clauses to shorten English content.
+
+---
+
+# 18. GLOBAL LANGUAGE SWITCHER
+
+Implement the visible language switcher using the existing Phase 10 contract:
+
+`LANGUAGE_SWITCHER_CONTRACT`
+
+Use the existing route utility:
+
+`resolveRouteCounterpart()`
+
+## 18.1 Desktop
+
+Add a clean language control to:
+
+`SiteHeader.astro`
+
+Use the established DANDY header design.
+
+The control should clearly identify the alternative language.
+
+Suggested presentation:
+
+`العربية | English`
+
+Avoid unnecessary flags or decorative elements.
+
+## 18.2 Mobile
+
+Integrate the same language-switching control into:
+
+`MobileNavDrawer.astro`
+
+Keep it accessible and easy to find.
+
+Ensure that it does not disrupt the existing navigation layout.
+
+## 18.3 Route-Aware Switching
+
+The language switcher must preserve the equivalent current page when one exists.
+
+Examples:
+
+Arabic:
+
+`/product/facial-serum-3x1-30ml`
+
+English:
+
+`/en/product/facial-serum-3x1-30ml`
+
+Arabic:
+
+`/blog/hair-loss-routine`
+
+English:
+
+`/en/blog/hair-loss-routine`
+
+Where translated slugs differ, use stable entity IDs and `targetSlug`.
+
+When a translated counterpart does not exist:
+
+- Product: use the English catalog or appropriate category fallback.
+- Article: use `/en/blog`.
+- Category: use `/en/all-products` if no valid counterpart exists.
+- Static page: use the closest relevant translated page only when appropriate.
+
+Never navigate to a nonexistent English page.
+
+## 18.4 Query Parameters
+
+Use the existing allowlist from Phase 10.
+
+Preserve only valid parameters for the target route.
+
+Never forward:
+
+- `token`
+- `access`
+- `idtoken`
+- `password`
+- `secret`
+- Authentication tokens.
+- Private access fragments.
+
+Do not carry invoice authorization fragments through the language switcher.
+
+Preserve the current customer identity and shopping state independently of the URL.
+
+## 18.5 Preference Persistence
+
+Use the existing optional preference key:
+
+`dandy_preferred_locale`
+
+A user-initiated language switch may update the preference.
+
+The URL remains the authoritative locale source.
+
+Opening an ordinary Arabic URL must always produce:
+
+`lang="ar" dir="rtl"`
+
+even if the browser previously stored English as the preferred language.
+
+Do not force language redirects based on IP, location, or browser settings.
+
+---
+
+# 19. FULL RTL / LTR COMPONENT RECONSTRUCTION
+
+Phase 10 identified components that still contain explicit Arabic RTL direction attributes.
+
+These must be addressed as part of real English implementation.
+
+Audit and update where required:
+
+- `SiteHeader.astro`
+- `SiteFooter.astro`
+- `AnnouncementBar.astro`
+- `SearchDrawer.astro`
+- `MobileNavDrawer.astro`
+- `BottomMobileNav.astro`
+- `ConsentBanner.astro`
+- `MobileFilterDrawer.astro`
+- Product detail components.
+- Category components.
+- Pink Friday components.
+- Any nested layout with hardcoded `dir="rtl"`.
+
+Use inherited or locale-aware direction.
+
+Do not globally replace every physical CSS property without inspection.
+
+Use logical properties.
+
+## Directional Icon Rules
+
+Correctly reverse directional icons for LTR and RTL:
+
+- Back.
+- Next.
+- Previous.
+- Breadcrumb arrows.
+- Directional navigation.
+
+Do not reverse non-directional icons:
+
+- Search.
+- Heart.
+- Shopping bag.
+- User.
+- Check.
+- Shield.
+- Clock.
+
+Reuse the existing `Icon.astro` and `icons.ts` architecture.
+
+Do not install a new icon library.
+
+## Mobile & Desktop Layout
+
+Review the English layouts independently.
+
+Do not merely mirror Arabic with a CSS transform.
+
+Adjust:
+
+- Header alignment.
+- Logo placement.
+- Navigation spacing.
+- Search placement.
+- Breadcrumbs.
+- Product gallery and information columns.
+- Product card content.
+- Checkout forms.
+- Order timelines.
+- Footer columns.
+- Mobile filter drawers.
+
+The English storefront must look intentionally designed for LTR.
+
+---
+
+# 20. JAVASCRIPT-GENERATED UI LOCALIZATION
+
+Do not translate only the static Astro markup.
+
+Audit all interactive JavaScript and TypeScript-generated text.
+
+Important existing modules include:
+
+- `src/scripts/product-card-client.ts`
+- `src/scripts/pdp-client.ts`
+- `src/scripts/cart-client.ts`
+- `src/scripts/catalog-client.ts`
+- `src/scripts/account-client.ts`
+- `src/scripts/account-auth-client.ts`
+- `src/scripts/invoice-client.ts`
+- `src/scripts/track-order-client.ts`
+- `src/scripts/page-entrance.ts`
+
+Replace hardcoded Arabic interface strings with locale-aware message access.
+
+Examples:
+
+- Product added to cart.
+- Select a scent.
+- Out of stock.
+- Invalid quantity.
+- Search results.
+- Filter results.
+- Empty state.
+- Form validation.
+- Authentication errors.
+- Cart removal.
+- Checkout progress.
+- Order submission.
+- Invoice messages.
+- Tracking errors.
+- Wishlist notifications.
+- Review submission feedback.
+
+Use the existing localization infrastructure.
+
+Client-side logic may read the active document locale where appropriate, while reusable translation utilities must remain SSR-safe.
+
+Do not create a separate JavaScript translation dictionary that conflicts with `messages/en.ts`.
+
+## Toast Notifications
+
+All visible customer notifications must use the correct language.
+
+Reuse:
+
+`window.DandyToast`
+
+Do not create a second notification system.
+
+---
+
+# 21. LOCALIZED NUMBER, DATE & CURRENCY FORMATTING
+
+Use the existing:
+
+`src/i18n/format.ts`
+
+Apply the correct locale formatting consistently.
+
+Arabic:
+
+- 275 ج.م
+- Arabic interface content.
+- RTL document.
+
+English:
+
+- 275 EGP
+- English interface content.
+- LTR document.
+
+Use the established functions where appropriate:
+
+- `formatNumber()`
+- `formatCurrencyEgp()`
+- `formatPercent()`
+- `formatQuantity()`
+- `formatDate()`
+- `formatDateTime()`
+- `formatMixedMeasurement()`
+
+Do not write duplicated currency formatting logic in individual pages.
+
+Do not modify the numeric values used for commercial calculations.
+
+Do not parse displayed currency strings into numbers.
+
+Preserve the Egyptian pound as the commercial currency.
+
+Do not implement multi-currency support.
+
+---
+
+# 22. SEO, CANONICAL, HREFLANG & SITEMAP ACTIVATION
+
+This is a critical publication requirement.
+
+The Phase 10 SEO infrastructure was deliberately disabled while English content was incomplete.
+
+The Phase 11 implementation must activate it only after the new storefront is genuinely ready.
+
+Use:
+
+`src/i18n/metadata.ts`
+
+## 22.1 English Page Metadata
+
+Every published English page must have:
+
+- Proper English title.
+- English meta description.
+- Correct canonical URL.
+- OpenGraph metadata.
+- Twitter metadata where supported.
+- Correct `lang="en"`.
+- Correct `dir="ltr"`.
+
+## 22.2 Canonical URLs
+
+Arabic URLs remain canonical for the Arabic version.
+
+English URLs use their own `/en/` canonical paths.
+
+Never canonicalize a genuinely localized English page back to the Arabic version.
+
+## 22.3 Hreflang
+
+Generate reciprocal alternatives only when both language counterparts actually exist and are published.
+
+The final published routes should support:
+
+- `hreflang="ar"`
+- `hreflang="en"`
+- `hreflang="x-default"`
+
+Use Arabic as the appropriate default fallback.
+
+Do not generate alternates for missing article translations or nonexistent product pages.
+
+## 22.4 Structured Data
+
+Use the Phase 10 localized structured-data utilities.
+
+Update locale-dependent data in:
+
+- Product JSON-LD.
+- Category CollectionPage.
+- ItemList.
+- BreadcrumbList.
+- BlogPosting.
+- Organization.
+- Website metadata.
+
+In particular, remove hardcoded Arabic `inLanguage` and breadcrumb text from localized English structured data.
+
+Preserve Arabic structured data correctly.
+
+## 22.5 Sitemap
+
+Update the existing sitemap architecture.
+
+Include only genuinely published and complete English routes.
+
+Do not add placeholder URLs.
+
+Maintain all existing Arabic sitemap URLs.
+
+Do not remove working legacy redirects.
+
+Do not introduce duplicate content URLs.
+
+---
+
+# 23. PUBLICATION GATE — DO NOT PUBLISH INCOMPLETE ENGLISH
+
+The existing configuration currently contains:
+
+`LOCALE_CONFIGS.en.isPubliclyPublished = false`
+
+Keep it disabled during implementation.
+
+Before activation, run:
+
+`runLocalizationCompletenessAudit()`
+
+The English storefront can be published only when all mandatory publication conditions are satisfied.
+
+## Required Publication Checks
+
+1. Complete English UI dictionary.
+2. Complete English translation of all active products intended for sale.
+3. Complete translations of the four categories.
+4. Complete English content for all intended published articles.
+5. Complete localized metadata.
+6. No untranslated markers on any public English route.
+7. No accidental Arabic UI text.
+8. Correct English route resolution.
+9. Correct LTR rendering.
+10. Fully functional catalog.
+11. Fully functional PDP.
+12. Fully functional cart and guest checkout.
+13. Fully functional account and authentication interfaces.
+14. Correct localized SEO.
+15. Correct reciprocal hreflang.
+16. Complete English sitemap entries.
+17. Correct shared cart and order behavior.
+18. Working language switcher.
+19. Preserved Admin Studio compatibility.
+20. Successful full regression testing.
+
+The validator must return:
+
+`readyForPublication: true`
+
+for the complete intended publication scope.
+
+## Publication Activation
+
+Only after all required conditions pass:
+
+- Set English publication status to true.
+- Enable the public `/en/` routes.
+- Activate hreflang output.
+- Activate English sitemap URLs.
+- Enable the language switcher.
+
+If a critical publication condition cannot be satisfied:
+
+- Do not publish incomplete English routes.
+- Do not enable a broken language switcher.
+- Keep the publication gate disabled.
+- Document the exact blocker.
+- Report which items remain incomplete.
+
+Never bypass the publication gate merely to complete the phase.
+
+---
+
+# 24. SHARED COMMERCE — STRICT PRESERVATION
+
+The same commerce system must serve both languages.
+
+Absolutely preserve:
+
+### Product Data
+
+- Product IDs.
+- Inventory.
+- Stock.
+- Prices.
+- Discounts.
+- Variants.
+- Variant IDs.
+- Campaign eligibility.
+- Images.
+
+### Customer Data
+
+- Firebase customer IDs.
+- Authentication identities.
+- Sessions.
+- Wishlist ownership.
+- Saved addresses.
+- Customer profile records.
+
+### Cart
+
+- `localStorage.cart`
+- `localStorage.dandy_cart`
+- Existing item structure.
+- Selected variant IDs.
+- Collections.
+- Quantities.
+- Campaign properties.
+
+### Orders
+
+- Existing order records.
+- Invoice identifiers.
+- Customer ownership.
+- Historical transaction snapshots.
+- Shipping values.
+- Payment methods.
+
+### Pink Friday
+
+- Campaign dates.
+- Bundle IDs.
+- Discount calculations.
+- Product eligibility.
+- Collection identifiers.
+
+### Shipping
+
+Preserve the exact shipping calculation rules from Phase 6.
+
+The free-shipping threshold remains strictly greater than 2,000 EGP.
+
+Do not create a separate English pricing or shipping system.
+
+**A language switch must never change the value of a customer's cart or order.**
+
+---
+
+# 25. RESPONSIVE DESIGN & VISUAL QUALITY
+
+The English version must receive its own visual QA.
+
+Test these viewports:
+
+- 390 × 844.
+- 430 × 932.
+- 768 × 1024.
+- 1024 × 768.
+- 1440 × 900.
+
+Pay special attention to:
+
+- Longer English words.
+- English navigation width.
+- Product names with different lengths.
+- Product card consistency.
+- Product detail typography.
+- Price alignment.
+- Checkout labels.
+- Footer columns.
+- Language switcher placement.
+- LTR directional icons.
+- Responsive drawers.
+- Long article headings.
+
+Do not simply reuse Arabic line breaks or fixed widths.
+
+Ensure natural English line wrapping.
+
+The English mobile interface must be as carefully designed as the desktop version.
+
+## Design System
+
+Preserve the Botanical Editorial Commerce identity.
+
+Use the existing brand palette.
+
+Use the prepared English typography:
+
+- Plus Jakarta Sans.
+- Playfair Display.
+
+Use the existing fonts and do not add packages.
+
+Preserve Arabic Alexandria and Amiri typography.
+
+The English page should feel like DANDY, not a different template or brand.
+
+---
+
+# 26. PHASE 7 MOTION COMPATIBILITY
+
+Preserve the global animation controller.
+
+Ensure all newly created English pages use the existing:
+
+`PageEntranceManager`
+
+Check:
+
+- LTR-compatible animation.
+- No hardcoded RTL offsets.
+- No hidden content.
+- No replay loops.
+- Reduced-motion behavior.
+- No initial rendering delay.
+- No LCP regression.
+
+Do not create a separate English animation system.
+
+---
+
+# 27. ADMIN STUDIO & CUSTOM CONTENT
+
+Preserve the existing Arabic Admin Studio.
+
+The administrative UI itself is not part of this phase unless an absolutely necessary minimal compatibility adjustment is documented and justified.
+
+Ensure the English storefront can correctly resolve:
+
+- Shared homepage section ordering.
+- Shared visibility.
+- Shared product references.
+- Shared media.
+- English localized text overlays.
+- English campaign overlays.
+
+Do not overwrite Arabic content when preparing English content.
+
+Do not introduce unapproved Firebase schema changes.
+
+Do not create new API endpoints.
+
+Preserve the existing Studio live-preview communication and current Arabic publishing workflow.
+
+---
+
+# 28. STRICT BUILD & DEPLOYMENT CONFIGURATION PROTECTION
+
+**THIS REQUIREMENT IS NON-NEGOTIABLE AND OVERRIDES ANY CONFLICTING IMPLEMENTATION INSTRUCTION.**
+
+Preserve the project's exact original framework, build, compiler, dependency, environment, and deployment configuration.
+
+Never modify, replace, rename, delete, regenerate, or reformat:
+
+### Astro
+
+- `astro.config.mjs`
+- `astro.config.js`
+- Existing Astro configuration variants.
+
+### Vercel & Deployment
+
+- `vercel.json`
+- `.vercelignore`
+- Deployment settings.
+- Deployment scripts.
+
+### Dependencies
+
+- `package.json`
+- `package-lock.json`
+- `npm-shrinkwrap.json`
+- `pnpm-lock.yaml`
+- `yarn.lock`
+- `bun.lock`
+- `bun.lockb`
+
+### Build & Compiler
+
+- `tsconfig.json`
+- `jsconfig.json`
+- `vite.config.*`
+- Existing build configuration.
+- Compiler configuration.
+
+### Environment & Tooling
+
+- `patch-env.cjs`
+- `server.js`
+- `.env`
+- `.env.*`
+- `.npmrc`
+- `.nvmrc`
+- `.node-version`
+- Existing CI/CD workflows.
+- Existing automation.
+- Existing build scripts.
+- Any other framework or deployment configuration.
+
+## Restrictions
+
+Do not:
+
+- Install packages.
+- Remove packages.
+- Upgrade dependencies.
+- Downgrade dependencies.
+- Modify package versions.
+- Regenerate lockfiles.
+- Modify npm scripts.
+- Change Node.js requirements.
+- Migrate Astro.
+- Replace the existing build architecture.
+- Change Vercel configuration.
+
+Use existing project dependencies and native capabilities.
+
+## Mandatory Baseline
+
+Before implementation:
+
+1. Capture the exact contents of all protected files.
+2. Record their SHA-256 checksums.
+3. Save an immutable pre-Phase-11 baseline.
+
+Use historical checksums from Phase 10 as references, but verify the current workspace first.
+
+If any protected file is accidentally modified:
+
+1. Stop the affected operation.
+2. Restore its exact original pre-Phase-11 contents.
+3. Never reconstruct it from memory.
+4. Recalculate SHA-256.
+5. Verify exact restoration.
+6. Document the incident.
+
+At completion, every protected file must remain byte-for-byte identical to its original baseline.
+
+**Do not alter original Build settings, Astro, Vercel, package configuration, dependency versions, or deployment behavior.**
+
+---
+
+# 29. SECURITY & PRIVACY PRESERVATION
+
+This phase is frontend localization work.
+
+Do not:
+
+- Modify Firebase rules.
+- Modify API authentication.
+- Modify authentication providers.
+- Modify customer authorization.
+- Modify access-token handling.
+- Modify order ownership logic.
+- Expose sensitive URL fragments.
+- Pass invoice access tokens through language-switching links.
+- Introduce new customer tracking behavior.
+
+Preserve all existing security and privacy integrations.
+
+Language switching must not change the authenticated user's identity.
+
+Do not send production customer data to third-party translation services.
+
+Keep translated content within the existing project workflow.
+
+---
+
+# 30. FUNCTIONAL TESTING
+
+Use actual Chromium/Playwright testing.
+
+## 30.1 Language Switching
+
+Test:
+
+Arabic homepage → English homepage.
+
+English homepage → Arabic homepage.
+
+Arabic product → English counterpart.
+
+English product → Arabic counterpart.
+
+Arabic category → English category.
+
+English article → Arabic counterpart where available.
+
+Missing English article → English blog index.
+
+Verify query parameter preservation.
+
+Verify sensitive parameters are removed.
+
+Verify the locale preference updates only after user-initiated switching.
+
+## 30.2 Shared Cart
+
+Perform a cross-language cart test:
+
+1. Open an Arabic product page.
+2. Add a product to the cart.
+3. Select a variant if applicable.
+4. Navigate to English using the language switcher.
+5. Open `/en/cart`.
+6. Confirm that the same product is present.
+7. Confirm quantity is unchanged.
+8. Confirm selected variants are unchanged.
+9. Confirm price is unchanged.
+10. Return to Arabic.
+11. Confirm the cart remains identical.
+
+Test Pink Friday collections as well.
+
+## 30.3 Guest Checkout
+
+Test a complete English guest checkout using safe test data and intercepted order requests.
+
+Verify:
+
+- English field labels.
+- English validation.
+- Egyptian phone validation.
+- Governorate selection.
+- Correct unchanged shipping calculation.
+- COD.
+- Turnstile integration.
+- Correct request payload.
+- Correct transition to invoice using a mocked response.
+
+Do not create a real production order.
+
+## 30.4 Account
+
+Where valid test credentials exist, verify:
+
+- English login.
+- English registration.
+- Existing Firebase session.
+- Account dashboard.
+- Orders.
+- Wishlist.
+- Saved addresses.
+
+Switch language while authenticated.
+
+Ensure the session remains intact.
+
+If no valid authenticated test account is available, document this clearly.
+
+Do not claim successful authenticated testing without a real session.
+
+## 30.5 Localization Integrity
+
+Test:
+
+- No untranslated markers.
+- No accidental Arabic UI labels.
+- Correct `lang="en"`.
+- Correct `dir="ltr"`.
+- Correct English fonts.
+- Correct product translations.
+- Correct currency formatting.
+- Correct page titles.
+- Correct canonical URLs.
+- Correct hreflang.
+
+## 30.6 Arabic Regression
+
+Retest representative Arabic pages:
+
+- `/`
+- `/all-products`
+- `/category/skin-care`
+- `/product/facial-serum-3x1-30ml`
+- `/cart`
+- `/invoice`
+- `/track-order`
+- `/account-login`
+- `/blog`
+- `/help`
+
+Verify:
+
+- `lang="ar"`.
+- `dir="rtl"`.
+- Original Arabic content.
+- Existing canonical URLs.
+- Existing navigation.
+- Existing pricing.
+- Existing cart.
+- Existing Admin Studio integration.
+
+No Arabic regression is acceptable.
+
+---
+
+# 31. RESPONSIVE BROWSER TESTING
+
+Perform actual browser testing across the five viewports.
+
+At minimum, test all English routes at:
+
+- 1440 × 900.
+- 390 × 844.
+
+For major commercial routes, test all five viewports:
+
+- `/en/`
+- `/en/all-products`
+- All four `/en/category/*` routes.
+- Representative `/en/product/*` routes.
+- `/en/special-offers`
+- `/en/pink-friday`
+- `/en/cart`
+- `/en/account`
+
+Verify:
+
+- Zero horizontal overflow.
+- Correct LTR.
+- Readable typography.
+- No overlapping buttons.
+- Proper product imagery.
+- Proper navigation.
+- Proper mobile drawers.
+- Correct fixed component positioning.
+
+Do not claim that all routes passed five viewport sizes unless they were actually tested.
+
+---
+
+# 32. UNIT TESTS, LINT & BUILD
+
+Extend the existing localization tests.
+
+Preserve all previous unit tests from Phases 1–10.
+
+Add coverage for:
+
+- Complete English dictionaries.
+- Translation completeness.
+- Product translations.
+- Category translations.
+- Article publication states.
+- Product/variant display names.
+- Route counterpart switching.
+- Switcher fallbacks.
+- Query sanitization.
+- Language preference persistence.
+- Shared cart invariance.
+- Shared order invariance.
+- Locale-specific formatting.
+- English metadata.
+- Hreflang reciprocity.
+- Sitemap filtering.
+- Publication gate.
+- Admin Studio overlays.
+- Pink Friday overlays.
+
+Run:
+
+```bash
+npm run lint
+npm run build
+```
+
+Run all existing test suites using the existing project setup.
+
+Do not modify configuration to make tests pass.
+
+After the final source change, rerun all required checks.
+
+---
+
+# 33. REQUIRED FINAL REPORTS
+
+Create:
+
+## A. Pre-Implementation Audit
+
+`DANDY_PHASE_11_PRE_IMPLEMENTATION_AUDIT_AR.md`
+
+Include all initial findings and translation completeness information.
+
+## B. Final Delivery Report
+
+`DANDY_PHASE_11_FINAL_REPORT_AR.md`
+
+Write in professional Arabic.
+
+Include:
+
+1. Executive summary.
+2. Pre-implementation audit findings.
+3. Final bilingual architecture.
+4. Complete English UI dictionary.
+5. Product translation coverage.
+6. Category translation coverage.
+7. Article translation coverage.
+8. Homepage reconstruction.
+9. Admin Studio integration.
+10. Pink Friday localization.
+11. Catalog and product pages.
+12. Cart and checkout.
+13. Invoice and tracking.
+14. Customer account and authentication.
+15. Blog and editorial pages.
+16. Support and legal pages.
+17. Desktop language switcher.
+18. Mobile language switcher.
+19. RTL/LTR corrections.
+20. Locale-specific formatting.
+21. SEO and canonical behavior.
+22. Hreflang verification.
+23. Sitemap verification.
+24. Publication gate results.
+25. Shared commerce integrity.
+26. Files created.
+27. Files modified.
+28. Files deleted, if any, with justification.
+29. Unit test results.
+30. Browser test results.
+31. Responsive viewport matrix.
+32. Arabic regression results.
+33. Console and network results.
+34. Lint results.
+35. Production build results.
+36. Protected configuration checksums.
+37. Known limitations.
+38. Untranslated content, if any.
+39. Publication status.
+40. Final release-readiness assessment.
+
+Clearly distinguish:
+
+- Implemented.
+- Tested successfully.
+- Tested with limitations.
+- Not tested.
+- Deferred.
+
+Do not claim a feature is complete merely because a route returns HTTP 200.
+
+---
+
+# 34. PHASE 11 ACCEPTANCE CRITERIA
+
+Phase 11 is complete only when:
+
+### English Storefront
+
+- All intended public English routes exist.
+- The English homepage works.
+- All four categories work.
+- Every intended active product has complete English content.
+- Product variant names are localized.
+- Product detail pages work.
+- Catalog search and filters work.
+- Offers and Pink Friday work.
+- Cart and guest checkout work.
+- Invoice and tracking work.
+- Authentication and account pages work.
+- Blog and intended translated articles work.
+- Reviews and support pages work.
+- Privacy and terms work.
+- English 404 behavior is correct.
+
+### Language Switching
+
+- Desktop switcher works.
+- Mobile switcher works.
+- Equivalent route mapping works.
+- Missing counterpart fallbacks work.
+- Cart persists.
+- Customer session persists.
+- Query parameters are handled safely.
+- Sensitive tokens never leak.
+
+### Localization
+
+- No untranslated markers appear publicly.
+- No accidental mixed-language UI exists.
+- English uses correct typography.
+- English uses LTR layouts.
+- Arabic remains RTL.
+- Number and currency formatting is correct.
+
+### SEO
+
+- English canonical URLs are correct.
+- Arabic canonical URLs remain unchanged.
+- Reciprocal hreflang works.
+- Structured data reflects the correct language.
+- Sitemap contains only valid published routes.
+
+### Shared Commerce
+
+- Same products.
+- Same prices.
+- Same stock.
+- Same customers.
+- Same cart.
+- Same orders.
+- Same variant IDs.
+- Same campaign pricing.
+- Same shipping calculations.
+
+### Engineering
+
+- Translation completeness audit passes.
+- Unit tests pass.
+- Lint succeeds.
+- Production build succeeds.
+- Protected configuration checksums match.
+- No unauthorized packages are introduced.
+- Arabic regression tests pass.
+- Final report exists.
+
+---
+
+# 35. EXECUTION SEQUENCE
+
+Follow this exact implementation order:
+
+1. Read Phase 0–10 reports.
+2. Inspect current Phase 10 localization architecture.
+3. Complete the Phase 11 pre-implementation audit.
+4. Record protected file checksums.
+5. Complete `messages/en.ts`.
+6. Complete category translations.
+7. Complete active product translations.
+8. Complete product variant labels.
+9. Complete intended English article content.
+10. Complete English homepage and Admin Studio overlays.
+11. Complete Pink Friday English overlay.
+12. Make shared layouts and components locale-aware.
+13. Replace remaining hardcoded RTL attributes safely.
+14. Localize client-generated interface messages.
+15. Build the English catalog and category routes.
+16. Build English product detail routes.
+17. Build English shopping and checkout routes.
+18. Build English invoice and tracking routes.
+19. Build English authentication and account routes.
+20. Build English editorial, reviews, support, and legal routes.
+21. Implement desktop and mobile language switchers.
+22. Implement complete localized metadata and structured data.
+23. Prepare and run the translation completeness audit.
+24. Enable hreflang and sitemap only after publication checks pass.
+25. Run cross-language shopping and account tests.
+26. Run responsive testing.
+27. Run Arabic regression testing.
+28. Run unit tests, lint, and production build.
+29. Verify protected configuration integrity.
+30. Create the final Arabic report.
+
+Do not skip the audit.
+
+Do not activate incomplete English routes before the readiness gate passes.
+
+Do not duplicate existing business logic.
+
+---
+
+# FINAL INSTRUCTION
+
+Execute:
+
+**PHASE 11 — COMPLETE ENGLISH STOREFRONT & LANGUAGE SWITCHING ONLY.**
+
+Deliver a complete, professionally written, fully functional English version of DANDY while preserving the existing Arabic storefront.
+
+Keep the existing Arabic URLs unchanged.
+
+Use `/en/` for English.
+
+Maintain one shared commerce architecture.
+
+Localize every customer-facing interface, dynamic message, product, category, article intended for publication, campaign, and account experience.
+
+Implement the language switcher across desktop and mobile.
+
+Preserve product identifiers, prices, inventory, variants, campaigns, customer accounts, shopping carts, orders, and all existing backend contracts.
+
+Preserve the existing Admin Studio synchronization and provide correctly localized English homepage content without breaking Arabic customization.
+
+Do not modify Firebase schemas or APIs.
+
+Do not change Build, Astro, Vercel, package, dependency, environment, compiler, or deployment configuration.
+
+If any protected file is accidentally modified, immediately restore its exact original pre-Phase-11 contents and verify its SHA-256 checksum.
+
+Do not generate fake translations, unsupported product claims, fake reviews, or fabricated business information.
+
+Do not publish incomplete English content.
+
+Enable the English publication gate, hreflang, and English sitemap routes only after all required publication checks pass.
+
+Do not perform Git commits or pushes.
+
+Work exclusively in the current project workspace.
+
+**The final result must be one premium DANDY store with two complete experiences: Arabic RTL and English LTR. Both languages must share the same products, prices, inventory, customers, carts, orders, campaigns, and commerce functionality.**
+
+Complete all implementation, testing, validation, and documentation. Provide the final Arabic delivery report without automatically starting another phase.

@@ -7,10 +7,23 @@
 import Icon from '../ui/Icon.astro';
 import { getPublishedPinkFridayCampaign, shouldDisplayCampaignToCustomers } from '../../utils/pink-friday-server';
 import { resolveAnnouncementState } from '../../scripts/shell';
+import { resolveLocalizedPinkFridayCampaign } from '../../i18n/content/adapters';
+import { EN_PINK_FRIDAY_OVERLAY } from '../../i18n/content/en/pink-friday';
+import { getLocaleDirection } from '../../i18n/config';
+import type { Locale } from '../../i18n/types';
 
-const publishedCampaign = await getPublishedPinkFridayCampaign();
+export interface Props {
+  locale?: Locale;
+}
+
+const { locale = 'ar' } = Astro.props;
+const dir = getLocaleDirection(locale);
+const rawCampaign = await getPublishedPinkFridayCampaign();
+const publishedCampaign = rawCampaign
+  ? resolveLocalizedPinkFridayCampaign(rawCampaign, locale, locale === 'en' ? EN_PINK_FRIDAY_OVERLAY : null)
+  : null;
 const showPinkFriday = shouldDisplayCampaignToCustomers(publishedCampaign);
-const announcement = resolveAnnouncementState(showPinkFriday, publishedCampaign);
+const announcement = resolveAnnouncementState(showPinkFriday, publishedCampaign, locale);
 const isPinkFriday = announcement.mode === 'pink-friday';
 ---
 
@@ -18,9 +31,9 @@ const isPinkFriday = announcement.mode === 'pink-friday';
   class:list={['dandy-announce-bar', isPinkFriday ? 'dandy-announce-bar--campaign' : 'dandy-announce-bar--shipping']}
   id="site-announce-bar"
   data-mode={announcement.mode}
-  dir="rtl"
+  dir={dir}
   role="region"
-  aria-label="إعلان المتجر"
+  aria-label={locale === 'en' ? 'Store announcement' : 'إعلان المتجر'}
 >
   <div class="dandy-announce-inner" id={isPinkFriday ? 'pf-announcement-bar' : undefined}>
     <span class="dandy-announce-icon" aria-hidden="true">
@@ -30,7 +43,7 @@ const isPinkFriday = announcement.mode === 'pink-friday';
     {isPinkFriday && announcement.ctaHref && announcement.ctaText && (
       <a href={announcement.ctaHref} class="dandy-announce-cta">
         <span>{announcement.ctaText}</span>
-        <Icon name="chevron-left" size={14} strokeWidth={2} />
+        <Icon name={locale === 'en' ? 'chevron-right' : 'chevron-left'} size={14} strokeWidth={2} />
       </a>
     )}
   </div>
@@ -45,7 +58,7 @@ const isPinkFriday = announcement.mode === 'pink-friday';
     background-color: var(--dandy-bg-dark);
     color: var(--dandy-ink-inverse);
     border-bottom: 1px solid rgba(250, 248, 246, 0.08);
-    font-family: var(--dandy-font-ar-sans);
+    font-family: var(--dandy-font-active-sans);
     display: flex;
     align-items: center;
     justify-content: center;

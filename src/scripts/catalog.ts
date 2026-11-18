@@ -7,6 +7,9 @@ import { getCategoryBySlug, getCategorySlugForProduct } from '../utils/categorie
 import { type Product } from '../utils/products';
 import type { CampaignPricingResult, CampaignStatus } from '../utils/pink-friday-server';
 import { isProductSoldOut, resolveProductPricing } from './product-card';
+import type { Locale } from '../i18n/types';
+import { EN_CATEGORY_CONTENT } from '../i18n/content/en/categories';
+import { EN_PRODUCT_CONTENT } from '../i18n/content/en/products';
 
 export type CatalogSortOption = 'default' | 'price-asc' | 'price-desc' | 'name-asc';
 export type CatalogPriceRange = 'all' | 'under-150' | '150-300' | 'over-300';
@@ -58,26 +61,47 @@ export type PinkFridayDisplayMode =
   | 'ended'
   | 'disabled';
 
-export const CATEGORY_FILTER_OPTIONS: Array<{ slug: string; labelAr: string }> = [
-  { slug: 'skin-care', labelAr: 'العناية بالبشرة' },
-  { slug: 'hair-care', labelAr: 'العناية بالشعر' },
-  { slug: 'body-care', labelAr: 'العناية بالجسم' },
-  { slug: 'fragrance', labelAr: 'العطور والمعطرات' },
+export const CATEGORY_FILTER_OPTIONS: Array<{ slug: string; labelAr: string; labelEn: string }> = [
+  { slug: 'skin-care', labelAr: 'العناية بالبشرة', labelEn: 'Skin Care' },
+  { slug: 'hair-care', labelAr: 'العناية بالشعر', labelEn: 'Hair Care' },
+  { slug: 'body-care', labelAr: 'العناية بالجسم', labelEn: 'Body Care' },
+  { slug: 'fragrance', labelAr: 'العطور والمعطرات', labelEn: 'Fragrance' },
 ];
 
-export const PRICE_RANGE_OPTIONS: Array<{ value: CatalogPriceRange; labelAr: string }> = [
-  { value: 'all', labelAr: 'كل الأسعار' },
-  { value: 'under-150', labelAr: 'أقل من 150 ج.م' },
-  { value: '150-300', labelAr: '150 – 300 ج.م' },
-  { value: 'over-300', labelAr: 'أكثر من 300 ج.م' },
+export const PRICE_RANGE_OPTIONS: Array<{ value: CatalogPriceRange; labelAr: string; labelEn: string }> = [
+  { value: 'all', labelAr: 'كل الأسعار', labelEn: 'All Prices' },
+  { value: 'under-150', labelAr: 'أقل من 150 ج.م', labelEn: 'Under 150 EGP' },
+  { value: '150-300', labelAr: '150 – 300 ج.م', labelEn: '150 – 300 EGP' },
+  { value: 'over-300', labelAr: 'أكثر من 300 ج.م', labelEn: 'Over 300 EGP' },
 ];
 
-export const SORT_OPTIONS: Array<{ value: CatalogSortOption; labelAr: string }> = [
-  { value: 'default', labelAr: 'الترتيب الافتراضي' },
-  { value: 'price-asc', labelAr: 'السعر: من الأقل للأعلى' },
-  { value: 'price-desc', labelAr: 'السعر: من الأعلى للأقل' },
-  { value: 'name-asc', labelAr: 'الاسم: أ – ي' },
+export const SORT_OPTIONS: Array<{ value: CatalogSortOption; labelAr: string; labelEn: string }> = [
+  { value: 'default', labelAr: 'الترتيب الافتراضي', labelEn: 'Featured Order' },
+  { value: 'price-asc', labelAr: 'السعر: من الأقل للأعلى', labelEn: 'Price: Low to High' },
+  { value: 'price-desc', labelAr: 'السعر: من الأعلى للأقل', labelEn: 'Price: High to Low' },
+  { value: 'name-asc', labelAr: 'الاسم: أ – ي', labelEn: 'Name: A – Z' },
 ];
+
+export function getCategoryFilterOptions(locale: Locale = 'ar'): Array<{ slug: string; label: string }> {
+  return CATEGORY_FILTER_OPTIONS.map((opt) => ({
+    slug: opt.slug,
+    label: locale === 'en' ? opt.labelEn : opt.labelAr,
+  }));
+}
+
+export function getPriceRangeOptions(locale: Locale = 'ar'): Array<{ value: CatalogPriceRange; label: string }> {
+  return PRICE_RANGE_OPTIONS.map((opt) => ({
+    value: opt.value,
+    label: locale === 'en' ? opt.labelEn : opt.labelAr,
+  }));
+}
+
+export function getSortOptions(locale: Locale = 'ar'): Array<{ value: CatalogSortOption; label: string }> {
+  return SORT_OPTIONS.map((opt) => ({
+    value: opt.value,
+    label: locale === 'en' ? opt.labelEn : opt.labelAr,
+  }));
+}
 
 const CATEGORY_ALIASES: Record<string, string> = {
   'skin-care': 'skin-care',
@@ -233,17 +257,32 @@ export function isSpecialOfferEligible(
 export function buildCatalogItemMeta(
   product: Product,
   index: number,
-  pinkFridayPricing?: CampaignPricingResult | null
+  pinkFridayPricing?: CampaignPricingResult | null,
+  locale: Locale = 'ar'
 ): CatalogItemMeta {
   const categorySlug = getCategorySlugForProduct({ id: product.id, category: product.category });
   const taxonomy = getCategoryBySlug(categorySlug);
-  const categoryLabelAr = taxonomy ? taxonomy.arabicName : 'العناية الطبيعية';
+  const enCat = EN_CATEGORY_CONTENT[categorySlug];
+  const enProd = product.id ? EN_PRODUCT_CONTENT[product.id] : undefined;
+
+  const categoryLabelAr =
+    locale === 'en'
+      ? enCat?.name || taxonomy?.name || 'Natural Care'
+      : taxonomy
+        ? taxonomy.arabicName
+        : 'العناية الطبيعية';
+  const localizedName = locale === 'en' ? enProd?.name || product.name || '' : product.name || '';
   const pricing = resolveProductPricing(product, pinkFridayPricing);
   const soldOut = isProductSoldOut(product);
 
   const searchParts = [
+    localizedName,
     product.name || '',
+    enProd?.shortDescription || '',
+    enProd?.description || '',
     categoryLabelAr,
+    enCat?.name || '',
+    taxonomy?.arabicName || '',
     categorySlug,
     product.category || '',
     product.description || '',
@@ -256,7 +295,7 @@ export function buildCatalogItemMeta(
   return {
     id: product.id,
     index,
-    name: product.name || '',
+    name: localizedName,
     categorySlug,
     categoryLabelAr,
     currentPrice: pricing.currentPrice,
@@ -278,7 +317,8 @@ export function matchesPriceRange(price: number, priceRange: CatalogPriceRange):
 
 export function filterAndSortCatalogItems(
   items: CatalogItemMeta[],
-  state: CatalogFilterState
+  state: CatalogFilterState,
+  locale: Locale = 'ar'
 ): CatalogItemMeta[] {
   const query = state.search.trim().toLowerCase();
   const catSet = new Set(
@@ -306,7 +346,7 @@ export function filterAndSortCatalogItems(
       return b.currentPrice - a.currentPrice || a.index - b.index;
     }
     if (state.sort === 'name-asc') {
-      return a.name.localeCompare(b.name, 'ar') || a.index - b.index;
+      return a.name.localeCompare(b.name, locale === 'en' ? 'en' : 'ar') || a.index - b.index;
     }
     return a.index - b.index;
   });
@@ -316,7 +356,8 @@ export function filterAndSortCatalogItems(
 
 export function buildActiveCatalogChips(
   state: CatalogFilterState,
-  options: { showCategoryFilter?: boolean } = {}
+  options: { showCategoryFilter?: boolean } = {},
+  locale: Locale = 'ar'
 ): CatalogFilterChip[] {
   const chips: CatalogFilterChip[] = [];
 
@@ -324,7 +365,7 @@ export function buildActiveCatalogChips(
     chips.push({
       key: 'search',
       value: state.search.trim(),
-      label: `بحث: «${state.search.trim()}»`,
+      label: locale === 'en' ? `Search: "${state.search.trim()}"` : `بحث: «${state.search.trim()}»`,
     });
   }
 
@@ -334,7 +375,7 @@ export function buildActiveCatalogChips(
       chips.push({
         key: 'category',
         value: catSlug,
-        label: cat ? cat.labelAr : catSlug,
+        label: cat ? (locale === 'en' ? cat.labelEn : cat.labelAr) : catSlug,
       });
     }
   }
@@ -344,7 +385,7 @@ export function buildActiveCatalogChips(
     chips.push({
       key: 'priceRange',
       value: state.priceRange,
-      label: pr ? pr.labelAr : state.priceRange,
+      label: pr ? (locale === 'en' ? pr.labelEn : pr.labelAr) : state.priceRange,
     });
   }
 
@@ -352,7 +393,7 @@ export function buildActiveCatalogChips(
     chips.push({
       key: 'saleOnly',
       value: '1',
-      label: 'العروض النشطة',
+      label: locale === 'en' ? 'Active Offers' : 'العروض النشطة',
     });
   }
 
@@ -360,7 +401,7 @@ export function buildActiveCatalogChips(
     chips.push({
       key: 'inStockOnly',
       value: '1',
-      label: 'المتوفر فقط',
+      label: locale === 'en' ? 'In Stock Only' : 'المتوفر فقط',
     });
   }
 
@@ -368,7 +409,7 @@ export function buildActiveCatalogChips(
     chips.push({
       key: 'bestSellerOnly',
       value: '1',
-      label: 'الأكثر مبيعاً',
+      label: locale === 'en' ? 'Best Sellers' : 'الأكثر مبيعاً',
     });
   }
 

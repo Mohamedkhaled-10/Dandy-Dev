@@ -6,77 +6,97 @@
  */
 import Icon from '../ui/Icon.astro';
 import { isNavHrefActive } from '../../scripts/shell';
+import { getLocaleDirection } from '../../i18n/config';
+import { buildLocalizedPath } from '../../i18n/routes';
+import { t } from '../../i18n/translator';
+import type { Locale } from '../../i18n/types';
 
+export interface Props {
+  locale?: Locale;
+}
+
+const { locale = 'ar' } = Astro.props;
+const dir = getLocaleDirection(locale);
 const currentPath = Astro.url.pathname || '/';
 
-const homeActive = isNavHrefActive(currentPath, '/');
-const shopActive = isNavHrefActive(currentPath, '/all-products', ['/category', '/product']);
-const cartActive = isNavHrefActive(currentPath, '/cart', ['/checkout']);
-const offersActive = isNavHrefActive(currentPath, '/special-offers', ['/pink-friday']);
-const accountActive = isNavHrefActive(currentPath, '/account', ['/account-login']);
+const homeHref = buildLocalizedPath('/', locale);
+const shopHref = buildLocalizedPath('/all-products', locale);
+const catPrefix = buildLocalizedPath('/category', locale);
+const prodPrefix = buildLocalizedPath('/product', locale);
+const cartHref = buildLocalizedPath('/cart', locale);
+const offersHref = buildLocalizedPath('/special-offers', locale);
+const pfHref = buildLocalizedPath('/pink-friday', locale);
+const accountHref = buildLocalizedPath('/account', locale);
+const loginHref = buildLocalizedPath('/account-login', locale);
+
+const homeActive = isNavHrefActive(currentPath, homeHref);
+const shopActive = isNavHrefActive(currentPath, shopHref, [catPrefix, prodPrefix]);
+const cartActive = isNavHrefActive(currentPath, cartHref, [buildLocalizedPath('/checkout', locale)]);
+const offersActive = isNavHrefActive(currentPath, offersHref, [pfHref]);
+const accountActive = isNavHrefActive(currentPath, accountHref, [loginHref]);
 ---
 
 <nav
   class="dandy-bottom-nav bottom-nav"
-  aria-label="التنقل عبر الموبايل"
+  aria-label={locale === 'en' ? 'Mobile quick navigation' : 'التنقل عبر الموبايل'}
   id="global-mobile-bottom-nav"
-  dir="rtl"
+  dir={dir}
 >
   <a
-    href="/"
+    href={homeHref}
     class:list={['dandy-bottom-link', homeActive && 'active']}
-    data-nav-href="/"
+    data-nav-href={homeHref}
     aria-current={homeActive ? 'page' : undefined}
   >
     <Icon name="home" size={20} strokeWidth={homeActive ? 2 : 1.7} />
-    <span>الرئيسية</span>
+    <span>{t(locale, 'navigation.home')}</span>
   </a>
 
   <a
-    href="/all-products"
+    href={shopHref}
     class:list={['dandy-bottom-link', shopActive && 'active']}
-    data-nav-href="/all-products"
-    data-nav-prefixes="/category,/product"
+    data-nav-href={shopHref}
+    data-nav-prefixes={`${catPrefix},${prodPrefix}`}
     aria-current={shopActive ? 'page' : undefined}
   >
     <Icon name="grid" size={20} strokeWidth={shopActive ? 2 : 1.7} />
-    <span>المتجر</span>
+    <span>{t(locale, 'navigation.shop')}</span>
   </a>
 
   <a
-    href="/cart"
+    href={cartHref}
     class:list={['dandy-bottom-link dandy-bottom-link--cart', cartActive && 'active']}
-    data-nav-href="/cart"
-    data-nav-prefixes="/checkout"
+    data-nav-href={cartHref}
+    data-nav-prefixes={buildLocalizedPath('/checkout', locale)}
     aria-current={cartActive ? 'page' : undefined}
   >
     <span class="dandy-bottom-icon-wrap">
       <Icon name="shopping-bag" size={20} strokeWidth={cartActive ? 2 : 1.7} />
       <span class="dandy-bottom-cart-count dandy-tabular" id="shared-cart-count">0</span>
     </span>
-    <span>السلة</span>
+    <span>{locale === 'en' ? 'Bag' : 'السلة'}</span>
   </a>
 
   <a
-    href="/special-offers"
+    href={offersHref}
     class:list={['dandy-bottom-link', offersActive && 'active']}
-    data-nav-href="/special-offers"
-    data-nav-prefixes="/pink-friday"
+    data-nav-href={offersHref}
+    data-nav-prefixes={pfHref}
     aria-current={offersActive ? 'page' : undefined}
   >
     <Icon name="tag" size={20} strokeWidth={offersActive ? 2 : 1.7} />
-    <span>العروض</span>
+    <span>{t(locale, 'navigation.offers')}</span>
   </a>
 
   <a
-    href="/account"
+    href={accountHref}
     class:list={['dandy-bottom-link', accountActive && 'active']}
-    data-nav-href="/account"
-    data-nav-prefixes="/account-login"
+    data-nav-href={accountHref}
+    data-nav-prefixes={loginHref}
     aria-current={accountActive ? 'page' : undefined}
   >
     <Icon name="user" size={20} strokeWidth={accountActive ? 2 : 1.7} />
-    <span>حسابي</span>
+    <span>{t(locale, 'navigation.account')}</span>
   </a>
 </nav>
 
@@ -90,7 +110,10 @@ const accountActive = isNavHrefActive(currentPath, '/account', ['/account-login'
         const href = (link.getAttribute('data-nav-href') || '/').replace(/\/+$/, '') || '/';
         const prefixesRaw = link.getAttribute('data-nav-prefixes') || '';
         const prefixes = prefixesRaw ? prefixesRaw.split(',').map(function (s) { return s.trim(); }) : [];
-        let active = href === '/' ? current === '/' : current === href || current.startsWith(href + '/');
+        let active =
+          href === '/' || href === '/en'
+            ? current === href
+            : current === href || current.startsWith(href + '/');
         if (!active && prefixes.length) {
           active = prefixes.some(function (p) {
             const cleanP = p.replace(/\/+$/, '') || '/';
@@ -160,7 +183,7 @@ const accountActive = isNavHrefActive(currentPath, '/account', ['/account-login'
       min-height: 44px;
       padding: 6px 4px;
       color: var(--dandy-ink-muted) !important;
-      font-family: var(--dandy-font-ar-sans);
+      font-family: var(--dandy-font-active-sans);
       font-size: 0.6875rem;
       font-weight: 500;
       text-decoration: none !important;

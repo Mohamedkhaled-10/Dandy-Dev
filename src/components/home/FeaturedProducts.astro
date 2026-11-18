@@ -7,6 +7,8 @@
 import Icon from '../ui/Icon.astro';
 import ProductCard from '../product/ProductCard.astro';
 import type { Product } from '../../utils/products';
+import type { Locale } from '../../i18n/types';
+import { buildLocalizedPath } from '../../i18n/routes';
 import {
   calculatePinkFridayPricing,
   type PinkFridayCampaignData,
@@ -22,19 +24,32 @@ export interface Props {
   products: Product[];
   pinkFridayCampaign?: PinkFridayCampaignData | null;
   hidden?: boolean;
+  locale?: Locale;
 }
 
 const {
   sectionId = 'offers',
-  kicker = 'مختارات داندي',
-  heading = 'مستحضرات مختارة لروتينكِ اليومي',
-  viewAllHref = '/all-products',
-  viewAllLabel = 'عرض المتجر بالكامل',
+  kicker,
+  heading,
+  viewAllHref,
+  viewAllLabel,
   alternateSurface = true,
   products = [],
   pinkFridayCampaign = null,
   hidden = false,
+  locale = 'ar',
 } = Astro.props;
+
+const isEn = locale === 'en';
+const resolvedKicker = kicker || (isEn ? 'DANDY Essentials' : 'مختارات داندي');
+const resolvedHeading =
+  heading || (isEn ? 'Curated Essentials for Your Daily Ritual' : 'مستحضرات مختارة لروتينكِ اليومي');
+const resolvedViewAllHref =
+  viewAllHref && viewAllHref.startsWith('/')
+    ? buildLocalizedPath(viewAllHref, locale)
+    : viewAllHref || buildLocalizedPath('/all-products', locale);
+const resolvedViewAllLabel = viewAllLabel || (isEn ? 'Browse Full Store' : 'عرض المتجر بالكامل');
+const storeHref = buildLocalizedPath('/all-products', locale);
 
 const headingId = `home-products-heading-${sectionId}`;
 ---
@@ -52,14 +67,14 @@ const headingId = `home-products-heading-${sectionId}`;
   <div class="dandy-container">
     <header class="dandy-section-header" data-dandy-reveal>
       <div class="dandy-section-titles">
-        <p class="dandy-section-kicker" data-sec-subtitle dir="auto">{kicker}</p>
+        <p class="dandy-section-kicker" data-sec-subtitle dir="auto">{resolvedKicker}</p>
         <h2 id={headingId} class="dandy-section-heading" data-sec-title dir="auto">
-          {heading}
+          {resolvedHeading}
         </h2>
       </div>
-      <a href={viewAllHref} class="dandy-section-more" data-sec-more-link>
-        <span data-sec-more-label dir="auto">{viewAllLabel}</span>
-        <Icon name="arrow-left" size={15} strokeWidth={1.8} />
+      <a href={resolvedViewAllHref} class="dandy-section-more" data-sec-more-link>
+        <span data-sec-more-label dir="auto">{resolvedViewAllLabel}</span>
+        <Icon name={isEn ? 'arrow-right' : 'arrow-left'} size={15} strokeWidth={1.8} />
       </a>
     </header>
 
@@ -79,15 +94,20 @@ const headingId = `home-products-heading-${sectionId}`;
             pinkFridayPricing={pfPricing}
             priority={index < 4}
             revealChild={true}
+            locale={locale}
           />
         );
       })}
     </div>
 
     <div class="dandy-featured-empty" data-products-empty hidden={products.length > 0 || undefined}>
-      <p>يمكنكِ تصفح جميع منتجات داندي المتاحة عبر صفحة المتجر.</p>
-      <a href="/all-products" class="dandy-btn dandy-btn--outline">
-        <span>زيارة المتجر</span>
+      <p>
+        {isEn
+          ? 'Browse all available DANDY products in our full catalog.'
+          : 'يمكنكِ تصفح جميع منتجات داندي المتاحة عبر صفحة المتجر.'}
+      </p>
+      <a href={storeHref} class="dandy-btn dandy-btn--outline">
+        <span>{isEn ? 'Visit Store' : 'زيارة المتجر'}</span>
       </a>
     </div>
   </div>

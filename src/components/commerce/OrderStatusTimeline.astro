@@ -5,6 +5,14 @@
  * + cancelled banner without inventing extra states or colliding at 390px.
  */
 import Icon from '../ui/Icon.astro';
+import type { Locale } from '../../i18n/types';
+
+export interface Props {
+  locale?: Locale;
+}
+
+const { locale = 'ar' } = Astro.props;
+const isEn = locale === 'en';
 ---
 
 <div class="dandy-cancelled-banner" id="cancelledBanner" role="status" hidden>
@@ -12,12 +20,20 @@ import Icon from '../ui/Icon.astro';
     <Icon name="ban" size={18} strokeWidth={2} />
   </span>
   <div>
-    <strong>تم إلغاء هذا الطلب</strong>
-    <p>إذا كان لديكِ أي استفسار حول هذا الطلب، يمكنكِ التواصل معنا عبر واتساب وسنساعدكِ فوراً.</p>
+    <strong>{isEn ? 'This order has been cancelled' : 'تم إلغاء هذا الطلب'}</strong>
+    <p>
+      {isEn
+        ? 'If you have any questions about this order, please reach out to us via WhatsApp and we will help you right away.'
+        : 'إذا كان لديكِ أي استفسار حول هذا الطلب، يمكنكِ التواصل معنا عبر واتساب وسنساعدكِ فوراً.'}
+    </p>
   </div>
 </div>
 
-<div class="dandy-timeline-wrap" id="timelineContainer" aria-label="مراحل متابعة الطلب">
+<div
+  class="dandy-timeline-wrap"
+  id="timelineContainer"
+  aria-label={isEn ? 'Order tracking stages' : 'مراحل متابعة الطلب'}
+>
   <div class="dandy-timeline-rail" aria-hidden="true">
     <div class="dandy-timeline-rail-fill" id="timelineProgressBar"></div>
   </div>
@@ -27,28 +43,36 @@ import Icon from '../ui/Icon.astro';
       <span class="dandy-timeline-dot step-circle timeline-dot">
         <Icon name="receipt" size={17} strokeWidth={1.85} />
       </span>
-      <span class="dandy-timeline-label step-label timeline-text">قيد المراجعة</span>
+      <span class="dandy-timeline-label step-label timeline-text">
+        {isEn ? 'Pending Review' : 'قيد المراجعة'}
+      </span>
     </li>
 
     <li class="dandy-timeline-step step-item timeline-track-step" id="step-processing">
       <span class="dandy-timeline-dot step-circle timeline-dot">
         <Icon name="package" size={17} strokeWidth={1.85} />
       </span>
-      <span class="dandy-timeline-label step-label timeline-text">قيد التجهيز</span>
+      <span class="dandy-timeline-label step-label timeline-text">
+        {isEn ? 'Preparing Order' : 'قيد التجهيز'}
+      </span>
     </li>
 
     <li class="dandy-timeline-step step-item timeline-track-step" id="step-shipped">
       <span class="dandy-timeline-dot step-circle timeline-dot">
         <Icon name="truck" size={17} strokeWidth={1.85} />
       </span>
-      <span class="dandy-timeline-label step-label timeline-text">تم الشحن</span>
+      <span class="dandy-timeline-label step-label timeline-text">
+        {isEn ? 'Shipped' : 'تم الشحن'}
+      </span>
     </li>
 
     <li class="dandy-timeline-step step-item timeline-track-step" id="step-delivered">
       <span class="dandy-timeline-dot step-circle timeline-dot">
         <Icon name="check" size={17} strokeWidth={2} />
       </span>
-      <span class="dandy-timeline-label step-label timeline-text">تم التوصيل</span>
+      <span class="dandy-timeline-label step-label timeline-text">
+        {isEn ? 'Delivered' : 'تم التوصيل'}
+      </span>
     </li>
   </ol>
 </div>

@@ -8,13 +8,16 @@ import {
   sanitizeMediaUrl,
   type ReviewItem,
 } from '../../scripts/homepage-studio';
+import type { Locale } from '../../i18n/types';
 
 export interface Props {
   reviews: ReviewItem[];
   hidden?: boolean;
+  locale?: Locale;
 }
 
-const { reviews = [], hidden = false } = Astro.props;
+const { reviews = [], hidden = false, locale = 'ar' } = Astro.props;
+const isEn = locale === 'en';
 const fallbackImg = '/assets/images/logo.png';
 
 const cleanReviews = reviews
@@ -35,9 +38,9 @@ const cleanReviews = reviews
   <div class="dandy-container">
     <header class="dandy-section-header" data-dandy-reveal>
       <div class="dandy-section-titles">
-        <p class="dandy-section-kicker">تجارب موثقة</p>
+        <p class="dandy-section-kicker">{isEn ? 'Verified Experiences' : 'تجارب موثقة'}</p>
         <h2 id="home-reviews-heading" class="dandy-section-heading">
-          آراء وتجارب عميلات داندي
+          {isEn ? 'DANDY Customer Reviews & Results' : 'آراء وتجارب عميلات داندي'}
         </h2>
       </div>
     </header>
@@ -53,7 +56,15 @@ const cleanReviews = reviews
           <div class="dandy-review-media">
             <img
               src={review.image}
-              alt={review.author ? `تجربة ${review.author}` : `تجربة عميلة داندي #${idx + 1}`}
+              alt={
+                review.author
+                  ? isEn
+                    ? `Customer experience — ${review.author}`
+                    : `تجربة ${review.author}`
+                  : isEn
+                    ? `Dandy customer review #${idx + 1}`
+                    : `تجربة عميلة داندي #${idx + 1}`
+              }
               width="480"
               height="600"
               loading="lazy"
@@ -74,7 +85,11 @@ const cleanReviews = reviews
     </div>
 
     <div class="dandy-featured-empty" data-reviews-empty hidden={cleanReviews.length > 0 || undefined}>
-      <p>لم تُضف تقييمات أو لقطات تجارب عميلات في هذه المساحة بعد.</p>
+      <p>
+        {isEn
+          ? 'No customer reviews or highlights have been added to this showcase yet.'
+          : 'لم تُضف تقييمات أو لقطات تجارب عميلات في هذه المساحة بعد.'}
+      </p>
     </div>
   </div>
 </section>

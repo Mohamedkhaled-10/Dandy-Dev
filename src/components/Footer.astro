@@ -1,12 +1,19 @@
 ---
 /**
- * DANDY COSMETICS — STOREFRONT FOOTER FACADE (PHASE 2)
+ * DANDY COSMETICS — STOREFRONT FOOTER FACADE (PHASE 2 / PHASE 11)
  * Preserves BaseLayout integration contract while delegating cleanly
  * to SiteFooter and the single global BottomMobileNav instance.
  */
 import SiteFooter from './layout/SiteFooter.astro';
 import BottomMobileNav from './layout/BottomMobileNav.astro';
+import type { Locale } from '../i18n/types';
+
+export interface Props {
+  locale?: Locale;
+}
+
+const { locale = 'ar' } = Astro.props;
 ---
 
-<SiteFooter />
-<BottomMobileNav />
+<SiteFooter locale={locale} />
+<BottomMobileNav locale={locale} />

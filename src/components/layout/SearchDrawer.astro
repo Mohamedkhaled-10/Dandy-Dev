@@ -6,8 +6,55 @@
  * keyboard shortcuts ('/' and Ctrl/Cmd+K), Escape dismissal, and focus restoration.
  */
 import Icon from '../ui/Icon.astro';
+import { getLocaleDirection } from '../../i18n/config';
+import { t } from '../../i18n/translator';
+import { EN_PRODUCT_SUMMARY_MAP } from '../../i18n/content/en/products';
+import type { Locale } from '../../i18n/types';
 
-const SEARCH_SUGGESTIONS = ['عناية', 'شعر', 'بشرة', 'سيروم', 'عطور'];
+export interface Props {
+  locale?: Locale;
+}
+
+const { locale = 'ar' } = Astro.props;
+const dir = getLocaleDirection(locale);
+const isEnglish = locale === 'en';
+const SEARCH_SUGGESTIONS = isEnglish
+  ? ['Skincare', 'Haircare', 'Serum', 'Splash', 'Musk']
+  : ['عناية', 'شعر', 'بشرة', 'سيروم', 'عطور'];
+
+const enSearchMap = isEnglish
+  ? Object.fromEntries(
+      Object.entries(EN_PRODUCT_SUMMARY_MAP).map(([id, item]) => [
+        id,
+        {
+          name: item.name,
+          category:
+            item.category === 'hair-care'
+              ? 'Hair Care'
+              : item.category === 'skin-care'
+                ? 'Skin Care'
+                : item.category === 'fragrance'
+                  ? 'Fragrance'
+                  : 'Body Care',
+        },
+      ])
+    )
+  : {};
+
+const searchI18n = {
+  locale,
+  isEnglish,
+  suggestions: SEARCH_SUGGESTIONS,
+  suggestionsHeading: isEnglish ? 'Popular Searches' : 'عمليات البحث الشائعة',
+  loadingText: isEnglish ? 'Searching store...' : 'جاري البحث في المتجر...',
+  errorText: isEnglish ? 'An error occurred while searching. Please try again.' : 'حدث خطأ أثناء البحث. يرجى المحاولة مرة أخرى.',
+  fetchEmptyText: isEnglish ? 'Unable to load products right now.' : 'عذراً، لم نتمكن من جلب المنتجات حالياً.',
+  noResultsPrefix: isEnglish ? 'No matching results found for' : 'لا توجد نتائج مطابقة لـ',
+  noResultsHint: isEnglish ? 'Try general keywords like: skin, hair, serum, splash, or musk.' : 'جربي البحث بكلمات عامة مثل: بشرة، شعر، سيروم، عطور.',
+  currencyLabel: isEnglish ? 'EGP' : 'ج.م',
+  productPrefix: isEnglish ? '/en/product' : '/product',
+  enSearchMap,
+};
 ---
 
 <div
@@ -22,21 +69,21 @@ const SEARCH_SUGGESTIONS = ['عناية', 'شعر', 'بشرة', 'سيروم', '�
   id="search-panel"
   role="dialog"
   aria-modal="true"
-  aria-label="البحث عن منتجات"
-  dir="rtl"
+  aria-label={t(locale, 'header.searchTriggerLabel')}
+  dir={dir}
   hidden
 >
   <div class="dandy-search-header">
     <div class="dandy-search-title">
       <Icon name="search" size={18} strokeWidth={1.85} />
-      <span>ابحثي في متجر داندي</span>
+      <span>{isEnglish ? 'Search DANDY Store' : 'ابحثي في متجر داندي'}</span>
     </div>
     <button
       type="button"
       class="dandy-search-close"
       id="close-search-trigger"
       onclick="window.toggleSearchPanel(false)"
-      aria-label="إغلاق البحث"
+      aria-label={isEnglish ? 'Close search' : 'إغلاق البحث'}
     >
       <Icon name="x" size={19} strokeWidth={1.85} />
     </button>
@@ -50,7 +97,7 @@ const SEARCH_SUGGESTIONS = ['عناية', 'شعر', 'بشرة', 'سيروم', '�
       <input
         type="search"
         id="live-search-input"
-        placeholder="اكتبي اسم المنتج، التصنيف، أو نوع العناية..."
+        placeholder={isEnglish ? 'Search by product name, category, or care benefit...' : 'اكتبي اسم المنتج، التصنيف، أو نوع العناية...'}
         autocomplete="off"
         oninput="window.handleLiveSearch(this.value)"
       />
@@ -60,7 +107,7 @@ const SEARCH_SUGGESTIONS = ['عناية', 'شعر', 'بشرة', 'سيروم', '�
         id="search-clear-btn"
         style="display:none;"
         onclick="window.clearDandySearch()"
-        aria-label="مسح نص البحث"
+        aria-label={isEnglish ? 'Clear search text' : 'مسح نص البحث'}
       >
         <Icon name="x" size={14} strokeWidth={2} />
       </button>
@@ -69,7 +116,7 @@ const SEARCH_SUGGESTIONS = ['عناية', 'شعر', 'بشرة', 'سيروم', '�
 
   <div id="live-search-results" class="dandy-search-results-area">
     <div class="dandy-search-suggestions">
-      <div class="dandy-suggestions-heading">عمليات البحث الشائعة</div>
+      <div class="dandy-suggestions-heading">{searchI18n.suggestionsHeading}</div>
       <div class="dandy-suggestions-list">
         {SEARCH_SUGGESTIONS.map((term) => (
           <button
@@ -86,9 +133,11 @@ const SEARCH_SUGGESTIONS = ['عناية', 'شعر', 'بشرة', 'سيروم', '�
   </div>
 </div>
 
-<script is:inline>
+<script is:inline define:vars={{ searchI18n }}>
   (function () {
-    const SUGGESTION_TERMS = ['عناية', 'شعر', 'بشرة', 'سيروم', 'عطور'];
+    const SUGGESTION_TERMS = Array.isArray(searchI18n?.suggestions)
+      ? searchI18n.suggestions
+      : ['عناية', 'شعر', 'بشرة', 'سيروم', 'عطور'];
     let lastFocusedBeforeSearch = null;
     let liveSearchTimeout = null;
 
@@ -114,7 +163,7 @@ const SEARCH_SUGGESTIONS = ['عناية', 'شعر', 'بشرة', 'سيروم', '�
       }).join('');
       return (
         '<div class="dandy-search-suggestions">' +
-        '<div class="dandy-suggestions-heading">عمليات البحث الشائعة</div>' +
+        '<div class="dandy-suggestions-heading">' + escapeHtml(searchI18n.suggestionsHeading) + '</div>' +
         '<div class="dandy-suggestions-list">' +
         buttons +
         '</div>' +
@@ -224,7 +273,7 @@ const SEARCH_SUGGESTIONS = ['عناية', 'شعر', 'بشرة', 'سيروم', '�
       resultsContainer.innerHTML =
         '<div class="dandy-search-loading">' +
         '<div class="dandy-search-spinner" aria-hidden="true"></div>' +
-        '<span>جاري البحث في المتجر...</span>' +
+        '<span>' + escapeHtml(searchI18n.loadingText) + '</span>' +
         '</div>';
 
       if (typeof window.db === 'undefined' && typeof firebase !== 'undefined') {
@@ -248,7 +297,7 @@ const SEARCH_SUGGESTIONS = ['عناية', 'شعر', 'بشرة', 'سيروم', '�
           .catch(function (err) {
             console.error(err);
             resultsContainer.innerHTML =
-              '<p class="dandy-search-error">حدث خطأ أثناء البحث. يرجى المحاولة مرة أخرى.</p>';
+              '<p class="dandy-search-error">' + escapeHtml(searchI18n.errorText) + '</p>';
           });
       } else {
         window.db
@@ -260,7 +309,7 @@ const SEARCH_SUGGESTIONS = ['عناية', 'شعر', 'بشرة', 'سيروم', '�
           .catch(function (err) {
             console.error(err);
             resultsContainer.innerHTML =
-              '<p class="dandy-search-error">حدث خطأ أثناء البحث. يرجى المحاولة مرة أخرى.</p>';
+              '<p class="dandy-search-error">' + escapeHtml(searchI18n.errorText) + '</p>';
           });
       }
     }
@@ -268,30 +317,38 @@ const SEARCH_SUGGESTIONS = ['عناية', 'شعر', 'بشرة', 'سيروم', '�
     function renderSearchResults(data, query, container) {
       if (!data) {
         container.innerHTML =
-          '<div class="dandy-search-empty"><p>عذراً، لم نتمكن من جلب المنتجات حالياً.</p></div>';
+          '<div class="dandy-search-empty"><p>' + escapeHtml(searchI18n.fetchEmptyText) + '</p></div>';
         return;
       }
 
       const products = [];
+      const enMap = searchI18n.enSearchMap || {};
+      const currLabel = searchI18n.currencyLabel || 'ج.م';
       Object.keys(data).forEach(function (k) {
         const p = data[k];
-        if (!p || !p.name) return;
-        const nameLower = String(p.name).toLowerCase();
-        const catLower = String(p.category || '').toLowerCase();
+        if (!p || !p.name || p.isHidden) return;
+        const enEntry = searchI18n.isEnglish ? enMap[k] : null;
+        const displayName = (enEntry && enEntry.name) ? enEntry.name : p.name;
+        const displayCategory = (enEntry && enEntry.category) ? enEntry.category : (p.category || '');
+
+        const nameLower = String(displayName).toLowerCase();
+        const sourceNameLower = String(p.name).toLowerCase();
+        const catLower = String(displayCategory).toLowerCase();
+        const sourceCatLower = String(p.category || '').toLowerCase();
 
         let score = 0;
-        if (nameLower === query) score = 100;
-        else if (nameLower.startsWith(query)) score = 80;
-        else if (nameLower.includes(query)) score = 50;
+        if (nameLower === query || sourceNameLower === query) score = 100;
+        else if (nameLower.startsWith(query) || sourceNameLower.startsWith(query)) score = 80;
+        else if (nameLower.includes(query) || sourceNameLower.includes(query)) score = 50;
 
-        if (catLower === query) score += 30;
-        else if (catLower.includes(query)) score += 10;
+        if (catLower === query || sourceCatLower === query) score += 30;
+        else if (catLower.includes(query) || sourceCatLower.includes(query)) score += 10;
 
         if (score > 0) {
           products.push({
             id: k,
-            name: p.name,
-            category: p.category || '',
+            name: displayName,
+            category: displayCategory,
             slug: p.slug || '',
             image: p.image || '/assets/images/logo.png',
             price: p.price,
@@ -311,14 +368,15 @@ const SEARCH_SUGGESTIONS = ['عناية', 'شعر', 'بشرة', 'سيروم', '�
         container.innerHTML =
           '<div class="dandy-search-empty">' +
           '<svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>' +
-          '<p>لا توجد نتائج مطابقة لـ "<strong>' +
+          '<p>' + escapeHtml(searchI18n.noResultsPrefix) + ' "<strong>' +
           escapeHtml(query) +
           '</strong>"</p>' +
-          '<small>جربي البحث بكلمات عامة مثل: بشرة، شعر، سيروم، عطور.</small>' +
+          '<small>' + escapeHtml(searchI18n.noResultsHint) + '</small>' +
           '</div>';
         return;
       }
 
+      const arrowPath = searchI18n.isEnglish ? '<path d="m9 18 6-6-6-6"/>' : '<path d="m15 18-6-6 6-6"/>';
       let html = '<div class="dandy-search-results-list">';
       products.forEach(function (p) {
         let priceHtml = '';
@@ -328,27 +386,29 @@ const SEARCH_SUGGESTIONS = ['عناية', 'شعر', 'بشرة', 'سيروم', '�
           const oldPrice = discountPercent > 0 && discountPercent < 100 ? priceRaw / (1 - discountPercent / 100) : 0;
           priceHtml =
             (oldPrice > priceRaw
-              ? '<span class="dandy-result-old-price dandy-tabular">' + Math.round(oldPrice) + ' ج.م</span> '
+              ? '<span class="dandy-result-old-price dandy-tabular">' + Math.round(oldPrice) + ' ' + escapeHtml(currLabel) + '</span> '
               : '') +
             '<span class="dandy-result-current-price dandy-tabular">' +
             escapeHtml(String(priceRaw)) +
-            ' ج.م</span>';
+            ' ' + escapeHtml(currLabel) + '</span>';
         } else if (p.originalPrice && parseFloat(p.originalPrice) > parseFloat(p.price)) {
           priceHtml =
             '<span class="dandy-result-old-price dandy-tabular">' +
             escapeHtml(String(p.originalPrice)) +
-            ' ج.م</span> ' +
+            ' ' + escapeHtml(currLabel) + '</span> ' +
             '<span class="dandy-result-current-price dandy-tabular">' +
             escapeHtml(String(p.price)) +
-            ' ج.م</span>';
+            ' ' + escapeHtml(currLabel) + '</span>';
         } else {
           priceHtml =
             '<span class="dandy-result-current-price dandy-tabular">' +
             escapeHtml(String(p.price)) +
-            ' ج.م</span>';
+            ' ' + escapeHtml(currLabel) + '</span>';
         }
 
-        const pLink = p.slug ? '/product/' + encodeURIComponent(p.slug) : '/product?id=' + encodeURIComponent(p.id);
+        const pLink = p.slug
+          ? searchI18n.productPrefix + '/' + encodeURIComponent(p.slug)
+          : searchI18n.productPrefix + '?id=' + encodeURIComponent(p.id);
         html +=
           '<a href="' +
           pLink +
@@ -367,7 +427,7 @@ const SEARCH_SUGGESTIONS = ['عناية', 'شعر', 'بشرة', 'سيروم', '�
           '</div>' +
           (p.category ? '<span class="dandy-result-category">' + escapeHtml(p.category) + '</span>' : '') +
           '</div>' +
-          '<svg class="dandy-result-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>' +
+          '<svg class="dandy-result-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true">' + arrowPath + '</svg>' +
           '</a>';
       });
       html += '</div>';
@@ -447,7 +507,7 @@ const SEARCH_SUGGESTIONS = ['عناية', 'شعر', 'بشرة', 'سيروم', '�
     transform: translateY(-10px) scale(0.985);
     pointer-events: none;
     transition: opacity var(--dandy-transition-base), transform var(--dandy-transition-base);
-    font-family: var(--dandy-font-ar-sans);
+    font-family: var(--dandy-font-active-sans);
   }
 
   .dandy-search-panel[hidden] {
@@ -518,7 +578,7 @@ const SEARCH_SUGGESTIONS = ['عناية', 'شعر', 'بشرة', 'سيروم', '�
     border: 1px solid var(--dandy-border-default);
     border-radius: var(--dandy-radius-sm);
     background-color: #FFFFFF;
-    font-family: var(--dandy-font-ar-sans);
+    font-family: var(--dandy-font-active-sans);
     font-size: 0.9375rem;
     color: var(--dandy-ink-primary);
     transition: border-color var(--dandy-transition-fast);
@@ -592,7 +652,7 @@ const SEARCH_SUGGESTIONS = ['عناية', 'شعر', 'بشرة', 'سيروم', '�
     border: 1px solid var(--dandy-border-default);
     border-radius: var(--dandy-radius-sm);
     padding: 8px 14px;
-    font-family: var(--dandy-font-ar-sans);
+    font-family: var(--dandy-font-active-sans);
     font-size: 0.84375rem;
     font-weight: 500;
     color: var(--dandy-ink-primary);
@@ -742,6 +802,10 @@ const SEARCH_SUGGESTIONS = ['عناية', 'شعر', 'بشرة', 'سيروم', '�
   .dandy-search-result-card:hover .dandy-result-arrow {
     color: var(--dandy-ink-primary);
     transform: translateX(-3px);
+  }
+
+  html[dir='ltr'] .dandy-search-result-card:hover .dandy-result-arrow {
+    transform: translateX(3px);
   }
 
   @media (max-width: 767px) {

@@ -5,6 +5,9 @@
  * Uses only verified campaign fields and restrained Botanical Editorial dark tones.
  */
 import Icon from '../ui/Icon.astro';
+import type { Locale } from '../../i18n/types';
+import { buildLocalizedPath } from '../../i18n/routes';
+import { EN_PINK_FRIDAY_OVERLAY } from '../../i18n/content/en/pink-friday';
 import {
   shouldDisplayCampaignToCustomers,
   type PinkFridayCampaignData,
@@ -12,22 +15,35 @@ import {
 
 export interface Props {
   campaign?: PinkFridayCampaignData | null;
+  locale?: Locale;
 }
 
-const { campaign } = Astro.props;
+const { campaign, locale = 'ar' } = Astro.props;
+const isEn = locale === 'en';
 const shouldRender = campaign ? shouldDisplayCampaignToCustomers(campaign) : false;
 
 const visualsAny = (campaign?.visuals || {}) as Record<string, any>;
-const badgeLabel = visualsAny.badgeText || 'Pink Friday';
-const headline = visualsAny.headline || campaign?.title || 'Pink Friday';
-const subtitle =
-  visualsAny.subtitle ||
-  campaign?.subtitleAr ||
-  'استعدّي لتجربة تسوّق استثنائية مع عروض Pink Friday من داندي.';
-const ctaLabel = visualsAny.ctaText || 'اكتشفي العروض';
+const badgeLabel = isEn
+  ? EN_PINK_FRIDAY_OVERLAY.badgeText || visualsAny.badgeText || 'Pink Friday'
+  : visualsAny.badgeText || 'Pink Friday';
+const headline = isEn
+  ? EN_PINK_FRIDAY_OVERLAY.headline || EN_PINK_FRIDAY_OVERLAY.title || 'Pink Friday Offers'
+  : visualsAny.headline || campaign?.title || 'Pink Friday';
+const subtitle = isEn
+  ? EN_PINK_FRIDAY_OVERLAY.subtitle
+  : visualsAny.subtitle ||
+    campaign?.subtitleAr ||
+    'استعدّي لتجربة تسوّق استثنائية مع عروض Pink Friday من داندي.';
+const ctaLabel = isEn
+  ? EN_PINK_FRIDAY_OVERLAY.ctaText || 'Explore Offers'
+  : visualsAny.ctaText || 'اكتشفي العروض';
+const pfHref = buildLocalizedPath('/pink-friday', locale);
 
 const rawVisualUrl: string =
-  visualsAny.heroImageUrl || visualsAny.bannerImage || '';
+  (isEn ? EN_PINK_FRIDAY_OVERLAY.heroImageOverride : '') ||
+  visualsAny.heroImageUrl ||
+  visualsAny.bannerImage ||
+  '';
 const visualUrl =
   rawVisualUrl && !rawVisualUrl.includes('images.unsplash.com')
     ? rawVisualUrl
@@ -50,9 +66,9 @@ const fallbackImg = '/assets/images/index-products/product-2.jpg';
           </h2>
           <p class="dandy-pf-subtitle">{subtitle}</p>
           <div class="dandy-pf-actions">
-            <a href="/pink-friday" class="dandy-pf-cta">
+            <a href={pfHref} class="dandy-pf-cta">
               <span>{ctaLabel}</span>
-              <Icon name="arrow-left" size={16} strokeWidth={1.85} />
+              <Icon name={isEn ? 'arrow-right' : 'arrow-left'} size={16} strokeWidth={1.85} />
             </a>
           </div>
         </div>
@@ -106,7 +122,7 @@ const fallbackImg = '/assets/images/index-products/product-2.jpg';
 
   .dandy-pf-title {
     margin: 0;
-    font-family: var(--dandy-font-ar-display);
+    font-family: var(--dandy-font-active-display);
     font-size: clamp(1.75rem, 3vw, 2.5rem);
     font-weight: 700;
     line-height: 1.28;
@@ -135,7 +151,7 @@ const fallbackImg = '/assets/images/index-products/product-2.jpg';
     border-radius: var(--dandy-radius-sm);
     background-color: #FAF8F6;
     color: var(--dandy-ink-primary);
-    font-family: var(--dandy-font-ar-sans);
+    font-family: var(--dandy-font-active-sans);
     font-size: var(--dandy-text-sm);
     font-weight: 700;
     text-decoration: none;

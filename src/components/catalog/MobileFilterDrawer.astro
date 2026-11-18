@@ -4,10 +4,11 @@
  * Full Escape, backdrop, scroll lock, and bidirectional sync with CatalogToolbar.
  */
 import Icon from '../ui/Icon.astro';
+import type { Locale } from '../../i18n/types';
 import {
-  CATEGORY_FILTER_OPTIONS,
-  PRICE_RANGE_OPTIONS,
-  SORT_OPTIONS,
+  getCategoryFilterOptions,
+  getPriceRangeOptions,
+  getSortOptions,
 } from '../../scripts/catalog';
 
 export interface Props {
@@ -17,6 +18,7 @@ export interface Props {
   hasSaleItems?: boolean;
   hasBestSellerItems?: boolean;
   hasSoldOutItems?: boolean;
+  locale?: Locale;
 }
 
 const {
@@ -26,12 +28,18 @@ const {
   hasSaleItems = false,
   hasBestSellerItems = false,
   hasSoldOutItems = false,
+  locale = 'ar',
 } = Astro.props;
+
+const isEn = locale === 'en';
+const categoryOptions = getCategoryFilterOptions(locale);
+const priceOptions = getPriceRangeOptions(locale);
+const sortOptions = getSortOptions(locale);
 
 const visibleCategories =
   availableCategories && availableCategories.length > 0
-    ? CATEGORY_FILTER_OPTIONS.filter((cat) => availableCategories.includes(cat.slug))
-    : CATEGORY_FILTER_OPTIONS;
+    ? categoryOptions.filter((cat) => availableCategories.includes(cat.slug))
+    : categoryOptions;
 ---
 
 <div class="dandy-fdrawer-backdrop" id="dandyFilterBackdrop" hidden></div>
@@ -42,18 +50,18 @@ const visibleCategories =
   role="dialog"
   aria-modal="true"
   aria-labelledby="dandyFilterDrawerTitle"
-  dir="rtl"
+  dir={isEn ? 'ltr' : 'rtl'}
   hidden
 >
   <header class="dandy-fdrawer-header">
     <h2 id="dandyFilterDrawerTitle" class="dandy-fdrawer-title">
-      تصفية وترتيب المنتجات
+      {isEn ? 'Filter & Sort Products' : 'تصفية وترتيب المنتجات'}
     </h2>
     <button
       type="button"
       class="dandy-fdrawer-close"
       data-close-filter-drawer
-      aria-label="إغلاق نافذة التصفية"
+      aria-label={isEn ? 'Close filter drawer' : 'إغلاق نافذة التصفية'}
     >
       <Icon name="x" size={20} strokeWidth={1.9} />
     </button>
@@ -61,11 +69,13 @@ const visibleCategories =
 
   <div class="dandy-fdrawer-body">
     <div class="dandy-fdrawer-group">
-      <label for="dandy-drawer-sort" class="dandy-fdrawer-label">ترتيب حسب</label>
+      <label for="dandy-drawer-sort" class="dandy-fdrawer-label">
+        {isEn ? 'Sort by' : 'ترتيب حسب'}
+      </label>
       <div class="dandy-fdrawer-select-wrap">
         <select id="dandy-drawer-sort" class="dandy-cat-select dandy-fdrawer-select" data-catalog-sort>
-          {SORT_OPTIONS.map((opt) => (
-            <option value={opt.value}>{opt.labelAr}</option>
+          {sortOptions.map((opt) => (
+            <option value={opt.value}>{opt.label}</option>
           ))}
         </select>
         <Icon name="chevron-down" size={14} strokeWidth={2} class="dandy-cat-select-arrow" />
@@ -74,11 +84,13 @@ const visibleCategories =
 
     {showPriceFilter && (
       <div class="dandy-fdrawer-group">
-        <label for="dandy-drawer-price" class="dandy-fdrawer-label">نطاق السعر</label>
+        <label for="dandy-drawer-price" class="dandy-fdrawer-label">
+          {isEn ? 'Price Range' : 'نطاق السعر'}
+        </label>
         <div class="dandy-fdrawer-select-wrap">
           <select id="dandy-drawer-price" class="dandy-cat-select dandy-fdrawer-select" data-filter-price>
-            {PRICE_RANGE_OPTIONS.map((opt) => (
-              <option value={opt.value}>{opt.labelAr}</option>
+            {priceOptions.map((opt) => (
+              <option value={opt.value}>{opt.label}</option>
             ))}
           </select>
           <Icon name="chevron-down" size={14} strokeWidth={2} class="dandy-cat-select-arrow" />
@@ -88,12 +100,12 @@ const visibleCategories =
 
     {showCategoryFilter && (
       <fieldset class="dandy-fdrawer-group">
-        <legend class="dandy-fdrawer-label">الأقسام</legend>
+        <legend class="dandy-fdrawer-label">{isEn ? 'Categories' : 'الأقسام'}</legend>
         <div class="dandy-fdrawer-checks">
           {visibleCategories.map((cat) => (
             <label class="dandy-fdrawer-check-item">
               <input type="checkbox" value={cat.slug} data-drawer-category />
-              <span>{cat.labelAr}</span>
+              <span>{cat.label}</span>
             </label>
           ))}
         </div>
@@ -102,24 +114,24 @@ const visibleCategories =
 
     {(hasSaleItems || hasBestSellerItems || hasSoldOutItems) && (
       <fieldset class="dandy-fdrawer-group">
-        <legend class="dandy-fdrawer-label">خيارات إضافية</legend>
+        <legend class="dandy-fdrawer-label">{isEn ? 'More Options' : 'خيارات إضافية'}</legend>
         <div class="dandy-fdrawer-checks">
           {hasSaleItems && (
             <label class="dandy-fdrawer-check-item">
               <input type="checkbox" data-drawer-toggle="saleOnly" />
-              <span>العروض والتخفيضات النشطة</span>
+              <span>{isEn ? 'Active Offers & Discounts' : 'العروض والتخفيضات النشطة'}</span>
             </label>
           )}
           {hasBestSellerItems && (
             <label class="dandy-fdrawer-check-item">
               <input type="checkbox" data-drawer-toggle="bestSellerOnly" />
-              <span>الأكثر مبيعاً</span>
+              <span>{isEn ? 'Best Sellers' : 'الأكثر مبيعاً'}</span>
             </label>
           )}
           {hasSoldOutItems && (
             <label class="dandy-fdrawer-check-item">
               <input type="checkbox" data-drawer-toggle="inStockOnly" />
-              <span>المنتجات المتوفرة فقط</span>
+              <span>{isEn ? 'In Stock Products Only' : 'المنتجات المتوفرة فقط'}</span>
             </label>
           )}
         </div>
@@ -129,10 +141,10 @@ const visibleCategories =
 
   <footer class="dandy-fdrawer-footer">
     <button type="button" class="dandy-btn dandy-btn--editorial dandy-fdrawer-apply" data-apply-filter-drawer>
-      <span>عرض النتائج</span>
+      <span>{isEn ? 'Show Results' : 'عرض النتائج'}</span>
     </button>
     <button type="button" class="dandy-btn dandy-btn--outline" data-reset-filter-drawer>
-      <span>إعادة ضبط</span>
+      <span>{isEn ? 'Reset' : 'إعادة ضبط'}</span>
     </button>
   </footer>
 </aside>
@@ -195,7 +207,7 @@ const visibleCategories =
 
   .dandy-fdrawer-title {
     margin: 0;
-    font-family: var(--dandy-font-ar-display);
+    font-family: var(--dandy-font-active-display);
     font-size: 1.2rem;
     font-weight: 700;
     color: var(--dandy-ink-primary);

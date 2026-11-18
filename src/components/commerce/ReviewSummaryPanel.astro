@@ -6,24 +6,30 @@
  */
 import Icon from '../ui/Icon.astro';
 import type { ReviewStatsResult } from '../../scripts/product-pdp';
+import type { Locale } from '../../i18n/types';
+import { buildLocalizedPath } from '../../i18n/index';
 
 export interface Props {
   reviewStats: ReviewStatsResult;
+  locale?: Locale;
 }
 
-const { reviewStats } = Astro.props;
+const { reviewStats, locale = 'ar' } = Astro.props;
+const isEn = locale === 'en';
 const hasReviews = reviewStats.count > 0;
+const accountHref = buildLocalizedPath('/account', locale);
 
-function formatArabicDate(ts: number | null): string {
-  if (!ts) return 'تقييم حديث';
+function formatReviewDate(ts: number | null): string {
+  const fallback = isEn ? 'Recent review' : 'تقييم حديث';
+  if (!ts) return fallback;
   try {
-    return new Date(ts).toLocaleDateString('ar-EG', {
+    return new Date(ts).toLocaleDateString(isEn ? 'en-US' : 'ar-EG', {
       year: 'numeric',
       month: 'long',
       day: 'numeric',
     });
   } catch {
-    return 'تقييم حديث';
+    return fallback;
   }
 }
 ---
@@ -36,9 +42,11 @@ function formatArabicDate(ts: number | null): string {
   <div class="dandy-container">
     <div class="dandy-pdp-reviews-header" data-dandy-reveal>
       <div>
-        <p class="dandy-pdp-section-kicker">آراء العميلات</p>
+        <p class="dandy-pdp-section-kicker">
+          {isEn ? 'Customer Reviews' : 'آراء العميلات'}
+        </p>
         <h2 id="reviews-section-heading" class="dandy-pdp-section-heading">
-          تجارب وتقييمات حقيقية
+          {isEn ? 'Real Experiences & Ratings' : 'تجارب وتقييمات حقيقية'}
         </h2>
       </div>
 
@@ -52,7 +60,11 @@ function formatArabicDate(ts: number | null): string {
             <Icon name="star" size={15} strokeWidth={1.8} class="dandy-star-filled" />
             <span>{reviewStats.averageFormatted} / 5</span>
             <span aria-hidden="true">·</span>
-            <span>{reviewStats.count} تقييم</span>
+            <span>
+              {isEn
+                ? `${reviewStats.count} ${reviewStats.count === 1 ? 'review' : 'reviews'}`
+                : `${reviewStats.count} تقييم`}
+            </span>
           </>
         )}
       </div>
@@ -62,7 +74,11 @@ function formatArabicDate(ts: number | null): string {
       {hasReviews ? (
         <div class="dandy-pdp-reviews-layout">
           <!-- Left / Start Summary Card -->
-          <aside class="dandy-pdp-reviews-stats-card" aria-label="ملخص التقييمات" data-dandy-reveal>
+          <aside
+            class="dandy-pdp-reviews-stats-card"
+            aria-label={isEn ? 'Ratings summary' : 'ملخص التقييمات'}
+            data-dandy-reveal
+          >
             <div class="dandy-pdp-score-hero">
               <span class="dandy-pdp-score-num dandy-tabular">{reviewStats.averageFormatted}</span>
               <div class="dandy-pdp-score-meta">
@@ -77,12 +93,14 @@ function formatArabicDate(ts: number | null): string {
                   ))}
                 </div>
                 <span class="dandy-pdp-score-count dandy-tabular">
-                  بناءً على {reviewStats.count} تقييم حقيقي
+                  {isEn
+                    ? `Based on ${reviewStats.count} verified ${reviewStats.count === 1 ? 'review' : 'reviews'}`
+                    : `بناءً على ${reviewStats.count} تقييم حقيقي`}
                 </span>
               </div>
             </div>
 
-            <div class="dandy-pdp-dist-list" aria-label="توزيع النجوم">
+            <div class="dandy-pdp-dist-list" aria-label={isEn ? 'Star rating breakdown' : 'توزيع النجوم'}>
               {reviewStats.distribution.map((row) => (
                 <div class="dandy-pdp-dist-row">
                   <span class="dandy-pdp-dist-star dandy-tabular">{row.star} ★</span>
@@ -112,20 +130,24 @@ function formatArabicDate(ts: number | null): string {
                       {item.isVerifiedPurchase && (
                         <span class="dandy-pdp-verified-note">
                           <Icon name="check-circle" size={13} strokeWidth={2} />
-                          <span>تجربة شراء مؤكدة</span>
+                          <span>{isEn ? 'Verified Purchase' : 'تجربة شراء مؤكدة'}</span>
                         </span>
                       )}
                     </div>
                   </div>
 
                   <time class="dandy-pdp-review-date">
-                    {formatArabicDate(item.createdAt)}
+                    {formatReviewDate(item.createdAt)}
                   </time>
                 </header>
 
                 <div
                   class="dandy-pdp-review-stars"
-                  aria-label={`تقييم ${item.rating} من 5 نجوم`}
+                  aria-label={
+                    isEn
+                      ? `Rated ${item.rating} out of 5 stars`
+                      : `تقييم ${item.rating} من 5 نجوم`
+                  }
                 >
                   {Array.from({ length: 5 }).map((_, idx) => (
                     <Icon
@@ -141,7 +163,9 @@ function formatArabicDate(ts: number | null): string {
                   <p class="dandy-pdp-review-comment">{item.comment}</p>
                 ) : (
                   <p class="dandy-pdp-review-comment is-muted">
-                    تقييم بالنجوم دون تعليق مكتوب.
+                    {isEn
+                      ? 'Star rating submitted without a written comment.'
+                      : 'تقييم بالنجوم دون تعليق مكتوب.'}
                   </p>
                 )}
               </article>
@@ -153,12 +177,16 @@ function formatArabicDate(ts: number | null): string {
           <span class="dandy-pdp-reviews-empty-icon" aria-hidden="true">
             <Icon name="star" size={22} strokeWidth={1.6} />
           </span>
-          <h3 class="dandy-pdp-reviews-empty-title">لا توجد تقييمات لهذا المستحضر بعد</h3>
+          <h3 class="dandy-pdp-reviews-empty-title">
+            {isEn ? 'No reviews for this formula yet' : 'لا توجد تقييمات لهذا المستحضر بعد'}
+          </h3>
           <p class="dandy-pdp-reviews-empty-desc">
-            يُتاح تقييم المنتج ومشاركة التجربة لعميلات داندي بعد استلام الطلب من صفحة الحساب.
+            {isEn
+              ? 'Dandy customers can rate products and share their experience from their account page after delivery.'
+              : 'يُتاح تقييم المنتج ومشاركة التجربة لعميلات داندي بعد استلام الطلب من صفحة الحساب.'}
           </p>
-          <a href="/account" class="dandy-btn dandy-btn--outline">
-            <span>الانتقال إلى حسابي</span>
+          <a href={accountHref} class="dandy-btn dandy-btn--outline">
+            <span>{isEn ? 'Go to My Account' : 'الانتقال إلى حسابي'}</span>
           </a>
         </div>
       )}

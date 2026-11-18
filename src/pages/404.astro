@@ -1,32 +1,53 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
 import Icon from '../components/ui/Icon.astro';
+import { resolveLocaleFromPath } from '../i18n/resolve-locale';
+import { buildLocalizedPath } from '../i18n/routes';
+import { SITE_URL } from '../utils/products';
+
+Astro.response.status = 404;
+
+const locale = resolveLocaleFromPath(Astro.url.pathname || '/');
+const isEn = locale === 'en';
+const allProductsHref = buildLocalizedPath('/all-products', locale);
+const homeHref = buildLocalizedPath('/', locale);
+const helpHref = buildLocalizedPath('/help', locale);
 ---
 
 <BaseLayout
-  title="الصفحة غير موجودة (404) | Dandy"
-  description="عذراً، الصفحة التي تبحثين عنها غير متوفرة حالياً في متجر داندي."
+  locale={locale}
+  title={isEn ? 'Page Not Found (404) | Dandy Cosmetics' : 'الصفحة غير موجودة (404) | Dandy'}
+  description={
+    isEn
+      ? 'Sorry, the page you are looking for is not available on Dandy Cosmetics.'
+      : 'عذراً، الصفحة التي تبحثين عنها غير متوفرة حالياً في متجر داندي.'
+  }
+  canonical={`${SITE_URL}/404`}
   robots="noindex, follow"
 >
   <main class="dandy-error-wrap dandy-container" data-dandy-motion="calm">
     <div class="dandy-error-code" data-dandy-entrance="0">404</div>
-    <h1 class="dandy-font-ar-display" data-dandy-entrance="1">الصفحة غير موجودة</h1>
+    <h1 class="dandy-font-ar-display" data-dandy-entrance="1">
+      {isEn ? 'Page Not Found' : 'الصفحة غير موجودة'}
+    </h1>
     <p data-dandy-entrance="2">
-      عذراً، الرابط الذي تحاولين الوصول إليه قد يكون تم نقله أو حذفه. يمكنكِ العودة إلى الرئيسية أو تصفح مستحضرات داندي.
+      {isEn
+        ? 'Sorry, the link you followed may have been moved or removed. You can return to the homepage or browse DANDY formulations.'
+        : 'عذراً، الرابط الذي تحاولين الوصول إليه قد يكون تم نقله أو حذفه. يمكنكِ العودة إلى الرئيسية أو تصفح مستحضرات داندي.'}
     </p>
 
     <div class="dandy-error-actions" data-dandy-entrance="3">
-      <a href="/all-products" class="dandy-btn dandy-btn--editorial">
+      <a href={allProductsHref} class="dandy-btn dandy-btn--editorial">
         <Icon name="shopping-bag" size={16} strokeWidth={1.85} />
-        <span>تصفح المنتجات</span>
+        <span>{isEn ? 'Browse Products' : 'تصفح المنتجات'}</span>
       </a>
-      <a href="/" class="dandy-btn dandy-btn--outline">
+      <a href={homeHref} class="dandy-btn dandy-btn--outline">
         <Icon name="home" size={16} strokeWidth={1.85} />
-        <span>الرئيسية</span>
+        <span>{isEn ? 'Home' : 'الرئيسية'}</span>
       </a>
-      <a href="/help" class="dandy-btn dandy-btn--outline">
+      <a href={helpHref} class="dandy-btn dandy-btn--outline">
         <Icon name="circle-help" size={16} strokeWidth={1.85} />
-        <span>مركز المساعدة</span>
+        <span>{isEn ? 'Help Center' : 'مركز المساعدة'}</span>
       </a>
     </div>
   </main>

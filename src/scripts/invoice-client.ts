@@ -12,8 +12,8 @@ import {
   escapeHtml,
   FALLBACK_CART_IMAGE,
   formatOrderLineItem,
-  formatOrderTimestampAr,
-  getGovernorateArabicLabel,
+  formatOrderTimestamp,
+  getGovernorateLabel,
   normalizeOrderStatusMeta,
 } from './purchase-flow';
 
@@ -29,9 +29,24 @@ declare global {
   }
 }
 
+function getRuntimeLocale(): 'ar' | 'en' {
+  if (typeof document !== 'undefined') {
+    const lang = (document.documentElement.getAttribute('lang') || '').trim().toLowerCase();
+    if (lang.startsWith('en')) return 'en';
+  }
+  if (typeof window !== 'undefined') {
+    const p = (window.location.pathname || '/').toLowerCase();
+    if (p === '/en' || p.startsWith('/en/')) return 'en';
+  }
+  return 'ar';
+}
+
 export function initInvoicePage(): void {
   const invoiceSheet = document.getElementById('invoiceCard');
   if (!invoiceSheet) return;
+
+  const locale = getRuntimeLocale();
+  const isEn = locale === 'en';
 
   const loadingState = document.getElementById('invoiceLoadingState');
   const errorState = document.getElementById('invoiceErrorState');
@@ -82,7 +97,7 @@ export function initInvoicePage(): void {
   }
 
   function applyTimelineAndStatus(rawStatus?: string | null): string {
-    const meta = normalizeOrderStatusMeta(rawStatus);
+    const meta = normalizeOrderStatusMeta(rawStatus, locale);
 
     if (statusBadge) {
       statusBadge.textContent = meta.label;
@@ -181,16 +196,18 @@ export function initInvoicePage(): void {
     currentCode = resolvedCode;
     currentPhone = order.phone ? String(order.phone) : '';
 
+    const currencyLabel = isEn ? 'EGP' : 'ج.م';
+
     if (invoiceCodeEl) invoiceCodeEl.textContent = resolvedCode;
-    if (invoiceDateEl) invoiceDateEl.textContent = formatOrderTimestampAr(order.timestamp || Date.now());
+    if (invoiceDateEl) invoiceDateEl.textContent = formatOrderTimestamp(order.timestamp || Date.now(), locale);
 
     if (custName) custName.textContent = resolvedName;
     if (custPhone) custPhone.textContent = resolvedPhone;
     if (custEmail) {
-      custEmail.textContent = order.email && order.email !== 'N/A' ? String(order.email) : 'غير متوفر';
+      custEmail.textContent = order.email && order.email !== 'N/A' ? String(order.email) : (isEn ? 'N/A' : 'غير متوفر');
     }
     if (custAddress) custAddress.textContent = String(order.address || '—');
-    if (custGov) custGov.textContent = getGovernorateArabicLabel(order.governorate);
+    if (custGov) custGov.textContent = getGovernorateLabel(order.governorate, locale);
     if (custCity) custCity.textContent = String(order.city || '—');
 
     let calculatedSubtotal = 0;
@@ -203,7 +220,7 @@ export function initInvoicePage(): void {
         const sparklesIcon = getIconSvg('sparkles', { size: 12, strokeWidth: 1.9 });
 
         products.forEach((rawProduct: any) => {
-          const item = formatOrderLineItem(rawProduct || {});
+          const item = formatOrderLineItem(rawProduct || {}, locale);
           calculatedSubtotal += item.lineTotal;
 
           const variantHtml =
@@ -224,8 +241,8 @@ export function initInvoicePage(): void {
               : '';
 
           const priceHtml = item.crossedTotal
-            ? `<span class="dandy-tabular">${item.lineTotal.toFixed(0)} ج.م</span> <span class="dandy-inv-crossed dandy-tabular">${item.crossedTotal.toFixed(0)}</span>`
-            : `<span class="dandy-tabular">${item.lineTotal.toFixed(0)} ج.م</span>`;
+            ? `<span class="dandy-tabular">${item.lineTotal.toFixed(0)} ${currencyLabel}</span> <span class="dandy-inv-crossed dandy-tabular">${item.crossedTotal.toFixed(0)}</span>`
+            : `<span class="dandy-tabular">${item.lineTotal.toFixed(0)} ${currencyLabel}</span>`;
 
           const tr = document.createElement('tr');
           tr.innerHTML = `
@@ -253,8 +270,9 @@ export function initInvoicePage(): void {
           itemsBody.appendChild(tr);
         });
       } else {
-        itemsBody.innerHTML =
-          '<tr><td colspan="3" class="dandy-inv-empty-row">لا توجد منتجات مسجلة في هذه الفاتورة.</td></tr>';
+        itemsBody.innerHTML = isEn
+          ? '<tr><td colspan="3" class="dandy-inv-empty-row">No items are recorded on this invoice.</td></tr>'
+          : '<tr><td colspan="3" class="dandy-inv-empty-row">لا توجد منتجات مسجلة في هذه الفاتورة.</td></tr>';
       }
     }
 
@@ -271,28 +289,33 @@ export function initInvoicePage(): void {
         ? Number.parseFloat(String(order.totalAmount))
         : subtotalVal + shippingVal;
 
-    if (tableSubtotal) tableSubtotal.textContent = `${subtotalVal.toFixed(0)} ج.م`;
+    if (tableSubtotal) tableSubtotal.textContent = `${subtotalVal.toFixed(0)} ${currencyLabel}`;
     if (tableShipping) {
-      tableShipping.textContent = shippingVal === 0 ? 'شحن مجاني' : `${shippingVal.toFixed(0)} ج.م`;
+      tableShipping.textContent =
+        shippingVal === 0 ? (isEn ? 'Free Shipping' : 'شحن مجاني') : `${shippingVal.toFixed(0)} ${currencyLabel}`;
     }
-    if (tableGrandTotal) tableGrandTotal.textContent = `${totalVal.toFixed(0)} ج.م`;
+    if (tableGrandTotal) tableGrandTotal.textContent = `${totalVal.toFixed(0)} ${currencyLabel}`;
 
     const statusLabel = applyTimelineAndStatus(order.status || 'New');
 
     if (whatsappLink) {
-      whatsappLink.href = buildWhatsappOrderInquiryUrl({
-        invoiceCode: resolvedCode,
-        customerName: resolvedName,
-        statusLabel,
-        pageUrl: window.location.href,
-      });
+      whatsappLink.href = buildWhatsappOrderInquiryUrl(
+        {
+          invoiceCode: resolvedCode,
+          customerName: resolvedName,
+          statusLabel,
+          pageUrl: window.location.href,
+        },
+        locale
+      );
     }
 
     if (trackOrderLink) {
       const trackParams = new URLSearchParams();
       if (resolvedCode && resolvedCode !== '—') trackParams.set('code', resolvedCode);
       if (currentPhone) trackParams.set('phone', currentPhone);
-      trackOrderLink.href = `/track-order${trackParams.toString() ? `?${trackParams.toString()}` : ''}`;
+      const trackBase = isEn ? '/en/track-order' : '/track-order';
+      trackOrderLink.href = `${trackBase}${trackParams.toString() ? `?${trackParams.toString()}` : ''}`;
     }
 
     showInvoice();
@@ -303,27 +326,27 @@ export function initInvoicePage(): void {
 
   async function copyInvoiceCode(): Promise<void> {
     const code = currentCode || invoiceCodeEl?.textContent?.trim() || '';
-    if (!code || code === '—' || code.includes('جاري')) return;
+    if (!code || code === '—' || code.includes('جاري') || code.includes('Loading')) return;
 
     try {
       await navigator.clipboard.writeText(code);
       window.DandyToast?.show({
         type: 'success',
-        message: `تم نسخ كود الفاتورة (${code}) بنجاح.`,
+        message: isEn ? `Invoice code (${code}) copied.` : `تم نسخ كود الفاتورة (${code}) بنجاح.`,
       });
       if (copyBtn) {
         const labelEl = copyBtn.querySelector('[data-copy-label]');
         if (labelEl) {
-          labelEl.textContent = 'تم النسخ';
+          labelEl.textContent = isEn ? 'Copied' : 'تم النسخ';
           window.setTimeout(() => {
-            labelEl.textContent = 'نسخ الكود';
+            labelEl.textContent = isEn ? 'Copy Code' : 'نسخ الكود';
           }, 2200);
         }
       }
     } catch {
       window.DandyToast?.show({
         type: 'info',
-        message: `كود الفاتورة الخاص بكِ هو: ${code}`,
+        message: isEn ? `Your invoice code is: ${code}` : `كود الفاتورة الخاص بكِ هو: ${code}`,
       });
     }
   }
@@ -367,11 +390,19 @@ export function initInvoicePage(): void {
         if (data && data.success && data.order) {
           drawOrder(data.order, data.order.orderId || data.order.invoiceCode || '');
         } else {
-          showError('انتهت صلاحية رابط الفاتورة أو أنه غير صالح. يمكنكِ تتبع الطلب باستخدام كود الفاتورة ورقم الهاتف.');
+          showError(
+            isEn
+              ? 'This invoice link has expired or is invalid. You can track your order using your invoice code and phone number.'
+              : 'انتهت صلاحية رابط الفاتورة أو أنه غير صالح. يمكنكِ تتبع الطلب باستخدام كود الفاتورة ورقم الهاتف.'
+          );
         }
       })
       .catch(() => {
-        showError('تعذر تحميل تفاصيل الفاتورة حالياً. يرجى المحاولة مرة أخرى.');
+        showError(
+          isEn
+            ? 'Unable to load invoice details right now. Please try again.'
+            : 'تعذر تحميل تفاصيل الفاتورة حالياً. يرجى المحاولة مرة أخرى.'
+        );
       });
     return;
   }
@@ -380,7 +411,11 @@ export function initInvoicePage(): void {
 
   if (idParam) {
     if (!db) {
-      showError('تعذر الاتصال بقاعدة البيانات لعرض الفاتورة. يمكنكِ المحاولة مجدداً أو تتبع الطلب بالكود والهاتف.');
+      showError(
+        isEn
+          ? 'Could not connect to the database to display this invoice. Please try again or use Order Tracking.'
+          : 'تعذر الاتصال بقاعدة البيانات لعرض الفاتورة. يمكنكِ المحاولة مجدداً أو تتبع الطلب بالكود والهاتف.'
+      );
       return;
     }
     db.ref(`orders/${idParam}`).on(
@@ -389,11 +424,17 @@ export function initInvoicePage(): void {
         if (snap.exists()) {
           drawOrder(snap.val(), idParam);
         } else {
-          showError('لم نعثر على فاتورة مطابقة لهذا المعرّف.');
+          showError(
+            isEn ? 'We could not find an invoice matching this order ID.' : 'لم نعثر على فاتورة مطابقة لهذا المعرّف.'
+          );
         }
       },
       () => {
-        showError('تعذر قراءة بيانات الفاتورة بسبب صلاحيات الوصول. استخدمي رابط التتبع أو البريد الإلكتروني.');
+        showError(
+          isEn
+            ? 'Unable to read invoice details due to access permissions. Please use Order Tracking with your phone number.'
+            : 'تعذر قراءة بيانات الفاتورة بسبب صلاحيات الوصول. استخدمي رابط التتبع أو البريد الإلكتروني.'
+        );
       }
     );
     return;
@@ -401,7 +442,9 @@ export function initInvoicePage(): void {
 
   if (invoiceParam) {
     if (!db) {
-      showError('تعذر الاتصال بقاعدة البيانات لعرض الفاتورة.');
+      showError(
+        isEn ? 'Could not connect to the database to load this invoice.' : 'تعذر الاتصال بقاعدة البيانات لعرض الفاتورة.'
+      );
       return;
     }
     db.ref('orders')
@@ -419,15 +462,27 @@ export function initInvoicePage(): void {
               }
             });
           } else {
-            showError('كود الفاتورة غير موجود. تأكدي من الكود المدخل أو جرّبي البحث من صفحة تتبع الطلب.');
+            showError(
+              isEn
+                ? 'Invoice code not found. Please check the code entered or search from the Track Order page.'
+                : 'كود الفاتورة غير موجود. تأكدي من الكود المدخل أو جرّبي البحث من صفحة تتبع الطلب.'
+            );
           }
         },
         () => {
-          showError('تعذر جلب الفاتورة مباشرة. استخدمي صفحة تتبع الطلب مع رقم الهاتف المسجل بالطلب.');
+          showError(
+            isEn
+              ? 'Unable to load the invoice directly. Please use the Track Order page with your registered phone number.'
+              : 'تعذر جلب الفاتورة مباشرة. استخدمي صفحة تتبع الطلب مع رقم الهاتف المسجل بالطلب.'
+          );
         }
       );
     return;
   }
 
-  showError('لم يتم تحديد كود أو معرّف فاتورة للعرض. يمكنكِ تتبع طلبكِ باستخدام كود الفاتورة ورقم الهاتف.');
+  showError(
+    isEn
+      ? 'No invoice code or order ID was provided. You can track your order using your invoice code and phone number.'
+      : 'لم يتم تحديد كود أو معرّف فاتورة للعرض. يمكنكِ تتبع طلبكِ باستخدام كود الفاتورة ورقم الهاتف.'
+  );
 }

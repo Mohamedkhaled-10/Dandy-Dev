@@ -6,17 +6,33 @@
  */
 import Icon from '../ui/Icon.astro';
 import type { Article } from '../../utils/articles';
+import type { Locale } from '../../i18n/types';
+import { buildLocalizedPath } from '../../i18n/routes';
+import { resolveLocalizedArticle } from '../../i18n/content/adapters';
 
 export interface Props {
   articles: Article[];
   hidden?: boolean;
+  locale?: Locale;
 }
 
-const { articles = [], hidden = false } = Astro.props;
-const latestArticles = articles.slice(0, 3);
-const fallbackBlogImg = '/assets/images/editorial/story-botanical.jpg';
+const { articles = [], hidden = false, locale = 'ar' } = Astro.props;
+const isEn = locale === 'en';
+const localizedArticles = articles
+  .map((article) => ({
+    article,
+    view: resolveLocalizedArticle(article, locale, { fallbackToArabicWhenMissing: true }),
+  }))
+  .filter((entry) => !isEn || entry.view.hasTranslation)
+  .slice(0, 3);
 
-function getArticleExcerpt(article: Article): string {
+const fallbackBlogImg = '/assets/images/editorial/story-botanical.jpg';
+const blogIndexHref = buildLocalizedPath('/blog', locale);
+
+function getArticleExcerpt(article: Article, localizedExcerpt?: string): string {
+  if (localizedExcerpt && localizedExcerpt.trim()) {
+    return localizedExcerpt.trim();
+  }
   if (article.excerpt && article.excerpt.trim()) {
     return article.excerpt.trim();
   }
@@ -28,18 +44,18 @@ function getArticleExcerpt(article: Article): string {
 }
 
 function getArticleDateLabel(article: Article): string {
-  if (article.date?.trim()) return article.date.trim();
   if (article.createdAt) {
     try {
-      return new Date(article.createdAt).toLocaleDateString('ar-EG', {
+      return new Date(article.createdAt).toLocaleDateString(isEn ? 'en-US' : 'ar-EG', {
         year: 'numeric',
         month: 'short',
         day: 'numeric',
       });
     } catch {
-      return '';
+      return article.date?.trim() || '';
     }
   }
+  if (!isEn && article.date?.trim()) return article.date.trim();
   return '';
 }
 ---
@@ -53,22 +69,25 @@ function getArticleDateLabel(article: Article): string {
   <div class="dandy-container">
     <header class="dandy-section-header" data-dandy-reveal>
       <div class="dandy-section-titles">
-        <p class="dandy-section-kicker">مدونة العناية والجمال</p>
+        <p class="dandy-section-kicker">{isEn ? 'Beauty Journal' : 'مدونة العناية والجمال'}</p>
         <h2 id="home-blog-heading" class="dandy-section-heading">
-          نصائح ومقالات روتين البشرة والشعر
+          {isEn ? 'Skincare & Haircare Guides' : 'نصائح ومقالات روتين البشرة والشعر'}
         </h2>
       </div>
-      <a href="/blog" class="dandy-section-more">
-        <span>كل المقالات</span>
-        <Icon name="arrow-left" size={15} strokeWidth={1.8} />
+      <a href={blogIndexHref} class="dandy-section-more">
+        <span>{isEn ? 'All Articles' : 'كل المقالات'}</span>
+        <Icon name={isEn ? 'arrow-right' : 'arrow-left'} size={15} strokeWidth={1.8} />
       </a>
     </header>
 
-    {latestArticles.length > 0 ? (
+    {localizedArticles.length > 0 ? (
       <div class="dandy-blog-home-grid" data-dandy-reveal data-dandy-stagger="group">
-        {latestArticles.map((article) => {
-          const excerpt = getArticleExcerpt(article);
+        {localizedArticles.map(({ article, view }) => {
+          const articleTitle = view.content.title;
+          const articleCat = view.content.category || (isEn ? 'Beauty Rituals' : 'روتين الجمال');
+          const excerpt = getArticleExcerpt(article, view.content.excerpt);
           const dateLabel = getArticleDateLabel(article);
+          const articleHref = buildLocalizedPath(`/blog/${encodeURIComponent(article.slug)}`, locale);
           const imgSrc =
             article.image && !article.image.includes('images.unsplash.com')
               ? article.image
@@ -76,10 +95,10 @@ function getArticleDateLabel(article: Article): string {
 
           return (
             <article class="dandy-blog-home-card" data-dandy-reveal-child>
-              <a href={`/blog/${encodeURIComponent(article.slug)}`} class="dandy-blog-home-media">
+              <a href={articleHref} class="dandy-blog-home-media">
                 <img
                   src={imgSrc}
-                  alt={article.title}
+                  alt={articleTitle}
                   width="640"
                   height="360"
                   loading="lazy"
@@ -92,7 +111,7 @@ function getArticleDateLabel(article: Article): string {
 
               <div class="dandy-blog-home-body">
                 <p class="dandy-blog-home-meta">
-                  <span>{article.category || 'روتين الجمال'}</span>
+                  <span>{articleCat}</span>
                   {dateLabel && (
                     <>
                       <span aria-hidden="true">·</span>
@@ -102,14 +121,14 @@ function getArticleDateLabel(article: Article): string {
                 </p>
 
                 <h3 class="dandy-blog-home-title">
-                  <a href={`/blog/${encodeURIComponent(article.slug)}`}>{article.title}</a>
+                  <a href={articleHref}>{articleTitle}</a>
                 </h3>
 
                 {excerpt && <p class="dandy-blog-home-excerpt">{excerpt}</p>}
 
-                <a href={`/blog/${encodeURIComponent(article.slug)}`} class="dandy-blog-home-link">
-                  <span>اقرئي المقال</span>
-                  <Icon name="chevron-left" size={14} strokeWidth={2} />
+                <a href={articleHref} class="dandy-blog-home-link">
+                  <span>{isEn ? 'Read Article' : 'اقرئي المقال'}</span>
+                  <Icon name={isEn ? 'chevron-right' : 'chevron-left'} size={14} strokeWidth={2} />
                 </a>
               </div>
             </article>
@@ -118,9 +137,13 @@ function getArticleDateLabel(article: Article): string {
       </div>
     ) : (
       <div class="dandy-featured-empty">
-        <p>تصفحي مكتبة مقالات العناية بالبشرة والشعر على مدونة داندي.</p>
-        <a href="/blog" class="dandy-btn dandy-btn--outline">
-          <span>زيارة المدونة</span>
+        <p>
+          {isEn
+            ? 'Explore DANDY skincare and haircare routine articles in our Beauty Journal.'
+            : 'تصفحي مكتبة مقالات العناية بالبشرة والشعر على مدونة داندي.'}
+        </p>
+        <a href={blogIndexHref} class="dandy-btn dandy-btn--outline">
+          <span>{isEn ? 'Visit Journal' : 'زيارة المدونة'}</span>
         </a>
       </div>
     )}
@@ -200,7 +223,7 @@ function getArticleDateLabel(article: Article): string {
 
   .dandy-blog-home-title {
     margin: 0;
-    font-family: var(--dandy-font-ar-display);
+    font-family: var(--dandy-font-active-display);
     font-size: 1.15rem;
     font-weight: 700;
     line-height: 1.42;

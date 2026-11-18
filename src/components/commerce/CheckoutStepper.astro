@@ -5,9 +5,17 @@
  * CSS logical properties for RTL/LTR progression and semantic <ol> markup.
  */
 import Icon from '../ui/Icon.astro';
+import type { Locale } from '../../i18n/types';
+
+export interface Props {
+  locale?: Locale;
+}
+
+const { locale = 'ar' } = Astro.props;
+const isEn = locale === 'en';
 ---
 
-<nav class="dandy-stepper-card" aria-label="مراحل إتمام الطلب">
+<nav class="dandy-stepper-card" aria-label={isEn ? 'Checkout steps' : 'مراحل إتمام الطلب'}>
   <div class="dandy-stepper-track" aria-hidden="true">
     <div class="dandy-stepper-track-fill" id="stepperLineProgress"></div>
   </div>
@@ -19,8 +27,10 @@ import Icon from '../ui/Icon.astro';
           <Icon name="shopping-bag" size={17} strokeWidth={1.85} />
         </span>
         <span class="dandy-stepper-meta">
-          <span class="dandy-stepper-num dandy-tabular">الخطوة 1</span>
-          <span class="dandy-stepper-label step-text">حقيبة التسوق</span>
+          <span class="dandy-stepper-num dandy-tabular">{isEn ? 'Step 1' : 'الخطوة 1'}</span>
+          <span class="dandy-stepper-label step-text">
+            {isEn ? 'Shopping Bag' : 'حقيبة التسوق'}
+          </span>
         </span>
       </button>
     </li>
@@ -31,8 +41,10 @@ import Icon from '../ui/Icon.astro';
           <Icon name="truck" size={17} strokeWidth={1.85} />
         </span>
         <span class="dandy-stepper-meta">
-          <span class="dandy-stepper-num dandy-tabular">الخطوة 2</span>
-          <span class="dandy-stepper-label step-text">بيانات الشحن</span>
+          <span class="dandy-stepper-num dandy-tabular">{isEn ? 'Step 2' : 'الخطوة 2'}</span>
+          <span class="dandy-stepper-label step-text">
+            {isEn ? 'Shipping Details' : 'بيانات الشحن'}
+          </span>
         </span>
       </button>
     </li>
@@ -43,8 +55,10 @@ import Icon from '../ui/Icon.astro';
           <Icon name="clipboard-check" size={17} strokeWidth={1.85} />
         </span>
         <span class="dandy-stepper-meta">
-          <span class="dandy-stepper-num dandy-tabular">الخطوة 3</span>
-          <span class="dandy-stepper-label step-text">المراجعة والتأكيد</span>
+          <span class="dandy-stepper-num dandy-tabular">{isEn ? 'Step 3' : 'الخطوة 3'}</span>
+          <span class="dandy-stepper-label step-text">
+            {isEn ? 'Review & Confirm' : 'المراجعة والتأكيد'}
+          </span>
         </span>
       </button>
     </li>

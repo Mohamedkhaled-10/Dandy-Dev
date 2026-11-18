@@ -5,6 +5,7 @@
  */
 import Icon from '../ui/Icon.astro';
 import type { ResolvedTrustItem } from '../../scripts/homepage-studio';
+import type { Locale } from '../../i18n/types';
 
 export interface Props {
   sectionId?: string;
@@ -12,6 +13,7 @@ export interface Props {
   subtitle?: string;
   items: ResolvedTrustItem[];
   hidden?: boolean;
+  locale?: Locale;
 }
 
 const {
@@ -20,15 +22,17 @@ const {
   subtitle = '',
   items = [],
   hidden = false,
+  locale = 'ar',
 } = Astro.props;
 
+const isEn = locale === 'en';
 const hasHeader = Boolean(title?.trim() || subtitle?.trim());
 const cols = items.length === 2 ? 2 : items.length >= 4 ? 4 : 3;
 ---
 
 <section
   class:list={['dandy-trust-section', { 'has-header': hasHeader }]}
-  aria-label={title || 'مزايا داندي'}
+  aria-label={title || (isEn ? 'Why DANDY' : 'مزايا داندي')}
   data-studio-section={sectionId}
   hidden={hidden || undefined}
 >
@@ -123,7 +127,7 @@ const cols = items.length === 2 ? 2 : items.length >= 4 ? 4 : 3;
 
   .dandy-trust-title {
     margin: 0;
-    font-family: var(--dandy-font-ar-sans);
+    font-family: var(--dandy-font-active-sans);
     font-size: 0.95rem;
     font-weight: 700;
     line-height: 1.4;

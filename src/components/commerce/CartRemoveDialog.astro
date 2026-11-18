@@ -4,6 +4,14 @@
  * Replaces abrupt deletion or native window.confirm() with a keyboard-safe <dialog>.
  */
 import Icon from '../ui/Icon.astro';
+import type { Locale } from '../../i18n/types';
+
+export interface Props {
+  locale?: Locale;
+}
+
+const { locale = 'ar' } = Astro.props;
+const isEn = locale === 'en';
 ---
 
 <dialog
@@ -18,20 +26,32 @@ import Icon from '../ui/Icon.astro';
         <Icon name="trash" size={18} strokeWidth={1.8} />
       </span>
       <div class="dandy-remove-dialog-titles">
-        <h2 id="cartRemoveTitle" class="dandy-remove-dialog-title">إزالة المنتج من الحقيبة</h2>
+        <h2 id="cartRemoveTitle" class="dandy-remove-dialog-title">
+          {isEn ? 'Remove Item from Bag' : 'إزالة المنتج من الحقيبة'}
+        </h2>
         <p id="cartRemoveDesc" class="dandy-remove-dialog-desc">
-          هل ترغبين في إزالة <strong id="cartRemoveItemName">هذا المنتج</strong> من حقيبة التسوق؟
+          {isEn ? (
+            <>
+              Do you want to remove <strong id="cartRemoveItemName">this item</strong> from your
+              shopping bag?
+            </>
+          ) : (
+            <>
+              هل ترغبين في إزالة <strong id="cartRemoveItemName">هذا المنتج</strong> من حقيبة
+              التسوق؟
+            </>
+          )}
         </p>
       </div>
     </div>
 
     <div class="dandy-remove-dialog-actions">
       <button type="button" id="cartRemoveCancelBtn" class="dandy-btn dandy-btn--outline">
-        الإبقاء في الحقيبة
+        {isEn ? 'Keep in Bag' : 'الإبقاء في الحقيبة'}
       </button>
       <button type="button" id="cartRemoveConfirmBtn" class="dandy-btn dandy-btn--danger">
         <Icon name="trash" size={16} strokeWidth={1.85} />
-        <span>تأكيد الإزالة</span>
+        <span>{isEn ? 'Remove Item' : 'تأكيد الإزالة'}</span>
       </button>
     </div>
   </div>
@@ -48,7 +68,7 @@ import Icon from '../ui/Icon.astro';
     max-width: none;
     margin: auto;
     box-shadow: var(--dandy-shadow-lg);
-    font-family: var(--dandy-font-ar-sans);
+    font-family: var(--dandy-font-active-sans);
   }
 
   .dandy-remove-dialog::backdrop {

@@ -5,16 +5,22 @@
  */
 import Icon from '../ui/Icon.astro';
 import type { ProductHighlightItem } from '../../scripts/product-pdp';
+import type { Locale } from '../../i18n/types';
 
 export interface Props {
   items: ProductHighlightItem[];
+  locale?: Locale;
 }
 
-const { items = [] } = Astro.props;
+const { items = [], locale = 'ar' } = Astro.props;
+const isEn = locale === 'en';
 ---
 
 {items.length >= 2 && (
-  <section class="dandy-pdp-highlights" aria-label="المواصفات الأساسية للمستحضر">
+  <section
+    class="dandy-pdp-highlights"
+    aria-label={isEn ? 'Key product specifications' : 'المواصفات الأساسية للمستحضر'}
+  >
     <div class="dandy-pdp-highlights-grid">
       {items.map((item) => (
         <div class="dandy-pdp-highlight-cell">

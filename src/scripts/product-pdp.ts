@@ -6,6 +6,8 @@
 import { getCategorySlugForProduct } from '../utils/categories';
 import { optimizeCloudinaryUrl, type Product, type VariantItem } from '../utils/products';
 import type { CampaignPricingResult } from '../utils/pink-friday-server';
+import type { Locale } from '../i18n/types';
+import { EN_PRODUCT_CONTENT } from '../i18n/content/en/products';
 import {
   FALLBACK_PRODUCT_IMAGE,
   isProductSoldOut,
@@ -137,9 +139,12 @@ export function normalizeProductGalleryImages(
     images?: unknown;
     gallery?: unknown;
     additionalImages?: unknown;
-  }
+  },
+  locale: Locale = 'ar',
+  localizedName?: string
 ): GalleryImageItem[] {
-  const productName = (product?.name || 'منتج داندي').trim();
+  const fallbackName = locale === 'en' ? 'DANDY Product' : 'منتج داندي';
+  const productName = (localizedName || product?.name || fallbackName).trim();
   const candidates = [
     ...collectRawImageStrings(product?.image),
     ...collectRawImageStrings(product?.images),
@@ -178,7 +183,7 @@ export function normalizeProductGalleryImages(
     stageUrl: optimizeCloudinaryUrl(url, { width: 960, height: 960, crop: 'limit' }),
     zoomUrl: optimizeCloudinaryUrl(url, { width: 1600, height: 1600, crop: 'limit' }),
     thumbUrl: optimizeCloudinaryUrl(url, { width: 200, height: 200, crop: 'fill' }),
-    alt: idx === 0 ? productName : `${productName} — صورة ${idx + 1}`,
+    alt: idx === 0 ? productName : locale === 'en' ? `${productName} — Image ${idx + 1}` : `${productName} — صورة ${idx + 1}`,
     isFallback: false,
   }));
 }
@@ -321,25 +326,69 @@ export function parseDescriptionSections(rawDescription?: string): ParsedDescrip
   };
 }
 
+export function resolveLocalizedParsedDescription(
+  product: Pick<Product, 'id' | 'description'>,
+  locale: Locale = 'ar'
+): ParsedDescriptionResult {
+  if (locale === 'en' && product.id && EN_PRODUCT_CONTENT[product.id]) {
+    const enEntry = EN_PRODUCT_CONTENT[product.id];
+    const sections: DescriptionSection[] = (enEntry.structuredSections || []).map((s) => ({
+      id: s.id,
+      title: s.title,
+      paragraphs: [...(s.paragraphs || [])],
+      bullets: [...(s.bullets || [])],
+    }));
+    const leadIntro =
+      enEntry.shortDescription ||
+      sections[0]?.paragraphs[0] ||
+      sections[0]?.bullets[0] ||
+      enEntry.description ||
+      'Daily botanical care formula from Dandy Cosmetics Egypt.';
+    return {
+      hasCustomDescription: sections.length > 0 || Boolean(enEntry.description),
+      leadIntro,
+      sections:
+        sections.length > 0
+          ? sections
+          : enEntry.description
+            ? [
+                {
+                  id: 'overview',
+                  title: 'Product Overview',
+                  paragraphs: [enEntry.description],
+                  bullets: [],
+                },
+              ]
+            : [],
+    };
+  }
+  return parseDescriptionSections(product.description);
+}
+
 /**
  * Extracts explicit size/volume/weight from real product name or slug without guessing.
  */
-export function extractVolumeLabel(product: Pick<Product, 'name' | 'resolvedSlug'>): string | null {
+export function extractVolumeLabel(
+  product: Pick<Product, 'name' | 'resolvedSlug'>,
+  locale: Locale = 'ar'
+): string | null {
   const source = `${product.name || ''} ${product.resolvedSlug || ''}`;
 
   const tolaMatch = source.match(/(\d+)\s*(?:تولات|تولة|tola).*?(\d+)\s*(?:مل|ml)/i);
   if (tolaMatch) {
-    return `${tolaMatch[1]} تولات · ${tolaMatch[2]} مل`;
+    return locale === 'en'
+      ? `${tolaMatch[1]} Tola · ${tolaMatch[2]} ml`
+      : `${tolaMatch[1]} تولات · ${tolaMatch[2]} مل`;
   }
 
   const mlMatch = source.match(/(\d+)\s*(?:مل|ml)\b/i);
   if (mlMatch) {
-    return `${mlMatch[1]} مل`;
+    return locale === 'en' ? `${mlMatch[1]} ml` : `${mlMatch[1]} مل`;
   }
 
   const gmMatch = source.match(/(\d+)\s*(?:جم|جرام|gm|g)\b/i);
   if (gmMatch) {
-    return `${gmMatch[1]} جم`;
+    return locale === 'en' ? `${gmMatch[1]} g` : `${gmMatch[1]} جم`;
   }
 
   return null;
@@ -350,11 +399,12 @@ export function extractVolumeLabel(product: Pick<Product, 'name' | 'resolvedSlug
  */
 export function extractProductHighlights(
   product: Product,
-  parsed: ParsedDescriptionResult
+  parsed: ParsedDescriptionResult,
+  locale: Locale = 'ar'
 ): ProductHighlightItem[] {
   const items: ProductHighlightItem[] = [];
-  const { labelAr: categoryLabel } = resolveCategoryArabicLabel(product);
-  const volumeLabel = extractVolumeLabel(product);
+  const { labelAr: categoryLabel } = resolveCategoryArabicLabel(product, locale);
+  const volumeLabel = extractVolumeLabel(product, locale);
   const variants = normalizeProductVariants(product.variants);
   const hasVariants = requiresVariantSelection(product);
   const soldOut = isProductSoldOut(product);
@@ -362,7 +412,7 @@ export function extractProductHighlights(
   items.push({
     id: 'category',
     icon: 'tag',
-    label: 'التصنيف',
+    label: locale === 'en' ? 'Category' : 'التصنيف',
     value: categoryLabel,
   });
 
@@ -370,7 +420,7 @@ export function extractProductHighlights(
     items.push({
       id: 'volume',
       icon: 'package-check',
-      label: 'الحجم / الوزن',
+      label: locale === 'en' ? 'Size / Weight' : 'الحجم / الوزن',
       value: volumeLabel,
     });
   }
@@ -380,10 +430,15 @@ export function extractProductHighlights(
     items.push({
       id: 'variants',
       icon: 'sliders',
-      label: 'خيارات الروائح',
-      value: availCount === variants.length
-        ? `${variants.length} روائح متاحة`
-        : `${availCount} من ${variants.length} متاحة`,
+      label: locale === 'en' ? 'Scent Options' : 'خيارات الروائح',
+      value:
+        locale === 'en'
+          ? availCount === variants.length
+            ? `${variants.length} scents available`
+            : `${availCount} of ${variants.length} available`
+          : availCount === variants.length
+            ? `${variants.length} روائح متاحة`
+            : `${availCount} من ${variants.length} متاحة`,
     });
   }
 
@@ -392,22 +447,37 @@ export function extractProductHighlights(
     items.push({
       id: 'sulfate-free',
       icon: 'leaf',
-      label: 'التركيبة',
-      value: 'خالي من السلفات',
+      label: locale === 'en' ? 'Formula' : 'التركيبة',
+      value: locale === 'en' ? 'Sulfate-Free' : 'خالي من السلفات',
     });
   }
 
-  const featuresSec = parsed.sections.find((s) => s.id === 'features');
-  if (featuresSec && featuresSec.bullets.length > 0) {
-    for (let i = 0; i < Math.min(2, featuresSec.bullets.length); i++) {
-      const bullet = featuresSec.bullets[i];
-      if (bullet.length <= 72) {
+  if (locale === 'en' && product.id && EN_PRODUCT_CONTENT[product.id]?.highlights?.length) {
+    const enHighlights = EN_PRODUCT_CONTENT[product.id].highlights || [];
+    for (let i = 0; i < Math.min(2, enHighlights.length); i++) {
+      const bullet = enHighlights[i];
+      if (bullet.length <= 92) {
         items.push({
           id: `feature-${i}`,
           icon: 'sparkles',
-          label: 'ميزة مذكورة',
+          label: 'Key Benefit',
           value: bullet,
         });
+      }
+    }
+  } else {
+    const featuresSec = parsed.sections.find((s) => s.id === 'features');
+    if (featuresSec && featuresSec.bullets.length > 0) {
+      for (let i = 0; i < Math.min(2, featuresSec.bullets.length); i++) {
+        const bullet = featuresSec.bullets[i];
+        if (bullet.length <= 72) {
+          items.push({
+            id: `feature-${i}`,
+            icon: 'sparkles',
+            label: locale === 'en' ? 'Key Benefit' : 'ميزة مذكورة',
+            value: bullet,
+          });
+        }
       }
     }
   }
@@ -415,8 +485,14 @@ export function extractProductHighlights(
   items.push({
     id: 'availability',
     icon: 'check-circle',
-    label: 'التوافر',
-    value: soldOut ? 'نفذت الكمية حالياً' : 'متوفر للطلب',
+    label: locale === 'en' ? 'Availability' : 'التوافر',
+    value: soldOut
+      ? locale === 'en'
+        ? 'Currently Sold Out'
+        : 'نفذت الكمية حالياً'
+      : locale === 'en'
+        ? 'In Stock'
+        : 'متوفر للطلب',
   });
 
   return items.slice(0, 6);
@@ -425,7 +501,10 @@ export function extractProductHighlights(
 /**
  * Computes exact review statistics and 5-to-1 distribution strictly from real DB records.
  */
-export function computeReviewStats(rawReviews: ReviewRecordInput[] | Record<string, ReviewRecordInput> | null | undefined): ReviewStatsResult {
+export function computeReviewStats(
+  rawReviews: ReviewRecordInput[] | Record<string, ReviewRecordInput> | null | undefined,
+  locale: Locale = 'ar'
+): ReviewStatsResult {
   const rawEntries: Array<{ id: string; rec: ReviewRecordInput }> = [];
 
   if (Array.isArray(rawReviews)) {
@@ -442,15 +521,17 @@ export function computeReviewStats(rawReviews: ReviewRecordInput[] | Record<stri
     });
   }
 
+  const defaultAuthor = locale === 'en' ? 'DANDY Customer' : 'عميلة داندي';
+  const defaultInitial = locale === 'en' ? 'D' : 'د';
   const items: NormalizedReviewItem[] = rawEntries
     .map(({ id, rec }) => {
       const parsedRating = Number(rec.rating);
       const rating = Number.isFinite(parsedRating)
         ? Math.min(5, Math.max(1, Math.round(parsedRating)))
         : 5;
-      const rawName = (rec.customerName || rec.name || rec.userName || 'عميلة داندي').trim();
-      const author = rawName || 'عميلة داندي';
-      const initial = Array.from(author)[0]?.toUpperCase() || 'د';
+      const rawName = (rec.customerName || rec.name || rec.userName || defaultAuthor).trim();
+      const author = rawName || defaultAuthor;
+      const initial = Array.from(author)[0]?.toUpperCase() || defaultInitial;
       const createdNum = Number(rec.createdAt);
       const createdAt = Number.isFinite(createdNum) && createdNum > 0 ? createdNum : null;
       const orderRef = typeof rec.orderId === 'string' ? rec.orderId.trim() : '';
@@ -562,13 +643,14 @@ export function buildPdpCartPayload(params: {
   selectedVariants: Array<{ id: string; name: string }>;
   quantity: number;
   pinkFridayPricing?: CampaignPricingResult | null;
+  locale?: Locale;
 }): PdpCartBuildResult {
-  const { product, selectedVariants, quantity, pinkFridayPricing } = params;
+  const { product, selectedVariants, quantity, pinkFridayPricing, locale = 'ar' } = params;
   if (!product || !product.id) {
     return {
       ok: false,
       errorReason: 'invalid_product',
-      errorMessage: 'بيانات المنتج غير مكتملة.',
+      errorMessage: locale === 'en' ? 'Product data is incomplete.' : 'بيانات المنتج غير مكتملة.',
     };
   }
 
@@ -576,7 +658,10 @@ export function buildPdpCartPayload(params: {
     return {
       ok: false,
       errorReason: 'sold_out',
-      errorMessage: 'نعتذر، هذا المنتج غير متوفر حالياً (نفدت الكمية).',
+      errorMessage:
+        locale === 'en'
+          ? 'Sorry, this product is currently out of stock.'
+          : 'نعتذر، هذا المنتج غير متوفر حالياً (نفدت الكمية).',
     };
   }
 
@@ -597,7 +682,10 @@ export function buildPdpCartPayload(params: {
       return {
         ok: false,
         errorReason: 'missing_variant',
-        errorMessage: 'يرجى اختيار الرائحة المفضلة أولاً قبل الإضافة إلى السلة.',
+        errorMessage:
+          locale === 'en'
+            ? 'Please choose your favorite scent first before adding to your bag.'
+            : 'يرجى اختيار الرائحة المفضلة أولاً قبل الإضافة إلى السلة.',
       };
     }
   }

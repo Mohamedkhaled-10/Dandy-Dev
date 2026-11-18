@@ -5,6 +5,8 @@
  * Zero static pill spam; uses CSS logical properties.
  */
 import Icon from '../ui/Icon.astro';
+import type { Locale } from '../../i18n/types';
+import { buildLocalizedPath } from '../../i18n/index';
 
 export interface Props {
   eyebrow: string;
@@ -14,6 +16,7 @@ export interface Props {
   parentCrumbHref?: string;
   parentCrumbLabel?: string;
   readingContainer?: boolean;
+  locale?: Locale;
 }
 
 const {
@@ -24,15 +27,23 @@ const {
   parentCrumbHref,
   parentCrumbLabel,
   readingContainer = false,
+  locale = 'ar',
 } = Astro.props;
+
+const isEn = locale === 'en';
+const homeHref = buildLocalizedPath('/', locale);
 ---
 
 <header class="dandy-ed-header" data-dandy-motion="calm">
   <div class={readingContainer ? 'dandy-container-reading' : 'dandy-container'}>
-    <nav class="dandy-ed-breadcrumb" aria-label="مسار التنقل" data-dandy-entrance="0">
+    <nav
+      class="dandy-ed-breadcrumb"
+      aria-label={isEn ? 'Breadcrumb' : 'مسار التنقل'}
+      data-dandy-entrance="0"
+    >
       <ol class="dandy-ed-breadcrumb-list">
         <li>
-          <a href="/" class="dandy-ed-crumb-link">الرئيسية</a>
+          <a href={homeHref} class="dandy-ed-crumb-link">{isEn ? 'Home' : 'الرئيسية'}</a>
         </li>
         <li aria-hidden="true" class="dandy-ed-crumb-sep">
           <Icon name="chevron-left" size={14} strokeWidth={1.8} directional={true} />

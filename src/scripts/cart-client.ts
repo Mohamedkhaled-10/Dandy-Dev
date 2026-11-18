@@ -7,6 +7,8 @@
  * POST /api/create-order payload contracts. Zero native alert()/confirm().
  * ============================================================================
  */
+import { resolveClientLocalizedProductName, resolveClientLocalizedVariantName } from '../i18n/content/en/products';
+import { EN_PINK_FRIDAY_OVERLAY } from '../i18n/content/en/pink-friday';
 import { getIconSvg } from './icons';
 import {
   buildCreateOrderPayload,
@@ -17,7 +19,7 @@ import {
   extractCollectionSubItems,
   FALLBACK_CART_IMAGE,
   formatOrderLineItem,
-  getGovernorateArabicLabel,
+  getGovernorateLabel,
   parseCartArrayFromStrings,
   resolveEffectiveUnitPrice,
   resolveItemQuantity,
@@ -29,6 +31,18 @@ import {
   type CheckoutFieldKey,
   type RecentLookupEntry,
 } from './purchase-flow';
+
+function getRuntimeLocale(): 'ar' | 'en' {
+  if (typeof document !== 'undefined') {
+    const lang = (document.documentElement.getAttribute('lang') || '').trim().toLowerCase();
+    if (lang.startsWith('en')) return 'en';
+  }
+  if (typeof window !== 'undefined') {
+    const p = (window.location.pathname || '/').toLowerCase();
+    if (p === '/en' || p.startsWith('/en/')) return 'en';
+  }
+  return 'ar';
+}
 
 declare global {
   interface Window {
@@ -53,6 +67,7 @@ declare global {
     };
     fbq?: (...args: any[]) => void;
     updateSharedCartCount?: () => void;
+    __dandyResolveVariantName?: (productId?: string, variantId?: string, fallbackName?: string) => string;
     goToStep?: (step: number) => void;
     validateAndGoToReview?: () => void;
     submitFinalOrder?: () => Promise<void>;
@@ -67,6 +82,24 @@ declare global {
 export function initCartCheckoutPage(): void {
   const root = document.getElementById('cartCheckoutContainer');
   if (!root) return;
+
+  const locale = getRuntimeLocale();
+  const isEn = locale === 'en';
+  const currencyLabel = isEn ? 'EGP' : 'ج.م';
+
+  window.__dandyResolveVariantName = (productId?: string, variantId?: string, fallbackName?: string) =>
+    resolveClientLocalizedVariantName(productId, variantId, fallbackName || '', locale);
+
+  function resolveCartItemDisplayName(item: Partial<CartItemInput>): string {
+    const fallback = String(item?.name || (isEn ? 'DANDY Product' : 'منتج داندي'));
+    if (!isEn) return fallback;
+    if (item?.type === 'collection' || item?.isCollection || item?.collectionId) {
+      const colId = String(item.collectionId || item.id || '').split('::')[0];
+      const colOv = EN_PINK_FRIDAY_OVERLAY.collectionTextOverrides?.[colId]?.name;
+      if (colOv) return colOv;
+    }
+    return resolveClientLocalizedProductName(item?.productId || item?.id, fallback, 'en');
+  }
 
   let cart: CartItemInput[] = parseCartArrayFromStrings(
     safeGetStorage('cart'),
@@ -166,7 +199,9 @@ export function initCartCheckoutPage(): void {
             if (item.regularPrice) item.price = item.regularPrice;
           } else {
             item.isPinkFriday = true;
-            if (!item.badgeText) item.badgeText = 'كوليكشن Pink Friday';
+            if (!item.badgeText) {
+              item.badgeText = isEn ? 'Pink Friday Collection' : 'كوليكشن Pink Friday';
+            }
           }
         }
         return;
@@ -231,9 +266,13 @@ export function initCartCheckoutPage(): void {
     freeShippingBox.classList.toggle('is-qualified', prog.qualifies);
 
     if (prog.qualifies) {
-      freeShippingText.textContent = 'طلبكِ مؤهل للشحن المجاني لجميع المحافظات.';
+      freeShippingText.textContent = isEn
+        ? 'Your order qualifies for free shipping across all governorates.'
+        : 'طلبكِ مؤهل للشحن المجاني لجميع المحافظات.';
     } else {
-      freeShippingText.textContent = `أضيفي منتجات بقيمة ${prog.remainingForFree.toLocaleString('en-US')} ج.م لتجاوز 2000 ج.م والحصول على شحن مجاني.`;
+      freeShippingText.textContent = isEn
+        ? `Add ${prog.remainingForFree.toLocaleString('en-US')} EGP more to exceed 2,000 EGP and unlock free shipping.`
+        : `أضيفي منتجات بقيمة ${prog.remainingForFree.toLocaleString('en-US')} ج.م لتجاوز 2000 ج.م والحصول على شحن مجاني.`;
     }
   }
 
@@ -242,16 +281,16 @@ export function initCartCheckoutPage(): void {
     const { governorate } = getFormInputValues();
     const quote = calculateShippingQuote(subtotal, governorate);
 
-    if (subtotalValSummary) subtotalValSummary.textContent = `${subtotal.toFixed(0)} ج.م`;
-    if (subtotalValSummary2) subtotalValSummary2.textContent = `${subtotal.toFixed(0)} ج.م`;
-    if (grandTotalSummaryValue1) grandTotalSummaryValue1.textContent = `${subtotal.toFixed(0)} ج.م`;
+    if (subtotalValSummary) subtotalValSummary.textContent = `${subtotal.toFixed(0)} ${currencyLabel}`;
+    if (subtotalValSummary2) subtotalValSummary2.textContent = `${subtotal.toFixed(0)} ${currencyLabel}`;
+    if (grandTotalSummaryValue1) grandTotalSummaryValue1.textContent = `${subtotal.toFixed(0)} ${currencyLabel}`;
 
     if (shippingCostSummary1) {
       if (quote.isFreeShipping) {
-        shippingCostSummary1.textContent = 'شحن مجاني';
+        shippingCostSummary1.textContent = isEn ? 'Free Shipping' : 'شحن مجاني';
         shippingCostSummary1.className = 'dandy-sum-value dandy-sum-value--free';
       } else {
-        shippingCostSummary1.textContent = 'تُحدد عند اختيار المحافظة';
+        shippingCostSummary1.textContent = isEn ? 'Calculated at checkout' : 'تُحدد عند اختيار المحافظة';
         shippingCostSummary1.className = 'dandy-sum-value dandy-sum-value--muted';
       }
     }
@@ -259,23 +298,23 @@ export function initCartCheckoutPage(): void {
     if (shippingCostSummary2) {
       if (quote.hasGovernorate) {
         if (quote.isFreeShipping) {
-          shippingCostSummary2.textContent = 'شحن مجاني';
+          shippingCostSummary2.textContent = isEn ? 'Free Shipping' : 'شحن مجاني';
           shippingCostSummary2.className = 'dandy-sum-value dandy-sum-value--free';
         } else {
-          shippingCostSummary2.textContent = `${quote.shippingFee} ج.م`;
+          shippingCostSummary2.textContent = `${quote.shippingFee} ${currencyLabel}`;
           shippingCostSummary2.className = 'dandy-sum-value';
         }
       } else if (quote.isFreeShipping) {
-        shippingCostSummary2.textContent = 'شحن مجاني';
+        shippingCostSummary2.textContent = isEn ? 'Free Shipping' : 'شحن مجاني';
         shippingCostSummary2.className = 'dandy-sum-value dandy-sum-value--free';
       } else {
-        shippingCostSummary2.textContent = 'اختاري المحافظة لحساب الشحن';
+        shippingCostSummary2.textContent = isEn ? 'Select a governorate to calculate' : 'اختاري المحافظة لحساب الشحن';
         shippingCostSummary2.className = 'dandy-sum-value dandy-sum-value--muted';
       }
     }
 
     if (grandTotalSummaryValue2) {
-      grandTotalSummaryValue2.textContent = `${quote.totalAmount.toFixed(0)} ج.م`;
+      grandTotalSummaryValue2.textContent = `${quote.totalAmount.toFixed(0)} ${currencyLabel}`;
     }
 
     updateFreeShippingBanner(subtotal);
@@ -288,7 +327,9 @@ export function initCartCheckoutPage(): void {
 
     const totalItemsCount = cart.reduce((sum, item) => sum + resolveItemQuantity(item?.quantity), 0);
     if (cartItemsCountBadge) {
-      cartItemsCountBadge.textContent = `${totalItemsCount} ${totalItemsCount === 1 ? 'منتج' : 'منتجات'}`;
+      cartItemsCountBadge.textContent = isEn
+        ? `${totalItemsCount} ${totalItemsCount === 1 ? 'item' : 'items'}`
+        : `${totalItemsCount} ${totalItemsCount === 1 ? 'منتج' : 'منتجات'}`;
     }
 
     if (!cart || cart.length === 0) {
@@ -313,14 +354,21 @@ export function initCartCheckoutPage(): void {
       const qtyVal = resolveItemQuantity(item.quantity);
       const unitPrice = resolveEffectiveUnitPrice(item);
       const rowSubtotal = unitPrice * qtyVal;
-      const safeName = escapeHtml(item.name || 'منتج داندي');
+      const displayName = resolveCartItemDisplayName(item);
+      const safeName = escapeHtml(displayName);
       const safeImage = escapeHtml(sanitizeImageUrl(item.image));
-      const varInfo = resolveVariantsDisplayInfo(item);
+      const varInfo = resolveVariantsDisplayInfo(item, locale);
+
+      const pfTagLabel = isEn
+        ? item.isCollection
+          ? 'Pink Friday Collection'
+          : 'Pink Friday'
+        : item.badgeText || (item.isCollection ? 'كوليكشن Pink Friday' : 'Pink Friday');
 
       const pfBadgeHtml = item.isPinkFriday
         ? `<div class="dandy-cart-badge-row">
-             <span class="dandy-cart-offer-tag">${escapeHtml(item.badgeText || (item.isCollection ? 'كوليكشن Pink Friday' : 'Pink Friday'))}</span>
-             ${item.regularPrice ? `<span class="dandy-cart-old-price dandy-tabular">${Number(item.regularPrice).toFixed(0)} ج.م</span>` : ''}
+             <span class="dandy-cart-offer-tag">${escapeHtml(pfTagLabel)}</span>
+             ${item.regularPrice ? `<span class="dandy-cart-old-price dandy-tabular">${Number(item.regularPrice).toFixed(0)} ${currencyLabel}</span>` : ''}
            </div>`
         : '';
 
@@ -332,11 +380,11 @@ export function initCartCheckoutPage(): void {
              </div>`
           : '';
 
-      const subItems = extractCollectionSubItems(item);
+      const subItems = extractCollectionSubItems(item, locale);
       const collectionHtml =
         item.isCollection && subItems.length > 0
           ? `<div class="dandy-cart-col-box">
-               <div class="dandy-cart-col-title">${packageIcon} <span>محتويات الكوليكشن:</span></div>
+               <div class="dandy-cart-col-title">${packageIcon} <span>${isEn ? 'Collection includes:' : 'محتويات الكوليكشن:'}</span></div>
                <ul class="dandy-cart-col-list">
                  ${subItems
                    .map((si) => {
@@ -367,42 +415,42 @@ export function initCartCheckoutPage(): void {
             ${pfBadgeHtml}
             ${variantHtml}
             ${collectionHtml}
-            <div class="dandy-cart-unit-price dandy-tabular">${unitPrice.toFixed(0)} ج.م للقطعة</div>
+            <div class="dandy-cart-unit-price dandy-tabular">${unitPrice.toFixed(0)} ${currencyLabel}${isEn ? ' each' : ' للقطعة'}</div>
           </div>
         </div>
 
         <div class="dandy-cart-item-controls">
-          <div class="dandy-qty-stepper" role="group" aria-label="التحكم بكمية ${safeName}">
+          <div class="dandy-qty-stepper" role="group" aria-label="${escapeHtml(isEn ? `Quantity controls for ${displayName}` : `التحكم بكمية ${displayName}`)}">
             <button
               type="button"
               class="dandy-qty-btn"
               data-qty-action="dec"
               data-index="${index}"
-              aria-label="تقليل كمية ${safeName}"
+              aria-label="${escapeHtml(isEn ? `Decrease quantity of ${displayName}` : `تقليل كمية ${displayName}`)}"
               ${qtyVal <= 1 ? 'disabled' : ''}
             >
               ${minusIcon}
             </button>
-            <span class="dandy-qty-value dandy-tabular" aria-label="الكمية">${qtyVal}</span>
+            <span class="dandy-qty-value dandy-tabular" aria-label="${isEn ? 'Quantity' : 'الكمية'}">${qtyVal}</span>
             <button
               type="button"
               class="dandy-qty-btn"
               data-qty-action="inc"
               data-index="${index}"
-              aria-label="زيادة كمية ${safeName}"
+              aria-label="${escapeHtml(isEn ? `Increase quantity of ${displayName}` : `زيادة كمية ${displayName}`)}"
             >
               ${plusIcon}
             </button>
           </div>
 
           <div class="dandy-cart-item-end">
-            <div class="dandy-cart-row-total dandy-tabular">${rowSubtotal.toFixed(0)} ج.م</div>
+            <div class="dandy-cart-row-total dandy-tabular">${rowSubtotal.toFixed(0)} ${currencyLabel}</div>
             <button
               type="button"
               class="dandy-cart-remove-btn"
               data-remove-index="${index}"
-              aria-label="إزالة ${safeName} من الحقيبة"
-              title="إزالة من الحقيبة"
+              aria-label="${escapeHtml(isEn ? `Remove ${displayName} from bag` : `إزالة ${displayName} من الحقيبة`)}"
+              title="${isEn ? 'Remove from bag' : 'إزالة من الحقيبة'}"
             >
               ${trashIcon}
             </button>
@@ -430,7 +478,6 @@ export function initCartCheckoutPage(): void {
     if (!item) return;
 
     if (!removeDialog || typeof removeDialog.showModal !== 'function') {
-      // Fallback only if browser <dialog> missing (non-blocking)
       performRemove(index);
       return;
     }
@@ -438,7 +485,7 @@ export function initCartCheckoutPage(): void {
     pendingRemoveIndex = index;
     lastRemoveTrigger = triggerEl;
     if (removeItemNameEl) {
-      removeItemNameEl.textContent = String(item.name || 'هذا المنتج');
+      removeItemNameEl.textContent = resolveCartItemDisplayName(item);
     }
     removeDialog.showModal();
   }
@@ -457,10 +504,14 @@ export function initCartCheckoutPage(): void {
   function performRemove(index: number): void {
     const removed = cart[index];
     if (!removed) return;
+    const removedName = resolveCartItemDisplayName(removed);
     cart.splice(index, 1);
     persistCart(cart);
     renderCartItems();
-    showToast('info', `تمت إزالة "${removed.name || 'المنتج'}" من حقيبة التسوق.`);
+    showToast(
+      'info',
+      isEn ? `Removed "${removedName}" from your bag.` : `تمت إزالة "${removedName}" من حقيبة التسوق.`
+    );
   }
 
   function clearFieldError(fieldKey: CheckoutFieldKey): void {
@@ -597,7 +648,7 @@ export function initCartCheckoutPage(): void {
   function populateReviewAndAdvance(): void {
     clearAllFieldErrors();
     const formValues = getFormInputValues();
-    const validation = validateCheckoutForm(formValues);
+    const validation = validateCheckoutForm(formValues, locale);
 
     if (!validation.valid) {
       applyFieldErrors(validation.errors, validation.firstErrorField);
@@ -613,9 +664,12 @@ export function initCartCheckoutPage(): void {
 
     if (revCustName) revCustName.textContent = sanitized.name;
     if (revCustPhone) revCustPhone.textContent = sanitized.phone;
-    if (revCustEmail) revCustEmail.textContent = sanitized.email || 'لا يوجد';
+    if (revCustEmail) revCustEmail.textContent = sanitized.email || (isEn ? 'Not provided' : 'لا يوجد');
     if (revCustLocation) {
-      revCustLocation.textContent = `${sanitized.city}، محافظة ${getGovernorateArabicLabel(sanitized.governorate)}`;
+      const govText = getGovernorateLabel(sanitized.governorate, locale);
+      revCustLocation.textContent = isEn
+        ? `${sanitized.city}, ${govText} Governorate`
+        : `${sanitized.city}، محافظة ${govText}`;
     }
     if (revCustAddress) revCustAddress.textContent = sanitized.address;
 
@@ -626,11 +680,14 @@ export function initCartCheckoutPage(): void {
       const sparklesIcon = getIconSvg('sparkles', { size: 12, strokeWidth: 1.9 });
 
       cart.forEach((rawItem) => {
-        const formatted = formatOrderLineItem({
-          ...rawItem,
-          effectiveUnitPrice: resolveEffectiveUnitPrice(rawItem),
-          lineTotal: resolveEffectiveUnitPrice(rawItem) * resolveItemQuantity(rawItem.quantity),
-        });
+        const formatted = formatOrderLineItem(
+          {
+            ...rawItem,
+            effectiveUnitPrice: resolveEffectiveUnitPrice(rawItem),
+            lineTotal: resolveEffectiveUnitPrice(rawItem) * resolveItemQuantity(rawItem.quantity),
+          },
+          locale
+        );
         const varInfo = formatted.variants;
         const variantBadgeHtml =
           varInfo && varInfo.text
@@ -640,7 +697,7 @@ export function initCartCheckoutPage(): void {
         const colSubHtml =
           formatted.isCollection && formatted.collectionItems.length > 0
             ? `<div class="dandy-rev-col-sub">
-                 <span>محتويات الكوليكشن:</span>
+                 <span>${isEn ? 'Collection includes:' : 'محتويات الكوليكشن:'}</span>
                  ${formatted.collectionItems
                    .map((si) => `${escapeHtml(si.productName)}${si.variantName ? ` (${escapeHtml(si.variantName)})` : ''}`)
                    .join(' · ')}
@@ -664,12 +721,12 @@ export function initCartCheckoutPage(): void {
               <h4 class="dandy-rev-product-name">${escapeHtml(formatted.name)}</h4>
               <div class="dandy-rev-product-meta">
                 ${variantBadgeHtml}
-                <span class="dandy-rev-qty dandy-tabular">الكمية: <strong>${formatted.quantity}</strong> × ${formatted.unitPrice.toFixed(0)} ج.م</span>
+                <span class="dandy-rev-qty dandy-tabular">${isEn ? 'Qty:' : 'الكمية:'} <strong>${formatted.quantity}</strong> × ${formatted.unitPrice.toFixed(0)} ${currencyLabel}</span>
               </div>
               ${colSubHtml}
             </div>
           </div>
-          <div class="dandy-rev-product-total dandy-tabular">${formatted.lineTotal.toFixed(0)} ج.م</div>
+          <div class="dandy-rev-product-total dandy-tabular">${formatted.lineTotal.toFixed(0)} ${currencyLabel}</div>
         `;
         listEl.appendChild(li);
       });
@@ -677,16 +734,18 @@ export function initCartCheckoutPage(): void {
       revProductsList.appendChild(listEl);
     }
 
-    if (summSubtotal) summSubtotal.textContent = `${subtotal.toFixed(0)} ج.م`;
+    if (summSubtotal) summSubtotal.textContent = `${subtotal.toFixed(0)} ${currencyLabel}`;
     if (summShipping) {
       summShipping.textContent = quote.isFreeShipping
-        ? 'شحن مجاني'
-        : `${quote.shippingFee ?? 0} ج.م`;
+        ? isEn
+          ? 'Free Shipping'
+          : 'شحن مجاني'
+        : `${quote.shippingFee ?? 0} ${currencyLabel}`;
       summShipping.className = quote.isFreeShipping
         ? 'dandy-sum-value dandy-sum-value--free dandy-tabular'
         : 'dandy-sum-value dandy-tabular';
     }
-    if (finalSummaryTotal) finalSummaryTotal.textContent = `${quote.totalAmount.toFixed(0)} ج.م`;
+    if (finalSummaryTotal) finalSummaryTotal.textContent = `${quote.totalAmount.toFixed(0)} ${currencyLabel}`;
 
     goToStep(3);
   }
@@ -704,7 +763,7 @@ export function initCartCheckoutPage(): void {
     if (!finalPlaceOrderBtn) return;
 
     const formValues = getFormInputValues();
-    const validation = validateCheckoutForm(formValues);
+    const validation = validateCheckoutForm(formValues, locale);
     if (!validation.valid) {
       goToStep(2);
       applyFieldErrors(validation.errors, validation.firstErrorField);
@@ -726,7 +785,11 @@ export function initCartCheckoutPage(): void {
     }
 
     if (!turnstileToken) {
-      showReviewError('يرجى إكمال التحقق الأمني (CAPTCHA) أعلاه قبل تأكيد الطلب.');
+      showReviewError(
+        isEn
+          ? 'Please complete the security CAPTCHA check above before confirming your order.'
+          : 'يرجى إكمال التحقق الأمني (CAPTCHA) أعلاه قبل تأكيد الطلب.'
+      );
       return;
     }
 
@@ -738,9 +801,11 @@ export function initCartCheckoutPage(): void {
     isSubmitting = true;
     const originalBtnHtml = finalPlaceOrderBtn.innerHTML;
     finalPlaceOrderBtn.disabled = true;
-    finalPlaceOrderBtn.textContent = 'جاري تنفيذ الطلب...';
+    finalPlaceOrderBtn.textContent = isEn ? 'Placing your order...' : 'جاري تنفيذ الطلب...';
     if (savingTextLoader) {
-      savingTextLoader.textContent = 'جاري حفظ الفاتورة وتأكيد الطلب...';
+      savingTextLoader.textContent = isEn
+        ? 'Saving your invoice and confirming your order...'
+        : 'جاري حفظ الفاتورة وتأكيد الطلب...';
     }
 
     let idToken: string | null = null;
@@ -775,7 +840,12 @@ export function initCartCheckoutPage(): void {
         } catch {
           // Ignore
         }
-        throw new Error(result.message || 'تعذر إتمام الطلب في الوقت الحالي. يرجى المحاولة مجدداً.');
+        throw new Error(
+          result.message ||
+            (isEn
+              ? 'Unable to place your order right now. Please try again.'
+              : 'تعذر إتمام الطلب في الوقت الحالي. يرجى المحاولة مجدداً.')
+        );
       }
 
       const generatedKey = String(result.orderId || '');
@@ -797,7 +867,8 @@ export function initCartCheckoutPage(): void {
         // Ignore
       }
 
-      window.location.href = `/invoice?id=${encodeURIComponent(generatedKey)}&invoice=${encodeURIComponent(invoiceCode)}`;
+      const invBase = isEn ? '/en/invoice' : '/invoice';
+      window.location.href = `${invBase}?id=${encodeURIComponent(generatedKey)}&invoice=${encodeURIComponent(invoiceCode)}`;
     } catch (err: any) {
       isSubmitting = false;
       try {
@@ -805,12 +876,18 @@ export function initCartCheckoutPage(): void {
       } catch {
         // Ignore
       }
-      const message = err?.message || 'حدث خطأ أثناء الاتصال بالخادم. يرجى المحاولة مرة أخرى.';
+      const message =
+        err?.message ||
+        (isEn
+          ? 'A server connection error occurred. Please try again.'
+          : 'حدث خطأ أثناء الاتصال بالخادم. يرجى المحاولة مرة أخرى.');
       showReviewError(message);
       finalPlaceOrderBtn.disabled = false;
       finalPlaceOrderBtn.innerHTML = originalBtnHtml;
       if (savingTextLoader) {
-        savingTextLoader.textContent = 'تأكيد الطلب يسجله بأمان ويوفر لكِ كود تتبع فوري.';
+        savingTextLoader.textContent = isEn
+          ? 'Confirming your order records it securely and gives you an instant tracking code.'
+          : 'تأكيد الطلب يسجله بأمان ويوفر لكِ كود تتبع فوري.';
       }
     }
   }
@@ -872,14 +949,15 @@ export function initCartCheckoutPage(): void {
             const select = document.getElementById('savedAddressSelect') as HTMLSelectElement | null;
             if (sec) sec.style.display = 'block';
             if (select) {
-              select.innerHTML = '<option value="">-- اختاري عنواناً محفوظاً --</option>';
+              select.innerHTML = `<option value="">${isEn ? '-- Select a saved address --' : '-- اختاري عنواناً محفوظاً --'}</option>`;
               let defaultKey: string | null = null;
               keys.forEach((k) => {
                 const addr = customerSavedAddresses[k];
-                const govArabic = getGovernorateArabicLabel(addr.governorate);
+                const govLabel = getGovernorateLabel(addr.governorate, locale);
                 const opt = document.createElement('option');
                 opt.value = k;
-                opt.textContent = `${addr.label || 'عنوان'} (${govArabic} - ${addr.city || ''})${addr.isDefault ? ' ★ (افتراضي)' : ''}`;
+                const defaultTag = addr.isDefault ? (isEn ? ' ★ (Default)' : ' ★ (افتراضي)') : '';
+                opt.textContent = `${addr.label || (isEn ? 'Address' : 'عنوان')} (${govLabel} - ${addr.city || ''})${defaultTag}`;
                 select.appendChild(opt);
                 if (addr.isDefault) defaultKey = k;
               });

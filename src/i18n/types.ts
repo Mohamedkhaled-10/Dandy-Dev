@@ -405,8 +405,10 @@ export interface PinkFridayLocalizedOverlay {
   campaignId: string;
   title: string;
   subtitle: string;
+  headline?: string;
   ctaText: string;
   badgeText: string;
+  heroImageOverride?: string;
   collectionTextOverrides?: Record<
     string,
     {
@@ -425,6 +427,9 @@ export interface HomepageStudioLocalizedOverlay {
       title?: string;
       subtitle?: string;
       buttonText?: string;
+      link?: string;
+      desktopImage?: string;
+      mobileImage?: string;
     }
   >;
   trustItems?: {
@@ -445,6 +450,7 @@ export interface HomepageStudioLocalizedOverlay {
     title?: string;
     desc?: string;
     ctaText?: string;
+    ctaLink?: string;
   };
   categories?: Record<
     string,
@@ -452,6 +458,13 @@ export interface HomepageStudioLocalizedOverlay {
       name?: string;
       tagline?: string;
       count?: string;
+    }
+  >;
+  reviews?: Record<
+    number,
+    {
+      author?: string;
+      text?: string;
     }
   >;
   customSections?: Record<
@@ -463,7 +476,19 @@ export interface HomepageStudioLocalizedOverlay {
       eyebrow?: string;
       desc?: string;
       ctaText?: string;
+      ctaLink?: string;
       linkText?: string;
+      linkUrl?: string;
+      items?: Record<
+        number,
+        {
+          title?: string;
+          desc?: string;
+          q?: string;
+          a?: string;
+          link?: string;
+        }
+      >;
     }
   >;
 }

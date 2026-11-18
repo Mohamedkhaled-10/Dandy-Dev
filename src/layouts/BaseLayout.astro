@@ -8,7 +8,9 @@ import ToastHost from '../components/ui/ToastHost.astro';
 import { getPublishedPinkFridayCampaign } from '../utils/pink-friday-server.ts';
 import { isExcludedMotionRoute } from '../scripts/page-entrance';
 import { getDocumentAttributes } from '../i18n/config';
-import type { HreflangAlternate } from '../i18n/types';
+import { buildHreflangAlternates } from '../i18n/metadata';
+import type { CounterpartAvailability, HreflangAlternate, Locale } from '../i18n/types';
+import { resolveLocaleFromPath } from '../i18n/resolve-locale';
 import '../styles/tokens.css';
 import '../styles/base.css';
 import '../styles/components.css';
@@ -21,6 +23,8 @@ export interface Props {
   canonical?: string;
   lang?: string;
   dir?: string;
+  locale?: Locale;
+  counterpartAvailability?: CounterpartAvailability;
   alternates?: HreflangAlternate[];
   showHeader?: boolean;
   showFooter?: boolean;
@@ -28,13 +32,21 @@ export interface Props {
   robots?: string;
 }
 
+const pathLocale = resolveLocaleFromPath(Astro.url.pathname || '/');
+
 const {
-  title = 'داندي | Dandy Cosmetics - منتجات طبيعية للعناية بالبشرة والشعر',
-  description = 'تسوقي الآن من متجر داندي (Dandy Cosmetics)، وجهتك الأولى لأفضل منتجات العناية بالبشرة والشعر الطبيعية في مصر. اكتشفي الجمال الطبيعي اليوم!',
+  title = pathLocale === 'en'
+    ? 'Dandy Cosmetics | Natural Skincare, Haircare & Body Care in Egypt'
+    : 'داندي | Dandy Cosmetics - منتجات طبيعية للعناية بالبشرة والشعر',
+  description = pathLocale === 'en'
+    ? 'Shop Dandy Cosmetics for pharmacist-crafted natural skincare, haircare, body care, and signature fragrance essentials in Egypt.'
+    : 'تسوقي الآن من متجر داندي (Dandy Cosmetics)، وجهتك الأولى لأفضل منتجات العناية بالبشرة والشعر الطبيعية في مصر. اكتشفي الجمال الطبيعي اليوم!',
   keywords = 'Dandy, Dandy Cosmetics, دندي, داندي, دندي للتجميل, العناية بالبشرة, العناية بالشعر, مستحضرات تجميل طبيعية, منتجات دندي, Natural Skincare, Beauty Store Egypt',
   canonical,
-  lang = 'ar',
+  lang,
   dir,
+  locale,
+  counterpartAvailability,
   alternates = [],
   showHeader = true,
   showFooter = true,
@@ -42,13 +54,29 @@ const {
   robots = 'index, follow',
 } = Astro.props;
 
-const docAttrs = getDocumentAttributes(lang);
+const docAttrs = getDocumentAttributes(locale || lang || pathLocale);
 const resolvedLang = docAttrs.lang;
 const resolvedDir = dir === 'rtl' || dir === 'ltr' ? dir : docAttrs.dir;
 
 const pathname = (Astro.url.pathname || '').replace(/\/$/, '');
-const defaultCanonical = `https://dandy-ebon.vercel.app${pathname || '/'}`;
+const defaultCanonical =
+  resolvedLang === 'en' && (!pathname || pathname === '/en')
+    ? 'https://dandy-ebon.vercel.app/en/'
+    : `https://dandy-ebon.vercel.app${pathname || '/'}`;
 const resolvedCanonical = canonical || defaultCanonical;
+
+const resolvedAlternates: HreflangAlternate[] =
+  Array.isArray(alternates) && alternates.length > 0
+    ? alternates
+    : String(robots).toLowerCase().includes('noindex')
+      ? []
+      : buildHreflangAlternates(Astro.url.pathname || '/', {
+          targetEntityExists: counterpartAvailability?.targetEntityExists,
+          targetSlug: counterpartAvailability?.targetSlug,
+        });
+
+const ogLocale = resolvedLang === 'en' ? 'en_US' : 'ar_EG';
+const ogLocaleAlternate = resolvedLang === 'en' ? 'ar_EG' : 'en_US';
 
 const firebaseApiKey = process.env.FIREBASE_API_KEY || '';
 const pinkFridayCampaign = await getPublishedPinkFridayCampaign();
@@ -66,7 +94,11 @@ const enableStorefrontMotion =
   {keywords && <meta name="keywords" content={keywords} />}
   <meta name="robots" content={robots} />
   <link rel="canonical" href={resolvedCanonical} />
-  {Array.isArray(alternates) && alternates.length > 0 && alternates.map((alt) => (
+  <meta property="og:locale" content={ogLocale} />
+  {resolvedAlternates.length > 0 && (
+    <meta property="og:locale:alternate" content={ogLocaleAlternate} />
+  )}
+  {resolvedAlternates.map((alt) => (
     <link rel="alternate" hreflang={alt.hreflang} href={alt.href} />
   ))}
   <meta name="google-site-verification" content="vgH4o9b-LdBpUBJcipJLSwPjgGpGIepXbHXz8e5r3B8" />
@@ -177,7 +209,7 @@ const enableStorefrontMotion =
   <slot name="head" />
 </head>
 <body data-astro-layout="true">
-  {showHeader && <Header />}
+  {showHeader && <Header locale={resolvedLang} counterpartAvailability={counterpartAvailability} />}
   {showDashboardNav && <DashboardNav />}
 
   <slot />
@@ -192,13 +224,13 @@ const enableStorefrontMotion =
     src="/assets/bab/widget/bab-widget.js">
   </script>
 
-  {showFooter && <Footer />}
+  {showFooter && <Footer locale={resolvedLang} />}
 
   <!-- Global DandyToast Notification Host -->
-  <ToastHost />
+  <ToastHost locale={resolvedLang} />
 
   <!-- Cookie Consent Banner for Marketing & Analytics Tracking -->
-  <ConsentBanner />
+  <ConsentBanner locale={resolvedLang} />
 
   {enableStorefrontMotion && (
     <script>

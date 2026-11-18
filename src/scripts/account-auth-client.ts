@@ -6,10 +6,22 @@
 
 import { getIconSvg } from './icons';
 import {
-  mapFirebaseAuthErrorAr,
+  mapFirebaseAuthError,
   validateLoginInput,
   validateSignupInput,
 } from './account';
+
+function getRuntimeLocale(): 'ar' | 'en' {
+  if (typeof document !== 'undefined') {
+    const lang = (document.documentElement.getAttribute('lang') || '').trim().toLowerCase();
+    if (lang.startsWith('en')) return 'en';
+  }
+  if (typeof window !== 'undefined') {
+    const p = (window.location.pathname || '/').toLowerCase();
+    if (p === '/en' || p.startsWith('/en/')) return 'en';
+  }
+  return 'ar';
+}
 
 declare global {
   interface Window {
@@ -82,6 +94,7 @@ function clearBanner(el: HTMLElement | null): void {
 }
 
 export function initPasswordToggles(root: ParentNode = document): void {
+  const isEn = getRuntimeLocale() === 'en';
   const toggles = root.querySelectorAll<HTMLButtonElement>('[data-dandy-pw-toggle]');
   toggles.forEach((btn) => {
     if (btn.dataset.bound === 'true') return;
@@ -98,7 +111,13 @@ export function initPasswordToggles(root: ParentNode = document): void {
       btn.setAttribute('aria-pressed', isCurrentlyHidden ? 'true' : 'false');
       btn.setAttribute(
         'aria-label',
-        isCurrentlyHidden ? 'إخفاء كلمة المرور' : 'إظهار كلمة المرور'
+        isEn
+          ? isCurrentlyHidden
+            ? 'Hide password'
+            : 'Show password'
+          : isCurrentlyHidden
+            ? 'إخفاء كلمة المرور'
+            : 'إظهار كلمة المرور'
       );
       btn.innerHTML = getIconSvg(isCurrentlyHidden ? 'eye-off' : 'eye', {
         size: 18,
@@ -112,6 +131,10 @@ export function initCustomerLoginPage(): void {
   const form = document.getElementById('customerLoginForm') as HTMLFormElement | null;
   if (!form || form.dataset.bound === 'true') return;
   form.dataset.bound = 'true';
+
+  const locale = getRuntimeLocale();
+  const isEn = locale === 'en';
+  const accountHref = isEn ? '/en/account' : '/account';
 
   initPasswordToggles(document);
 
@@ -137,7 +160,7 @@ export function initCustomerLoginPage(): void {
   if (auth && typeof auth.onAuthStateChanged === 'function') {
     auth.onAuthStateChanged((user: { email?: string } | null) => {
       if (user && user.email !== 'admin@dandy.com') {
-        window.location.href = '/account';
+        window.location.href = accountHref;
       }
     });
   }
@@ -148,35 +171,43 @@ export function initCustomerLoginPage(): void {
     if (!email || !email.includes('@')) {
       setBanner(
         alertBox,
-        'يرجى كتابة بريدكِ الإلكتروني في الحقل أولاً، ثم الضغط على "نسيتِ كلمة السر؟".',
+        isEn
+          ? 'Please enter your email address first, then click "Forgot password?".'
+          : 'يرجى كتابة بريدكِ الإلكتروني في الحقل أولاً، ثم الضغط على "نسيتِ كلمة السر؟".',
         'error'
       );
       emailInput?.focus();
       return;
     }
     if (!auth) {
-      setBanner(alertBox, 'تعذر الاتصال بخدمة الحسابات. يرجى إعادة تحميل الصفحة.', 'error');
+      setBanner(
+        alertBox,
+        isEn ? 'Unable to reach account services. Please reload the page.' : 'تعذر الاتصال بخدمة الحسابات. يرجى إعادة تحميل الصفحة.',
+        'error'
+      );
       return;
     }
 
     try {
       forgotBtn.disabled = true;
-      forgotBtn.textContent = 'جاري الإرسال...';
+      forgotBtn.textContent = isEn ? 'Sending...' : 'جاري الإرسال...';
       await auth.sendPasswordResetEmail(email);
       setBanner(
         alertBox,
-        `تم إرسال رابط إعادة تعيين كلمة المرور إلى (${email}). يرجى مراجعة البريد الوارد أو الرسائل غير المرغوب فيها.`,
+        isEn
+          ? `Password reset link sent to (${email}). Please check your inbox or spam folder.`
+          : `تم إرسال رابط إعادة تعيين كلمة المرور إلى (${email}). يرجى مراجعة البريد الوارد أو الرسائل غير المرغوب فيها.`,
         'success'
       );
       window.DandyToast?.show({
-        message: 'تم إرسال رابط استعادة كلمة المرور إلى بريدكِ الإلكتروني.',
+        message: isEn ? 'Password reset link sent to your email.' : 'تم إرسال رابط استعادة كلمة المرور إلى بريدكِ الإلكتروني.',
         type: 'success',
       });
     } catch (err: any) {
-      setBanner(alertBox, mapFirebaseAuthErrorAr(err?.code, 'reset'), 'error');
+      setBanner(alertBox, mapFirebaseAuthError(err?.code, 'reset', locale), 'error');
     } finally {
       forgotBtn.disabled = false;
-      forgotBtn.textContent = 'نسيتِ كلمة السر؟';
+      forgotBtn.textContent = isEn ? 'Forgot password?' : 'نسيتِ كلمة السر؟';
     }
   });
 
@@ -184,13 +215,16 @@ export function initCustomerLoginPage(): void {
     e.preventDefault();
     clearBanner(alertBox);
 
-    const validation = validateLoginInput({
-      email: emailInput?.value,
-      password: passInput?.value,
-    });
+    const validation = validateLoginInput(
+      {
+        email: emailInput?.value,
+        password: passInput?.value,
+      },
+      locale
+    );
 
     if (!validation.valid) {
-      setBanner(alertBox, validation.error || 'يرجى التحقق من البيانات المدخلة.', 'error');
+      setBanner(alertBox, validation.error || (isEn ? 'Please check the details entered.' : 'يرجى التحقق من البيانات المدخلة.'), 'error');
       if (!emailInput?.value.trim()) {
         emailInput?.focus();
       } else {
@@ -200,13 +234,21 @@ export function initCustomerLoginPage(): void {
     }
 
     if (!auth) {
-      setBanner(alertBox, 'تعذر الاتصال بخدمة التحقق. يرجى إعادة تحميل الصفحة.', 'error');
+      setBanner(
+        alertBox,
+        isEn ? 'Unable to connect to authentication service. Please reload.' : 'تعذر الاتصال بخدمة التحقق. يرجى إعادة تحميل الصفحة.',
+        'error'
+      );
       return;
     }
 
     const turnstileToken = getTurnstileToken();
     if (!turnstileToken) {
-      setBanner(alertBox, 'يرجى إكمال اختبار التحقق البشري (CAPTCHA) أولاً.', 'error');
+      setBanner(
+        alertBox,
+        isEn ? 'Please complete the human verification check (CAPTCHA) first.' : 'يرجى إكمال اختبار التحقق البشري (CAPTCHA) أولاً.',
+        'error'
+      );
       return;
     }
 
@@ -221,8 +263,8 @@ export function initCustomerLoginPage(): void {
     }
 
     if (submitBtn) submitBtn.disabled = true;
-    const prevLabel = submitLabel?.textContent || 'تسجيل الدخول';
-    if (submitLabel) submitLabel.textContent = 'جاري تسجيل الدخول...';
+    const prevLabel = submitLabel?.textContent || (isEn ? 'Sign In' : 'تسجيل الدخول');
+    if (submitLabel) submitLabel.textContent = isEn ? 'Signing in...' : 'جاري تسجيل الدخول...';
 
     try {
       const verifyRes = await fetch('/api/verify-turnstile', {
@@ -239,7 +281,9 @@ export function initCustomerLoginPage(): void {
       if (!verifyRes.ok || !verifyData.success) {
         setBanner(
           alertBox,
-          verifyData.message || 'فشل التحقق الأمني من الكابتشا. يرجى المحاولة مرة أخرى.',
+          isEn
+            ? 'Security CAPTCHA check failed. Please try again.'
+            : verifyData.message || 'فشل التحقق الأمني من الكابتشا. يرجى المحاولة مرة أخرى.',
           'error'
         );
         resetTurnstile();
@@ -249,9 +293,13 @@ export function initCustomerLoginPage(): void {
       }
 
       await auth.signInWithEmailAndPassword(validation.email, validation.password);
-      setBanner(alertBox, 'تم تسجيل الدخول بنجاح! جاري تحويلكِ إلى حسابكِ...', 'success');
+      setBanner(
+        alertBox,
+        isEn ? 'Signed in successfully! Redirecting to your account...' : 'تم تسجيل الدخول بنجاح! جاري تحويلكِ إلى حسابكِ...',
+        'success'
+      );
       window.setTimeout(() => {
-        window.location.href = '/account';
+        window.location.href = accountHref;
       }, 450);
     } catch (err: any) {
       fetch('/api/verify-turnstile', {
@@ -265,7 +313,7 @@ export function initCustomerLoginPage(): void {
       }).catch(() => {});
 
       resetTurnstile();
-      setBanner(alertBox, mapFirebaseAuthErrorAr(err?.code, 'login'), 'error');
+      setBanner(alertBox, mapFirebaseAuthError(err?.code, 'login', locale), 'error');
       if (submitBtn) submitBtn.disabled = false;
       if (submitLabel) submitLabel.textContent = prevLabel;
     }
@@ -276,6 +324,10 @@ export function initCustomerSignupPage(): void {
   const form = document.getElementById('signupForm') as HTMLFormElement | null;
   if (!form || form.dataset.bound === 'true') return;
   form.dataset.bound = 'true';
+
+  const locale = getRuntimeLocale();
+  const isEn = locale === 'en';
+  const accountHref = isEn ? '/en/account' : '/account';
 
   initPasswordToggles(document);
 
@@ -292,7 +344,7 @@ export function initCustomerSignupPage(): void {
   if (auth && typeof auth.onAuthStateChanged === 'function') {
     auth.onAuthStateChanged((user: { email?: string } | null) => {
       if (user && user.email !== 'admin@dandy.com') {
-        window.location.href = '/account';
+        window.location.href = accountHref;
       }
     });
   }
@@ -301,15 +353,22 @@ export function initCustomerSignupPage(): void {
     e.preventDefault();
     clearBanner(alertBox);
 
-    const validation = validateSignupInput({
-      name: nameInput?.value,
-      phone: phoneInput?.value,
-      email: emailInput?.value,
-      password: passInput?.value,
-    });
+    const validation = validateSignupInput(
+      {
+        name: nameInput?.value,
+        phone: phoneInput?.value,
+        email: emailInput?.value,
+        password: passInput?.value,
+      },
+      locale
+    );
 
     if (!validation.valid) {
-      setBanner(alertBox, validation.error || 'يرجى التحقق من البيانات المدخلة.', 'error');
+      setBanner(
+        alertBox,
+        validation.error || (isEn ? 'Please verify the details entered.' : 'يرجى التحقق من البيانات المدخلة.'),
+        'error'
+      );
       if (validation.field === 'name') nameInput?.focus();
       if (validation.field === 'phone') phoneInput?.focus();
       if (validation.field === 'email') emailInput?.focus();
@@ -318,21 +377,29 @@ export function initCustomerSignupPage(): void {
     }
 
     if (!auth || !db) {
-      setBanner(alertBox, 'تعذر الاتصال بقاعدة البيانات. يرجى إعادة تحميل الصفحة.', 'error');
+      setBanner(
+        alertBox,
+        isEn ? 'Unable to connect to the database. Please reload the page.' : 'تعذر الاتصال بقاعدة البيانات. يرجى إعادة تحميل الصفحة.',
+        'error'
+      );
       return;
     }
 
     const turnstileToken = getTurnstileToken();
     if (!turnstileToken) {
-      setBanner(alertBox, 'يرجى التحقق من اختبار الكابتشا (CAPTCHA) أولاً.', 'error');
+      setBanner(
+        alertBox,
+        isEn ? 'Please complete the security CAPTCHA check first.' : 'يرجى التحقق من اختبار الكابتشا (CAPTCHA) أولاً.',
+        'error'
+      );
       return;
     }
 
     const { name, phone, email, password } = validation.sanitized;
 
     if (submitBtn) submitBtn.disabled = true;
-    const prevLabel = submitLabel?.textContent || 'إنشاء الحساب';
-    if (submitLabel) submitLabel.textContent = 'جاري إنشاء الحساب...';
+    const prevLabel = submitLabel?.textContent || (isEn ? 'Create Account' : 'إنشاء الحساب');
+    if (submitLabel) submitLabel.textContent = isEn ? 'Creating account...' : 'جاري إنشاء الحساب...';
 
     try {
       const verifyRes = await fetch('/api/verify-turnstile', {
@@ -349,7 +416,9 @@ export function initCustomerSignupPage(): void {
       if (!verifyRes.ok || !verifyData.success) {
         setBanner(
           alertBox,
-          verifyData.message || 'فشل التحقق الأمني من الكابتشا. يرجى المحاولة مرة أخرى.',
+          isEn
+            ? 'Security CAPTCHA check failed. Please try again.'
+            : verifyData.message || 'فشل التحقق الأمني من الكابتشا. يرجى المحاولة مرة أخرى.',
           'error'
         );
         resetTurnstile();
@@ -380,13 +449,17 @@ export function initCustomerSignupPage(): void {
         console.warn('Orders link notice:', linkErr);
       }
 
-      setBanner(alertBox, 'تم إنشاء الحساب بنجاح! جاري تحويلكِ إلى لوحة حسابكِ...', 'success');
+      setBanner(
+        alertBox,
+        isEn ? 'Account created! Redirecting to your account...' : 'تم إنشاء الحساب بنجاح! جاري تحويلكِ إلى لوحة حسابكِ...',
+        'success'
+      );
       window.setTimeout(() => {
-        window.location.href = '/account';
+        window.location.href = accountHref;
       }, 550);
     } catch (err: any) {
       resetTurnstile();
-      setBanner(alertBox, mapFirebaseAuthErrorAr(err?.code, 'signup'), 'error');
+      setBanner(alertBox, mapFirebaseAuthError(err?.code, 'signup', locale), 'error');
       if (submitBtn) submitBtn.disabled = false;
       if (submitLabel) submitLabel.textContent = prevLabel;
     }

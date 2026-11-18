@@ -2,28 +2,51 @@
 // src/components/ConsentBanner.astro
 // User privacy and marketing cookie consent banner for Dandy Cosmetics
 import Icon from './ui/Icon.astro';
+import type { Locale } from '../i18n/types';
+import { getLocaleDirection } from '../i18n/config';
+import { buildLocalizedPath } from '../i18n/routes';
+import { t } from '../i18n/translator';
+
+export interface Props {
+  locale?: Locale;
+}
+
+const { locale = 'ar' } = Astro.props;
+const dir = getLocaleDirection(locale);
+const privacyHref = buildLocalizedPath('/privacy-policy', locale);
 ---
 
-<div id="dandy-consent-banner" class="dandy-consent-banner" style="display: none;" dir="rtl" role="dialog" aria-live="polite" aria-label="إشعار الخصوصية وملفات تعريف الارتباط">
+<div
+  id="dandy-consent-banner"
+  class="dandy-consent-banner"
+  style="display: none;"
+  dir={dir}
+  role="dialog"
+  aria-live="polite"
+  aria-label={t(locale, 'consent.bannerTitle')}
+>
   <div class="consent-container">
     <div class="consent-content">
       <div class="consent-icon-box" aria-hidden="true">
         <Icon name="shield-check" size={20} strokeWidth={1.8} />
       </div>
       <div class="consent-text-wrap">
-        <h4 class="consent-title">الخصوصية وملفات تعريف الارتباط</h4>
+        <h4 class="consent-title">{t(locale, 'consent.bannerTitle')}</h4>
         <p class="consent-desc">
-          نستخدم ملفات تعريف الارتباط وتقنيات التحليلات (بما فيها Meta Pixel) لتخصيص تجربة التصفح وقياس أداء الحملات التسويقية وتحسين خدماتنا. يمكنكِ اختيار قبول التتبع التسويقي أو الاقتصار على الملفات الأساسية فقط. لمزيد من التفاصيل، يرجى مراجعة <a href="/privacy-policy" target="_blank" rel="noopener noreferrer" class="consent-link">سياسة الخصوصية</a>.
+          {t(locale, 'consent.bannerDesc')}{' '}
+          <a href={privacyHref} target="_blank" rel="noopener noreferrer" class="consent-link">
+            {t(locale, 'navigation.privacyPolicy')}
+          </a>.
         </p>
       </div>
     </div>
     <div class="consent-actions">
       <button type="button" id="dandy-consent-accept-btn" class="consent-btn consent-btn-accept">
         <Icon name="check" size={16} strokeWidth={2.1} />
-        <span>قبول التتبع التسويقي</span>
+        <span>{t(locale, 'consent.acceptMarketing')}</span>
       </button>
       <button type="button" id="dandy-consent-reject-btn" class="consent-btn consent-btn-reject">
-        <span>الضرورية فقط (رفض)</span>
+        <span>{t(locale, 'consent.essentialOnly')}</span>
       </button>
     </div>
   </div>
@@ -43,7 +66,7 @@ import Icon from './ui/Icon.astro';
     z-index: 2147483645;
     padding: 18px 22px;
     animation: consentSlideUp 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-    font-family: var(--dandy-font-ar-sans, inherit);
+    font-family: var(--dandy-font-active-sans, inherit);
   }
 
   @keyframes consentSlideUp {

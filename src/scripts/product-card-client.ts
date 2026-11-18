@@ -2,6 +2,7 @@
  * DANDY COSMETICS — CLIENT CART INTERACTION HANDLER FOR UNIFIED PRODUCT CARD
  * Single idempotent document-level click delegation so direct Add-to-Cart never double-fires.
  */
+import { resolveClientLocalizedProductName } from '../i18n/content/en/products';
 import { addDirectProductToCartArray, type CartAddPayload } from './product-card';
 
 declare global {
@@ -16,26 +17,48 @@ declare global {
   }
 }
 
-function showCartToast(type: 'success' | 'error', message: string): void {
+function getRuntimeLocale(): 'ar' | 'en' {
+  if (typeof document !== 'undefined') {
+    const lang = (document.documentElement.getAttribute('lang') || '').trim().toLowerCase();
+    if (lang.startsWith('en')) return 'en';
+  }
+  if (typeof window !== 'undefined') {
+    const p = (window.location.pathname || '/').toLowerCase();
+    if (p === '/en' || p.startsWith('/en/')) return 'en';
+  }
+  return 'ar';
+}
+
+function showCartToast(type: 'success' | 'error', message: string, locale: 'ar' | 'en'): void {
+  const isEn = locale === 'en';
   if (typeof window !== 'undefined' && window.DandyToast && typeof window.DandyToast.show === 'function') {
     window.DandyToast.show({
       type,
       message,
-      actionLabel: type === 'success' ? 'عرض السلة' : undefined,
-      actionUrl: type === 'success' ? '/cart' : undefined,
+      actionLabel: type === 'success' ? (isEn ? 'View Bag' : 'عرض السلة') : undefined,
+      actionUrl: type === 'success' ? (isEn ? '/en/cart' : '/cart') : undefined,
       duration: type === 'success' ? 4200 : 5000,
     });
   }
 }
 
 export function handleDirectAddButton(button: HTMLElement): boolean {
+  const locale = getRuntimeLocale();
+  const isEn = locale === 'en';
+
   if (button.hasAttribute('disabled') || button.getAttribute('aria-disabled') === 'true') {
     return false;
   }
 
   const rawPayload = button.getAttribute('data-cart-payload');
   if (!rawPayload) {
-    showCartToast('error', 'تعذر قراءة بيانات المنتج، يرجى فتح صفحة المنتج.');
+    showCartToast(
+      'error',
+      isEn
+        ? 'Unable to read product details. Please open the product page.'
+        : 'تعذر قراءة بيانات المنتج، يرجى فتح صفحة المنتج.',
+      locale
+    );
     return false;
   }
 
@@ -43,12 +66,20 @@ export function handleDirectAddButton(button: HTMLElement): boolean {
   try {
     payload = JSON.parse(rawPayload) as CartAddPayload;
   } catch {
-    showCartToast('error', 'حدث خطأ أثناء قراءة بيانات المنتج.');
+    showCartToast(
+      'error',
+      isEn ? 'Could not parse product details.' : 'حدث خطأ أثناء قراءة بيانات المنتج.',
+      locale
+    );
     return false;
   }
 
   if (!payload || !payload.id || !payload.name) {
-    showCartToast('error', 'بيانات المنتج غير مكتملة.');
+    showCartToast(
+      'error',
+      isEn ? 'Product information is incomplete.' : 'بيانات المنتج غير مكتملة.',
+      locale
+    );
     return false;
   }
 
@@ -82,10 +113,10 @@ export function handleDirectAddButton(button: HTMLElement): boolean {
 
     // Visual brief settled state on button
     const labelEl = button.querySelector('[data-btn-label]');
-    const originalText = labelEl?.textContent || 'أضيفي للسلة';
+    const originalText = labelEl?.textContent || (isEn ? 'Add to Bag' : 'أضيفي للسلة');
     button.classList.add('is-added');
     if (labelEl) {
-      labelEl.textContent = 'تمت الإضافة';
+      labelEl.textContent = isEn ? 'Added' : 'تمت الإضافة';
     }
     window.setTimeout(() => {
       button.classList.remove('is-added');
@@ -94,10 +125,25 @@ export function handleDirectAddButton(button: HTMLElement): boolean {
       }
     }, 1200);
 
-    showCartToast('success', `تمت إضافة «${payload.name}» إلى سلة التسوق.`);
+    const displayName = resolveClientLocalizedProductName(
+      payload.productId || payload.id,
+      payload.name,
+      locale
+    );
+    showCartToast(
+      'success',
+      isEn ? `Added “${displayName}” to your shopping bag.` : `تمت إضافة «${displayName}» إلى سلة التسوق.`,
+      locale
+    );
     return true;
   } catch {
-    showCartToast('error', 'تعذر حفظ المنتج في السلة، تأكدي من إعدادات المتصفح.');
+    showCartToast(
+      'error',
+      isEn
+        ? 'Could not save the product to your bag. Please check your browser settings.'
+        : 'تعذر حفظ المنتج في السلة، تأكدي من إعدادات المتصفح.',
+      locale
+    );
     return false;
   }
 }

@@ -44,6 +44,10 @@ export interface RankedSearchProduct {
   score: number;
 }
 
+import type { Locale } from '../i18n/types';
+import { buildLocalizedPath } from '../i18n/routes';
+import { t } from '../i18n/translator';
+
 export const DEFAULT_SHIPPING_ANNOUNCEMENT = 'الشحن مجاني للطلبات التي تتجاوز 2000 جنيه.';
 
 export function normalizeRoutePath(pathname: string): string {
@@ -55,8 +59,8 @@ export function isNavHrefActive(currentPath: string, href: string, matchPrefixes
   const current = normalizeRoutePath(currentPath);
   const target = normalizeRoutePath(href);
 
-  if (target === '/') {
-    return current === '/';
+  if (target === '/' || target === '/en') {
+    return current === target;
   }
 
   if (current === target || current.startsWith(`${target}/`)) {
@@ -69,25 +73,41 @@ export function isNavHrefActive(currentPath: string, href: string, matchPrefixes
   });
 }
 
+function containsArabicChars(text: string): boolean {
+  return /[\u0600-\u06FF]/.test(text);
+}
+
 export function resolveAnnouncementState(
   showPinkFriday: boolean,
-  campaign?: PinkFridayVisualInput | null
+  campaign?: PinkFridayVisualInput | null,
+  locale: Locale = 'ar'
 ): AnnouncementBannerData {
   if (showPinkFriday) {
+    const rawHeadline = campaign?.visuals?.headline?.trim() || '';
+    const rawCta = campaign?.visuals?.ctaText?.trim() || '';
     const headline =
-      campaign?.visuals?.headline?.trim() || 'Pink Friday من داندي — اكتشفي العروض الخاصة الآن';
-    const ctaText = campaign?.visuals?.ctaText?.trim() || 'عرض المنتجات';
+      locale === 'en'
+        ? rawHeadline && !containsArabicChars(rawHeadline)
+          ? rawHeadline
+          : t('en', 'header.announcementPinkFriday')
+        : rawHeadline || 'Pink Friday من داندي — اكتشفي العروض الخاصة الآن';
+    const ctaText =
+      locale === 'en'
+        ? rawCta && !containsArabicChars(rawCta)
+          ? rawCta
+          : 'Explore Offers'
+        : rawCta || 'عرض المنتجات';
     return {
       mode: 'pink-friday',
       headline,
       ctaText,
-      ctaHref: '/pink-friday',
+      ctaHref: buildLocalizedPath('/pink-friday', locale),
     };
   }
 
   return {
     mode: 'shipping',
-    headline: DEFAULT_SHIPPING_ANNOUNCEMENT,
+    headline: locale === 'en' ? t('en', 'header.announcementFreeShipping') : DEFAULT_SHIPPING_ANNOUNCEMENT,
   };
 }
 
