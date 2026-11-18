@@ -47,7 +47,7 @@ export const ROUTE_REGISTRY: readonly RouteDefinition[] = [
     preserveFragment: true,
     missingCounterpartFallback: 'home',
     indexable: true,
-    englishPublished: false,
+    englishPublished: true,
   },
   {
     id: 'catalog',
@@ -59,7 +59,7 @@ export const ROUTE_REGISTRY: readonly RouteDefinition[] = [
     preserveFragment: true,
     missingCounterpartFallback: 'home',
     indexable: true,
-    englishPublished: false,
+    englishPublished: true,
   },
   {
     id: 'category',
@@ -71,7 +71,7 @@ export const ROUTE_REGISTRY: readonly RouteDefinition[] = [
     preserveFragment: true,
     missingCounterpartFallback: 'self-listing',
     indexable: true,
-    englishPublished: false,
+    englishPublished: true,
   },
   {
     id: 'product',
@@ -83,7 +83,7 @@ export const ROUTE_REGISTRY: readonly RouteDefinition[] = [
     preserveFragment: true,
     missingCounterpartFallback: 'self-listing',
     indexable: true,
-    englishPublished: false,
+    englishPublished: true,
   },
   {
     id: 'special-offers',
@@ -95,7 +95,7 @@ export const ROUTE_REGISTRY: readonly RouteDefinition[] = [
     preserveFragment: true,
     missingCounterpartFallback: 'home',
     indexable: true,
-    englishPublished: false,
+    englishPublished: true,
   },
   {
     id: 'pink-friday',
@@ -107,7 +107,7 @@ export const ROUTE_REGISTRY: readonly RouteDefinition[] = [
     preserveFragment: true,
     missingCounterpartFallback: 'self-listing',
     indexable: true,
-    englishPublished: false,
+    englishPublished: true,
   },
   {
     id: 'cart',
@@ -119,7 +119,7 @@ export const ROUTE_REGISTRY: readonly RouteDefinition[] = [
     preserveFragment: false,
     missingCounterpartFallback: 'home',
     indexable: false,
-    englishPublished: false,
+    englishPublished: true,
   },
   {
     id: 'invoice',
@@ -132,7 +132,7 @@ export const ROUTE_REGISTRY: readonly RouteDefinition[] = [
     preserveFragment: false,
     missingCounterpartFallback: 'home',
     indexable: false,
-    englishPublished: false,
+    englishPublished: true,
   },
   {
     id: 'track-order',
@@ -144,7 +144,7 @@ export const ROUTE_REGISTRY: readonly RouteDefinition[] = [
     preserveFragment: false,
     missingCounterpartFallback: 'home',
     indexable: false,
-    englishPublished: false,
+    englishPublished: true,
   },
   {
     id: 'account-login',
@@ -156,7 +156,7 @@ export const ROUTE_REGISTRY: readonly RouteDefinition[] = [
     preserveFragment: false,
     missingCounterpartFallback: 'home',
     indexable: false,
-    englishPublished: false,
+    englishPublished: true,
   },
   {
     id: 'account-signup',
@@ -168,7 +168,7 @@ export const ROUTE_REGISTRY: readonly RouteDefinition[] = [
     preserveFragment: false,
     missingCounterpartFallback: 'home',
     indexable: false,
-    englishPublished: false,
+    englishPublished: true,
   },
   {
     id: 'account',
@@ -180,7 +180,7 @@ export const ROUTE_REGISTRY: readonly RouteDefinition[] = [
     preserveFragment: false,
     missingCounterpartFallback: 'home',
     indexable: false,
-    englishPublished: false,
+    englishPublished: true,
   },
   {
     id: 'blog',
@@ -192,7 +192,7 @@ export const ROUTE_REGISTRY: readonly RouteDefinition[] = [
     preserveFragment: true,
     missingCounterpartFallback: 'home',
     indexable: true,
-    englishPublished: false,
+    englishPublished: true,
   },
   {
     id: 'blog-article',
@@ -204,7 +204,7 @@ export const ROUTE_REGISTRY: readonly RouteDefinition[] = [
     preserveFragment: true,
     missingCounterpartFallback: 'self-listing',
     indexable: true,
-    englishPublished: false,
+    englishPublished: true,
   },
   {
     id: 'client-reviews',
@@ -216,7 +216,7 @@ export const ROUTE_REGISTRY: readonly RouteDefinition[] = [
     preserveFragment: true,
     missingCounterpartFallback: 'home',
     indexable: true,
-    englishPublished: false,
+    englishPublished: true,
   },
   {
     id: 'about-us',
@@ -228,7 +228,7 @@ export const ROUTE_REGISTRY: readonly RouteDefinition[] = [
     preserveFragment: true,
     missingCounterpartFallback: 'home',
     indexable: true,
-    englishPublished: false,
+    englishPublished: true,
   },
   {
     id: 'contact-us',
@@ -240,7 +240,7 @@ export const ROUTE_REGISTRY: readonly RouteDefinition[] = [
     preserveFragment: true,
     missingCounterpartFallback: 'home',
     indexable: true,
-    englishPublished: false,
+    englishPublished: true,
   },
   {
     id: 'help',
@@ -252,7 +252,7 @@ export const ROUTE_REGISTRY: readonly RouteDefinition[] = [
     preserveFragment: true,
     missingCounterpartFallback: 'home',
     indexable: true,
-    englishPublished: false,
+    englishPublished: true,
   },
   {
     id: 'privacy-policy',
@@ -264,7 +264,7 @@ export const ROUTE_REGISTRY: readonly RouteDefinition[] = [
     preserveFragment: true,
     missingCounterpartFallback: 'home',
     indexable: true,
-    englishPublished: false,
+    englishPublished: true,
   },
   {
     id: 'terms',
@@ -276,7 +276,7 @@ export const ROUTE_REGISTRY: readonly RouteDefinition[] = [
     preserveFragment: true,
     missingCounterpartFallback: 'home',
     indexable: true,
-    englishPublished: false,
+    englishPublished: true,
   },
 ];
 

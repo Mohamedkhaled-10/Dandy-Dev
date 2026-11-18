@@ -219,6 +219,52 @@ function initHeroControls(): void {
     }
   });
 
+  let touchStartX = 0;
+  let touchStartY = 0;
+  let touchTracking = false;
+
+  document.addEventListener(
+    'touchstart',
+    (event: TouchEvent) => {
+      if (event.touches.length !== 1) {
+        touchTracking = false;
+        return;
+      }
+      const target = event.target as HTMLElement | null;
+      if (!target?.closest('[data-hero-slides]')) {
+        touchTracking = false;
+        return;
+      }
+      touchStartX = event.touches[0].clientX;
+      touchStartY = event.touches[0].clientY;
+      touchTracking = true;
+    },
+    { passive: true }
+  );
+
+  document.addEventListener(
+    'touchend',
+    (event: TouchEvent) => {
+      if (!touchTracking || event.changedTouches.length === 0) return;
+      touchTracking = false;
+      const target = event.target as HTMLElement | null;
+      const carousel = target?.closest<HTMLElement>('[data-hero-carousel]');
+      if (!carousel) return;
+      const slideCount = Number(carousel.getAttribute('data-slide-count') || '1');
+      if (slideCount <= 1) return;
+
+      const dx = event.changedTouches[0].clientX - touchStartX;
+      const dy = event.changedTouches[0].clientY - touchStartY;
+      if (Math.abs(dx) < 42 || Math.abs(dx) < Math.abs(dy) * 1.35) return;
+
+      const isRtl = document.documentElement.getAttribute('dir') === 'rtl';
+      const step = isRtl ? (dx > 0 ? 1 : -1) : (dx < 0 ? 1 : -1);
+      applyHeroSlideActive(carousel, currentHeroIndex + step);
+      scheduleHeroRotation();
+    },
+    { passive: true }
+  );
+
   syncHeroResponsiveAssets();
   window.addEventListener('resize', () => syncHeroResponsiveAssets(), { passive: true });
   scheduleHeroRotation();
@@ -292,7 +338,7 @@ function renderProductCardHtml(
       data-price="${vm.currentPrice}"
       data-sold-out="${vm.isSoldOut ? 'true' : 'false'}"
     >
-      <a href="${escapeHtml(vm.href)}" class="dandy-pcard-stage${vm.isFallbackImage ? ' is-fallback' : ''}" aria-label="${escapeHtml(vm.name)}">
+      <div class="dandy-pcard-stage${vm.isFallbackImage ? ' is-fallback' : ''}">
         ${tagHtml}
         <img
           src="${escapeHtml(vm.imageUrl)}"
@@ -305,13 +351,13 @@ function renderProductCardHtml(
           class="dandy-pcard-img"
           onerror="this.onerror=null;this.src='${FALLBACK_PRODUCT_IMAGE}';this.closest('.dandy-pcard-stage')?.classList.add('is-fallback');"
         />
-      </a>
+      </div>
       <div class="dandy-pcard-body">
         <div class="dandy-pcard-meta">
           <a href="${escapeHtml(catHref)}" class="dandy-pcard-category">${escapeHtml(vm.categoryLabelAr)}</a>
           ${ratingHtml}
         </div>
-        <h3 class="dandy-pcard-title"><a href="${escapeHtml(vm.href)}">${escapeHtml(vm.name)}</a></h3>
+        <h3 class="dandy-pcard-title"><a href="${escapeHtml(vm.href)}" class="dandy-pcard-link">${escapeHtml(vm.name)}</a></h3>
         <div class="dandy-pcard-price-row">
           <span class="dandy-pcard-price dandy-tabular">${escapeHtml(formatEgpPrice(vm.currentPrice, locale))}</span>
           ${oldPriceHtml}

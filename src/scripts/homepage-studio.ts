@@ -307,7 +307,7 @@ export function sanitizeNavHref(rawHref: unknown, fallback = '/all-products'): s
   return `/${trimmed.replace(/^\/+/, '')}`;
 }
 
-function localizeInternalStoreHref(rawHref: string, locale: Locale): string {
+export function localizeInternalStoreHref(rawHref: string, locale: Locale): string {
   if (locale !== 'en') return rawHref;
   if (!rawHref.startsWith('/')) return rawHref;
   const lower = rawHref.toLowerCase();

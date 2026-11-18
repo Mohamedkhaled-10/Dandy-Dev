@@ -554,8 +554,12 @@ export function formatCustomerOrderViewModel(
     city,
     items,
     totalAmount,
-    invoiceHref: buildLocalizedPath(`/invoice?invoice=${encodeURIComponent(code)}`, locale),
-    trackHref: buildLocalizedPath(`/track-order?invoice=${encodeURIComponent(code)}`, locale),
+    invoiceHref: code
+      ? `${buildLocalizedPath('/invoice', locale)}?invoice=${encodeURIComponent(code)}`
+      : buildLocalizedPath('/invoice', locale),
+    trackHref: code
+      ? `${buildLocalizedPath('/track-order', locale)}?invoice=${encodeURIComponent(code)}`
+      : buildLocalizedPath('/track-order', locale),
   };
 }
 

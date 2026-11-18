@@ -11,6 +11,8 @@ import { getDocumentAttributes } from '../i18n/config';
 import { buildHreflangAlternates } from '../i18n/metadata';
 import type { CounterpartAvailability, HreflangAlternate, Locale } from '../i18n/types';
 import { resolveLocaleFromPath } from '../i18n/resolve-locale';
+import { resolveLocalizedPinkFridayCampaign } from '../i18n/content/adapters';
+import { EN_PINK_FRIDAY_OVERLAY } from '../i18n/content/en/pink-friday';
 import '../styles/tokens.css';
 import '../styles/base.css';
 import '../styles/components.css';
@@ -41,7 +43,9 @@ const {
   description = pathLocale === 'en'
     ? 'Shop Dandy Cosmetics for pharmacist-crafted natural skincare, haircare, body care, and signature fragrance essentials in Egypt.'
     : 'تسوقي الآن من متجر داندي (Dandy Cosmetics)، وجهتك الأولى لأفضل منتجات العناية بالبشرة والشعر الطبيعية في مصر. اكتشفي الجمال الطبيعي اليوم!',
-  keywords = 'Dandy, Dandy Cosmetics, دندي, داندي, دندي للتجميل, العناية بالبشرة, العناية بالشعر, مستحضرات تجميل طبيعية, منتجات دندي, Natural Skincare, Beauty Store Egypt',
+  keywords = pathLocale === 'en'
+    ? 'Dandy, Dandy Cosmetics, Natural Skincare Egypt, Botanical Haircare, Body Care, Body Splash, Vegan Beauty Egypt'
+    : 'Dandy, Dandy Cosmetics, دندي, داندي, دندي للتجميل, العناية بالبشرة, العناية بالشعر, مستحضرات تجميل طبيعية, منتجات دندي, Natural Skincare, Beauty Store Egypt',
   canonical,
   lang,
   dir,
@@ -80,6 +84,10 @@ const ogLocaleAlternate = resolvedLang === 'en' ? 'ar_EG' : 'en_US';
 
 const firebaseApiKey = process.env.FIREBASE_API_KEY || '';
 const pinkFridayCampaign = await getPublishedPinkFridayCampaign();
+const localizedPinkFridayCampaign =
+  resolvedLang === 'en'
+    ? resolveLocalizedPinkFridayCampaign(pinkFridayCampaign, 'en', EN_PINK_FRIDAY_OVERLAY)
+    : pinkFridayCampaign;
 const enableStorefrontMotion =
   !showDashboardNav && !isExcludedMotionRoute(Astro.url.pathname || '/', Astro.url.search || '');
 ---
@@ -135,7 +143,7 @@ const enableStorefrontMotion =
   <!-- Dandy Variants & Slugs Utilities -->
   <script is:inline src="/assets/js/variants.js"></script>
   <script is:inline src="/assets/js/product-slugs.js"></script>
-  <script is:inline define:vars={{ pinkFridayConfig: pinkFridayCampaign }}>
+  <script is:inline define:vars={{ pinkFridayConfig: localizedPinkFridayCampaign }}>
     window.__PINK_FRIDAY_CONFIG = pinkFridayConfig;
   </script>
   <script is:inline src="/assets/js/pink-friday.js"></script>

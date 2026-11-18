@@ -288,3 +288,56 @@
   }
 }
 
+/* ============================================================================
+   DANDY PRODUCT CARD — FULL-SURFACE STRETCHED ANCHOR INTERACTION
+   Ensures consistent full-card clickability across SSR, Studio Sync & Wishlist.
+   ============================================================================ */
+.dandy-pcard {
+  position: relative;
+}
+
+.dandy-pcard-link::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  cursor: pointer;
+}
+
+.dandy-pcard-category,
+.dandy-pcard-actions > * {
+  position: relative;
+  z-index: 2;
+}
+
+.dandy-pcard-link:focus {
+  outline: none;
+}
+
+.dandy-pcard-link:focus-visible {
+  outline: 2px solid var(--dandy-accent-primary) !important;
+  outline-offset: 2px !important;
+  border-radius: var(--dandy-radius-xs);
+}
+
+@supports selector(:has(*)) {
+  .dandy-pcard:has(.dandy-pcard-link:focus-visible) {
+    outline: 2px solid var(--dandy-accent-primary);
+    outline-offset: 2px;
+    border-color: var(--dandy-accent-primary);
+    box-shadow: var(--dandy-shadow-sm);
+  }
+
+  .dandy-pcard:has(.dandy-pcard-link:focus-visible) .dandy-pcard-link:focus-visible {
+    outline: none !important;
+    outline-offset: 0 !important;
+  }
+}
+
+.dandy-pcard-category:focus-visible,
+.dandy-pcard-btn:focus-visible,
+.dandy-wish-remove-btn:focus-visible {
+  outline: 2px solid var(--dandy-accent-primary) !important;
+  outline-offset: 2px !important;
+}
+

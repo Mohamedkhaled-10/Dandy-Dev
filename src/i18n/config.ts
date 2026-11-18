@@ -35,8 +35,8 @@ export const LOCALE_CONFIGS: Readonly<Record<Locale, LocaleConfig>> = {
     currencyCode: 'EGP',
     isDefault: false,
     routePrefix: '/en',
-    /** Strictly false during Phase 10: no public /en/ storefront pages yet. */
-    isPubliclyPublished: false,
+    /** Published in Phase 11: full English LTR storefront under /en/. */
+    isPubliclyPublished: true,
     labelNative: 'English',
     labelArabic: 'الإنجليزية',
     labelEnglish: 'English',

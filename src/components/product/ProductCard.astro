@@ -47,11 +47,7 @@ const fallbackAttr = FALLBACK_PRODUCT_IMAGE;
   data-sold-out={vm.isSoldOut ? 'true' : 'false'}
   data-dandy-reveal-child={revealChild ? '' : undefined}
 >
-  <a
-    href={vm.href}
-    class:list={['dandy-pcard-stage', { 'is-fallback': vm.isFallbackImage }]}
-    aria-label={vm.name}
-  >
+  <div class:list={['dandy-pcard-stage', { 'is-fallback': vm.isFallbackImage }]}>
     {vm.badge && (
       <span class={`dandy-pcard-tag is-${vm.badge.tone}`}>
         {vm.badge.text}
@@ -69,7 +65,7 @@ const fallbackAttr = FALLBACK_PRODUCT_IMAGE;
       class="dandy-pcard-img"
       onerror={`this.onerror=null;this.src='${fallbackAttr}';this.closest('.dandy-pcard-stage')?.classList.add('is-fallback');`}
     />
-  </a>
+  </div>
 
   <div class="dandy-pcard-body">
     <div class="dandy-pcard-meta">
@@ -94,7 +90,7 @@ const fallbackAttr = FALLBACK_PRODUCT_IMAGE;
     </div>
 
     <h3 class="dandy-pcard-title">
-      <a href={vm.href}>{vm.name}</a>
+      <a href={vm.href} class="dandy-pcard-link">{vm.name}</a>
     </h3>
 
     <div class="dandy-pcard-price-row">
@@ -150,6 +146,7 @@ const fallbackAttr = FALLBACK_PRODUCT_IMAGE;
 
 <style is:global>
   .dandy-pcard {
+    position: relative;
     display: flex;
     flex-direction: column;
     height: 100%;
@@ -254,6 +251,8 @@ const fallbackAttr = FALLBACK_PRODUCT_IMAGE;
   }
 
   .dandy-pcard-category {
+    position: relative;
+    z-index: 2;
     color: var(--dandy-ink-muted);
     text-decoration: none;
     font-weight: 500;
@@ -304,10 +303,44 @@ const fallbackAttr = FALLBACK_PRODUCT_IMAGE;
   .dandy-pcard-title a {
     color: inherit;
     text-decoration: none;
+    transition: color var(--dandy-transition-fast);
   }
 
-  .dandy-pcard-title a:hover {
+  .dandy-pcard-link::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    cursor: pointer;
+  }
+
+  .dandy-pcard-title a:hover,
+  .dandy-pcard-link:hover {
     color: var(--dandy-accent-text);
+  }
+
+  .dandy-pcard-link:focus {
+    outline: none;
+  }
+
+  .dandy-pcard-link:focus-visible {
+    outline: 2px solid var(--dandy-accent-primary) !important;
+    outline-offset: 2px !important;
+    border-radius: var(--dandy-radius-xs);
+  }
+
+  @supports selector(:has(*)) {
+    .dandy-pcard:has(.dandy-pcard-link:focus-visible) {
+      outline: 2px solid var(--dandy-accent-primary);
+      outline-offset: 2px;
+      border-color: var(--dandy-accent-primary);
+      box-shadow: var(--dandy-shadow-sm);
+    }
+
+    .dandy-pcard:has(.dandy-pcard-link:focus-visible) .dandy-pcard-link:focus-visible {
+      outline: none !important;
+      outline-offset: 0 !important;
+    }
   }
 
   .dandy-pcard-price-row {
@@ -333,6 +366,18 @@ const fallbackAttr = FALLBACK_PRODUCT_IMAGE;
 
   .dandy-pcard-actions {
     margin-top: 6px;
+  }
+
+  .dandy-pcard-actions > * {
+    position: relative;
+    z-index: 2;
+  }
+
+  .dandy-pcard-category:focus-visible,
+  .dandy-pcard-btn:focus-visible,
+  .dandy-wish-remove-btn:focus-visible {
+    outline: 2px solid var(--dandy-accent-primary) !important;
+    outline-offset: 2px !important;
   }
 
   .dandy-pcard-btn {

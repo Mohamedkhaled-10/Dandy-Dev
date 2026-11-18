@@ -458,6 +458,7 @@ export function resolveLocalizedPinkFridayCampaign(
     visuals: campaign.visuals
       ? {
           ...campaign.visuals,
+          subtitle: overlay.subtitle || campaign.visuals.subtitle,
           ctaText: overlay.ctaText || campaign.visuals.ctaText,
           badgeText: overlay.badgeText || campaign.visuals.badgeText,
           headline: overlay.headline || campaign.visuals.headline,
