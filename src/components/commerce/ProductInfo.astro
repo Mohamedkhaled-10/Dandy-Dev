@@ -74,7 +74,7 @@ const hasReviews = reviewStats.count > 0;
 
 <div class="dandy-pdp-info">
   <!-- 1. Clean Unboxed Category + Availability Metadata -->
-  <div class="dandy-pdp-meta-row" id="product-category">
+  <div class="dandy-pdp-meta-row" id="product-category" data-dandy-entrance="1">
     <a href={`/category/${categorySlug}`} class="dandy-pdp-cat-link">
       {categoryLabelAr}
     </a>
@@ -85,13 +85,14 @@ const hasReviews = reviewStats.count > 0;
   </div>
 
   <!-- 2. Editorial H1 Product Title -->
-  <h1 class="dandy-pdp-title" id="product-title">{productName}</h1>
+  <h1 class="dandy-pdp-title" id="product-title" data-dandy-entrance="2">{productName}</h1>
 
   <!-- 3. Genuine Rating Summary (never fabricated) -->
   <a
     href="#product-reviews-container"
     class:list={['dandy-pdp-rating-link', { 'has-reviews': hasReviews }]}
     id="product-rating-header"
+    data-dandy-entrance="3"
     aria-label={
       hasReviews
         ? `تقييم المنتج ${reviewStats.averageFormatted} من 5 بناءً على ${reviewStats.count} تقييم`

@@ -147,6 +147,15 @@
   --dandy-transition-base: 240ms cubic-bezier(0.16, 1, 0.3, 1);
   --dandy-transition-slow: 360ms cubic-bezier(0.16, 1, 0.3, 1);
 
+  /* Phase 7 Motion System Tokens (Compositor-Friendly Editorial Reveal) */
+  --dandy-motion-duration-fast: 280ms;
+  --dandy-motion-duration-normal: 420ms;
+  --dandy-motion-duration-slow: 540ms;
+  --dandy-motion-distance: 10px;
+  --dandy-motion-stagger: 50ms;
+  --dandy-motion-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --dandy-motion-scale-from: 0.986;
+
   /* ------------------------------------------------------------------------
      12. Z-INDEX & SHELL CLEARANCE SCALE
      ------------------------------------------------------------------------ */

@@ -33,7 +33,7 @@ const cleanReviews = reviews
   hidden={hidden || undefined}
 >
   <div class="dandy-container">
-    <header class="dandy-section-header">
+    <header class="dandy-section-header" data-dandy-reveal>
       <div class="dandy-section-titles">
         <p class="dandy-section-kicker">تجارب موثقة</p>
         <h2 id="home-reviews-heading" class="dandy-section-heading">
@@ -42,9 +42,14 @@ const cleanReviews = reviews
       </div>
     </header>
 
-    <div class="dandy-reviews-home-grid" data-reviews-grid hidden={cleanReviews.length === 0 || undefined}>
+    <div
+      class="dandy-reviews-home-grid"
+      data-reviews-grid
+      data-dandy-stagger="grid"
+      hidden={cleanReviews.length === 0 || undefined}
+    >
       {cleanReviews.map((review, idx) => (
-        <figure class="dandy-review-card">
+        <figure class="dandy-review-card" data-dandy-reveal-child>
           <div class="dandy-review-media">
             <img
               src={review.image}

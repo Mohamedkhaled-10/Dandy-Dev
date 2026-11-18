@@ -73,7 +73,7 @@ const fallbackImg = DEFAULT_PROMO_BANNER.image;
     <div class="dandy-container">
       {section.type === 'products' && (
         <>
-          <header class="dandy-section-header">
+          <header class="dandy-section-header" data-dandy-reveal>
             <div class="dandy-section-titles">
               {section.subtitle && (
                 <p class="dandy-section-kicker" dir="auto">{section.subtitle}</p>
@@ -92,12 +92,12 @@ const fallbackImg = DEFAULT_PROMO_BANNER.image;
           </header>
 
           {secProducts.length > 0 ? (
-            <div class="dandy-featured-grid">
+            <div class="dandy-featured-grid" data-dandy-stagger="grid">
               {secProducts.map((product) => {
                 const pfPricing = pinkFridayCampaign
                   ? calculatePinkFridayPricing(product, pinkFridayCampaign)
                   : null;
-                return <ProductCard product={product} pinkFridayPricing={pfPricing} />;
+                return <ProductCard product={product} pinkFridayPricing={pfPricing} revealChild={true} />;
               })}
             </div>
           ) : (
@@ -109,7 +109,7 @@ const fallbackImg = DEFAULT_PROMO_BANNER.image;
       )}
 
       {section.type === 'banner' && (
-        <div class="dandy-custom-banner">
+        <div class="dandy-custom-banner" data-dandy-reveal>
           <div class="dandy-custom-banner-copy">
             {(section.eyebrow || section.subtitle) && (
               <p class="dandy-section-kicker" dir="auto">{section.eyebrow || section.subtitle}</p>
@@ -129,7 +129,7 @@ const fallbackImg = DEFAULT_PROMO_BANNER.image;
             </div>
           </div>
 
-          <div class="dandy-custom-banner-media">
+          <div class="dandy-custom-banner-media" data-dandy-media-settle>
             <img
               src={sanitizeMediaUrl(section.image, fallbackImg)}
               alt={section.title || 'عرض داندي'}
@@ -146,7 +146,7 @@ const fallbackImg = DEFAULT_PROMO_BANNER.image;
       )}
 
       {section.type === 'story' && (
-        <div class="dandy-custom-story-card">
+        <div class="dandy-custom-story-card" data-dandy-reveal>
           {section.subtitle && (
             <p class="dandy-section-kicker" dir="auto">{section.subtitle}</p>
           )}
@@ -164,7 +164,7 @@ const fallbackImg = DEFAULT_PROMO_BANNER.image;
 
       {section.type === 'faq' && (
         <div class="dandy-custom-faq-wrap">
-          <header class="dandy-section-header">
+          <header class="dandy-section-header" data-dandy-reveal>
             <div class="dandy-section-titles">
               {section.subtitle && (
                 <p class="dandy-section-kicker" dir="auto">{section.subtitle}</p>
@@ -175,9 +175,9 @@ const fallbackImg = DEFAULT_PROMO_BANNER.image;
             </div>
           </header>
 
-          <div class="dandy-faq-list" data-faq-accordion>
+          <div class="dandy-faq-list" data-faq-accordion data-dandy-reveal data-dandy-stagger="group">
             {(section.items || []).map((item, idx) => (
-              <div class="dandy-faq-item">
+              <div class="dandy-faq-item" data-dandy-reveal-child>
                 <button
                   type="button"
                   class="dandy-faq-trigger"
@@ -197,7 +197,7 @@ const fallbackImg = DEFAULT_PROMO_BANNER.image;
       )}
 
       {section.type === 'video' && (
-        <div class="dandy-custom-video-wrap">
+        <div class="dandy-custom-video-wrap" data-dandy-reveal>
           <header class="dandy-section-header">
             <div class="dandy-section-titles">
               {section.subtitle && (
@@ -240,7 +240,7 @@ const fallbackImg = DEFAULT_PROMO_BANNER.image;
 
       {section.type === 'gallery' && (
         <>
-          <header class="dandy-section-header">
+          <header class="dandy-section-header" data-dandy-reveal>
             <div class="dandy-section-titles">
               {section.subtitle && (
                 <p class="dandy-section-kicker" dir="auto">{section.subtitle}</p>
@@ -251,12 +251,12 @@ const fallbackImg = DEFAULT_PROMO_BANNER.image;
             </div>
           </header>
 
-          <div class="dandy-gallery-grid">
+          <div class="dandy-gallery-grid" data-dandy-reveal data-dandy-stagger="group">
             {(section.items || []).map((item, idx) => {
               const safeImg = sanitizeMediaUrl(item.image, fallbackImg);
               const safeLink = item.link?.trim() ? sanitizeNavHref(item.link) : null;
               return (
-                <figure class="dandy-gallery-card">
+                <figure class="dandy-gallery-card" data-dandy-reveal-child>
                   {safeLink ? (
                     <a href={safeLink} class="dandy-gallery-link">
                       <img

@@ -28,7 +28,7 @@ const fallbackCatImg = '/assets/images/index-products/product-2.jpg';
   hidden={hidden || undefined}
 >
   <div class="dandy-container">
-    <header class="dandy-section-header">
+    <header class="dandy-section-header" data-dandy-reveal>
       <div class="dandy-section-titles">
         <p class="dandy-section-kicker">الأقسام الرئيسية</p>
         <h2 id="home-categories-heading" class="dandy-section-heading">
@@ -41,11 +41,12 @@ const fallbackCatImg = '/assets/images/index-products/product-2.jpg';
       </a>
     </header>
 
-    <div class="dandy-cat-grid" data-categories-grid>
+    <div class="dandy-cat-grid" data-categories-grid data-dandy-reveal data-dandy-stagger="group">
       {activeCategories.map((cat) => (
         <a
           href={cat.href}
           class={`dandy-cat-card dandy-cat-variant-${cat.layoutVariant}`}
+          data-dandy-reveal-child
         >
           <div class="dandy-cat-media">
             <picture>

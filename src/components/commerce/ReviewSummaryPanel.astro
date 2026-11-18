@@ -34,7 +34,7 @@ function formatArabicDate(ts: number | null): string {
   aria-labelledby="reviews-section-heading"
 >
   <div class="dandy-container">
-    <div class="dandy-pdp-reviews-header">
+    <div class="dandy-pdp-reviews-header" data-dandy-reveal>
       <div>
         <p class="dandy-pdp-section-kicker">آراء العميلات</p>
         <h2 id="reviews-section-heading" class="dandy-pdp-section-heading">
@@ -62,7 +62,7 @@ function formatArabicDate(ts: number | null): string {
       {hasReviews ? (
         <div class="dandy-pdp-reviews-layout">
           <!-- Left / Start Summary Card -->
-          <aside class="dandy-pdp-reviews-stats-card" aria-label="ملخص التقييمات">
+          <aside class="dandy-pdp-reviews-stats-card" aria-label="ملخص التقييمات" data-dandy-reveal>
             <div class="dandy-pdp-score-hero">
               <span class="dandy-pdp-score-num dandy-tabular">{reviewStats.averageFormatted}</span>
               <div class="dandy-pdp-score-meta">
@@ -99,9 +99,9 @@ function formatArabicDate(ts: number | null): string {
           </aside>
 
           <!-- Reviews Cards Grid -->
-          <div class="dandy-pdp-reviews-grid">
+          <div class="dandy-pdp-reviews-grid" data-dandy-reveal data-dandy-stagger="group">
             {reviewStats.items.map((item) => (
-              <article class="dandy-pdp-review-card">
+              <article class="dandy-pdp-review-card" data-dandy-reveal-child>
                 <header class="dandy-pdp-review-head">
                   <div class="dandy-pdp-reviewer">
                     <span class="dandy-pdp-reviewer-avatar" aria-hidden="true">
@@ -149,7 +149,7 @@ function formatArabicDate(ts: number | null): string {
           </div>
         </div>
       ) : (
-        <div class="dandy-pdp-reviews-empty">
+        <div class="dandy-pdp-reviews-empty" data-dandy-reveal>
           <span class="dandy-pdp-reviews-empty-icon" aria-hidden="true">
             <Icon name="star" size={22} strokeWidth={1.6} />
           </span>

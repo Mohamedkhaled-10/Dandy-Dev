@@ -17,7 +17,7 @@ const fallbackImage = '/assets/images/logo.png';
 
 <header class="dandy-cat-header">
   <div class="dandy-container">
-    <nav class="dandy-cat-breadcrumb" aria-label="مسار التنقل">
+    <nav class="dandy-cat-breadcrumb" aria-label="مسار التنقل" data-dandy-entrance="0">
       <ol class="dandy-cat-breadcrumb-list">
         <li>
           <a href="/" class="dandy-cat-crumb-link">الرئيسية</a>
@@ -39,10 +39,10 @@ const fallbackImage = '/assets/images/logo.png';
 
     <div class="dandy-cat-hero-grid">
       <div class="dandy-cat-hero-copy">
-        <p class="dandy-cat-eyebrow">قسم {category.arabicName}</p>
-        <h1 class="dandy-cat-h1 dandy-font-ar-display">{category.h1Title}</h1>
-        <p class="dandy-cat-intro">{category.introText}</p>
-        <div class="dandy-cat-meta-line">
+        <p class="dandy-cat-eyebrow" data-dandy-entrance="1">قسم {category.arabicName}</p>
+        <h1 class="dandy-cat-h1 dandy-font-ar-display" data-dandy-entrance="2">{category.h1Title}</h1>
+        <p class="dandy-cat-intro" data-dandy-entrance="3">{category.introText}</p>
+        <div class="dandy-cat-meta-line" data-dandy-entrance="4">
           <span class="dandy-tabular">{productCount} منتج متاح</span>
           <span aria-hidden="true" class="dandy-cat-meta-dot">·</span>
           <a href="/all-products" class="dandy-cat-all-link">
@@ -52,7 +52,7 @@ const fallbackImage = '/assets/images/logo.png';
         </div>
       </div>
 
-      <div class="dandy-cat-hero-media">
+      <div class="dandy-cat-hero-media" data-dandy-media-settle>
         <img
           src={category.image}
           alt={category.h1Title}

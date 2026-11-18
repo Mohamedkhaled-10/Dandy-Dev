@@ -1,0 +1,1003 @@
+# DANDY — BOTANICAL EDITORIAL COMMERCE
+# PHASE 7 — GLOBAL PAGE ENTRANCE & PROGRESSIVE CONTENT REVEAL SYSTEM
+
+## Lightweight Page Loading Experience · Editorial Motion Design · Shared Animation Architecture · Storefront-Wide Integration
+
+---
+
+# 1. ROLE & PROJECT CONTEXT
+
+Act as a Principal Frontend Motion Engineer, Senior Astro Engineer, and Premium E-commerce UX Specialist.
+
+You are working on the existing DANDY Cosmetics storefront.
+
+The approved design direction is:
+
+**BOTANICAL EDITORIAL COMMERCE**
+
+The project has completed Phases 0–6, including:
+
+- Global design system.
+- Global storefront shell.
+- Reconstructed homepage.
+- Unified product cards.
+- Product detail pages.
+- Catalog and category pages.
+- Shopping cart and checkout.
+- Invoice and order tracking.
+
+The current working workspace is the authoritative source of truth.
+
+Do not search GitHub for newer changes.
+
+Do not assume that the remote repository contains the latest implementation.
+
+## Main Objective
+
+Implement a unified, lightweight, elegant entrance-animation and progressive content-reveal system across the main customer-facing DANDY storefront pages.
+
+When customers open a page, its content should appear in a refined, progressive sequence rather than appearing abruptly.
+
+The experience should feel:
+
+- Smooth.
+- Natural.
+- Elegant.
+- Lightweight.
+- Fast.
+- Consistent.
+- Non-intrusive.
+
+**This is a visual presentation enhancement, not a change to how content is fetched, rendered, or loaded.**
+
+All page content must remain available immediately through the existing SSR and frontend rendering architecture.
+
+---
+
+# 2. IMPORTANT DESIGN PRINCIPLE — ANIMATION, NOT LOADING DELAY
+
+The requested effect is a subtle visual entrance animation.
+
+It is NOT permission to introduce:
+
+- Full-screen loading screens.
+- Artificial waiting periods.
+- Global spinners.
+- Fake skeleton content.
+- Delayed HTML rendering.
+- Artificial network requests.
+- Content-loading barriers.
+- Forced waiting before users can interact with the page.
+
+The existing server-rendered content must remain immediately available.
+
+Use animation to improve the perceived presentation of content, not to postpone its availability.
+
+The customer must never feel that the website became slower because of animation.
+
+---
+
+# 3. MANDATORY PRE-IMPLEMENTATION AUDIT
+
+Before changing any source files, inspect the actual current workspace.
+
+Read and review:
+
+- `DANDY_COMPLETE_UI_UX_BLUEPRINT_AR.md`
+- Phase 1 final report.
+- Phase 2 final report.
+- Phase 3 final report.
+- Phase 4 final report.
+- Phase 5 final report.
+- Phase 6 final report.
+
+Inspect the current animation architecture, especially:
+
+- `src/utils/animations.ts`
+- `src/styles/animations.css`
+- `src/styles/tokens.css`
+- `src/layouts/BaseLayout.astro`
+
+Also inspect:
+
+- Existing GSAP usage.
+- Existing ScrollTrigger registrations.
+- Existing page reveal classes.
+- Existing IntersectionObserver implementations.
+- Existing global scripts.
+- Current storefront page root elements.
+- Existing Astro hydration scripts, if any.
+- Existing page navigation and browser history behavior.
+
+Determine exactly which animation behavior already exists and where duplication or inconsistency occurs.
+
+## Mandatory Audit Questions
+
+1. Does the project already animate homepage sections?
+2. Does GSAP already provide reusable reveal functionality?
+3. Are any sections currently hidden until JavaScript executes?
+4. Are there existing animations that replay unnecessarily?
+5. Are multiple animations controlling the same elements?
+6. Do any existing animations interfere with LCP or initial rendering?
+7. Are some pages using entirely different animation implementations?
+8. Can the new behavior be integrated into the existing animation architecture?
+
+Prefer extending and consolidating the existing system rather than creating a competing animation engine.
+
+Create a pre-implementation report:
+
+`DANDY_PHASE_7_MOTION_AUDIT_AR.md`
+
+Include the current animation architecture, reusable functionality, identified problems, target routes, and proposed implementation plan.
+
+Do not begin implementation until this audit is complete.
+
+---
+
+# 4. STRICT SCOPE — CUSTOMER-FACING STOREFRONT
+
+The new animation system should cover the main customer-facing pages that users regularly visit.
+
+Inspect the actual routes and apply appropriate animation integration to the following pages where they exist:
+
+### Core Storefront
+
+- `/`
+- `/all-products`
+- `/category/[category]`
+- `/product/[...slug]`
+- `/special-offers`
+- `/pink-friday`
+
+### Shopping Journey
+
+- `/cart`
+- `/invoice`
+- `/track-order`
+
+### Customer-Facing Content
+
+- `/about-us`
+- `/blog`
+- `/blog/[...slug]`
+- `/post`, where applicable.
+- `/client-reviews`
+- `/contact-us`
+- `/help`
+- `/privacy-policy`
+- `/terms`
+- `/404`
+
+### Customer Authentication
+
+Where appropriate and compatible with the existing page structure:
+
+- `/account`
+- `/account-login`
+- `/account-signup`
+
+The new animation architecture should be reusable so that pages reconstructed in later phases automatically follow the same motion language.
+
+Do not redesign the account or content pages in this phase.
+
+Do not modify administrative interfaces or admin dashboard pages.
+
+Do not animate unrelated backend or administrative workflows.
+
+---
+
+# 5. ANIMATION ART DIRECTION
+
+Build a consistent motion language inspired by premium editorial websites and luxury beauty storefronts.
+
+Avoid excessive motion.
+
+The purpose is to make the interface feel refined and alive without distracting the customer.
+
+## 5.1 Primary Entrance Animation
+
+Use a combination of:
+
+- Opacity transition.
+- Very subtle upward translation.
+- Optional minimal image-scale transition.
+- Gentle stagger between related elements.
+
+Recommended approximate values:
+
+```css
+--dandy-motion-duration-fast: 300ms;
+--dandy-motion-duration-normal: 450ms;
+--dandy-motion-duration-slow: 600ms;
+
+--dandy-motion-distance: 10px;
+--dandy-motion-stagger: 55ms;
+```
+
+These are starting reference values, not rigid requirements.
+
+Adjust them according to actual browser rendering and visual quality.
+
+The default animation should use only inexpensive compositor-friendly properties:
+
+- `opacity`
+- `transform`
+
+Avoid unnecessary animations involving:
+
+- Width.
+- Height.
+- Margin.
+- Padding.
+- Layout-affecting properties.
+- Heavy filters.
+- Large animated blur effects.
+
+## 5.2 Visual Style
+
+The recommended effect is:
+
+**Soft Fade + Gentle Rise**
+
+Example conceptual behavior:
+
+1. Content begins slightly lower than its final position.
+2. Opacity transitions smoothly from subtle to fully visible.
+3. The element moves upward by approximately 8–12px.
+4. The movement settles naturally.
+5. Related elements appear with a small stagger.
+
+Do not create a bounce effect.
+
+Do not use aggressive spring animations.
+
+Do not use long delays that make the website feel unresponsive.
+
+Do not animate every text node independently.
+
+Animate meaningful visual groups.
+
+---
+
+# 6. PROGRESSIVE PAGE ENTRANCE SEQUENCE
+
+The page should appear in a deliberate visual order.
+
+## 6.1 Initial Viewport
+
+Prioritize:
+
+1. Main page introduction or hero.
+2. Main heading.
+3. Supporting description.
+4. Primary CTA.
+5. Main visual or product image where appropriate.
+6. First major content section.
+
+The appearance should be staggered subtly, not sequentially delayed by several seconds.
+
+The complete initial composition should settle quickly.
+
+## 6.2 Below-the-Fold Content
+
+For content sections that are outside the initial viewport:
+
+- Use an efficient reveal-on-intersection approach.
+- Trigger the reveal when the section enters the viewport.
+- Animate the section only once.
+- Do not replay the animation every time the user scrolls away and returns.
+- Keep the content accessible.
+- Avoid leaving any element hidden if the observer fails.
+
+Use the existing GSAP/ScrollTrigger architecture if it already supports this behavior appropriately.
+
+A lightweight IntersectionObserver implementation is also acceptable if it avoids duplicating existing functionality.
+
+Do not introduce a new animation library.
+
+## 6.3 Product Grid Entrance
+
+For product grids:
+
+- Use subtle staggered card reveals.
+- Keep the delay short.
+- Do not animate 32 product cards one after another with a long cumulative delay.
+- Use small animation batches when necessary.
+- Ensure that products remain accessible and clickable immediately.
+- Avoid delays that make filters or product interactions feel blocked.
+
+The animation must not prevent search, sorting, filtering, or shopping actions.
+
+## 6.4 Image Entrance
+
+Images may use a restrained opacity transition.
+
+For selected editorial images, a very small scale transition may be appropriate:
+
+`scale(0.985) → scale(1)`
+
+Do not:
+
+- Stretch images.
+- Crop product labels.
+- Use large zoom effects.
+- Delay important product images.
+- animate unloaded images into invisible states.
+
+---
+
+# 7. IMPORTANT — PROTECT INITIAL RENDERING & PERFORMANCE
+
+Performance is a priority.
+
+The existing content must not become hidden indefinitely when scripts fail or JavaScript is unavailable.
+
+## 7.1 Progressive Enhancement
+
+The default page state must remain visible.
+
+Only activate hidden/reveal animation states after the animation system has successfully initialized and confirmed that animations are allowed.
+
+If:
+
+- JavaScript is unavailable.
+- IntersectionObserver is unavailable.
+- The animation controller fails.
+- The page is already being restored from browser history.
+- Reduced motion is enabled.
+
+Then:
+
+**All page content must remain immediately visible without animation.**
+
+Never make `opacity: 0` the permanent default for critical content.
+
+Provide a safe fallback state.
+
+## 7.2 LCP Protection
+
+The main LCP element must not be unnecessarily delayed.
+
+Important:
+
+- Do not delay image fetching.
+- Do not delay image decoding.
+- Do not delay SSR content.
+- Do not add artificial rendering barriers.
+- Do not introduce global loading overlays.
+- Do not make the primary hero image depend on a late animation initialization.
+
+The primary hero image should remain visible promptly.
+
+Its appearance may be visually refined, but its rendering must not be delayed by the animation engine.
+
+## 7.3 CLS Protection
+
+Animations must not change document layout.
+
+Use transforms and opacity.
+
+Avoid changing the final position or dimensions of page elements.
+
+Ensure that images maintain explicit aspect ratios or dimensions.
+
+## 7.4 Interaction Availability
+
+The following elements must never wait for entrance animations to finish before becoming usable:
+
+- Product purchase buttons.
+- Search input.
+- Filters.
+- Navigation.
+- Cart controls.
+- Checkout inputs.
+- Quantity selectors.
+- Variant selectors.
+- Form controls.
+- Dialog triggers.
+
+Animation is visual only.
+
+---
+
+# 8. INITIAL LOAD AND REPLAY BEHAVIOR
+
+Define the animation lifecycle carefully.
+
+The intended behavior is:
+
+- Trigger the entrance sequence once for a normal page view.
+- Do not replay it repeatedly during scrolling.
+- Do not restart all animations on window resize.
+- Do not restart animations after minor DOM updates.
+- Do not replay the entire page animation because a product quantity changed.
+- Do not replay existing sections because a search result was updated.
+- Handle browser back/forward cache restoration gracefully.
+- Avoid duplicate event listeners and duplicate animation timelines.
+
+For pages that use existing client-side interactions, distinguish between:
+
+**Page entrance:**
+Runs once when the page is first presented.
+
+**Interactive state changes:**
+Use their existing interaction behavior without replaying the full-page entrance.
+
+**Below-the-fold reveal:**
+Runs once when an unobserved section first enters the viewport.
+
+Do not introduce new client-side navigation or Astro View Transitions solely for this animation feature.
+
+Preserve the current navigation architecture.
+
+---
+
+# 9. RECOMMENDED TECHNICAL ARCHITECTURE
+
+First inspect and reuse the current system.
+
+If a small architectural improvement is required, consider consolidating the animation functionality into a shared controller.
+
+Potential structure:
+
+```text
+src/
+├── styles/
+│   └── animations.css
+│
+├── scripts/
+│   └── page-entrance.ts
+│
+└── utils/
+    └── animations.ts
+```
+
+This is a proposal, not a mandatory file list.
+
+Do not create duplicate GSAP controllers.
+
+Do not introduce additional dependencies.
+
+## 9.1 Shared Animation Attributes
+
+Use a consistent and maintainable marker architecture.
+
+Possible examples:
+
+```html
+data-dandy-entrance
+data-dandy-reveal
+data-dandy-stagger
+data-dandy-reveal-child
+```
+
+Use the markers consistently and document their meaning.
+
+Avoid fragile selectors based on:
+
+- Arabic text content.
+- Product names.
+- Arbitrary CSS class combinations.
+- Page-specific element positions.
+
+Use semantic component markers.
+
+## 9.2 BaseLayout Integration
+
+Evaluate whether the shared entrance controller can be initialized once through the existing BaseLayout.
+
+If possible, initialize the shared controller globally while allowing page-specific elements to opt into reveal behavior through deliberate markers.
+
+Do not wrap every page in unnecessary additional DOM containers.
+
+Do not introduce nested `<main>` elements.
+
+Do not break existing Astro layouts or page structure.
+
+## 9.3 Existing GSAP System
+
+Inspect:
+
+`src/utils/animations.ts`
+
+If the current DANDY animation controller already contains suitable reveal functionality:
+
+- Extend it.
+- Reuse existing utilities.
+- Avoid duplicate ScrollTrigger instances.
+- Avoid duplicate initialization.
+- Ensure proper cleanup where appropriate.
+
+If CSS and IntersectionObserver are sufficient, prefer the simpler implementation.
+
+Do not use GSAP merely for effects that simple CSS can achieve.
+
+---
+
+# 10. REDUCED MOTION & ACCESSIBILITY
+
+Respect:
+
+`prefers-reduced-motion: reduce`
+
+When this preference is active:
+
+- Disable entrance translations.
+- Disable unnecessary stagger delays.
+- Disable image-scale animations.
+- Make page content immediately visible.
+- Preserve all existing interactions.
+- Preserve focus behavior.
+
+Do not use animation to communicate information that cannot otherwise be understood.
+
+Ensure keyboard-focused elements are never visually hidden because an animation has not completed.
+
+If a user tabs to an unrevealed section, ensure it becomes visible immediately.
+
+The implementation must support Arabic RTL and English LTR without hardcoded directional offsets.
+
+Use logical properties or direction-independent transforms.
+
+---
+
+# 11. SPECIAL PAGE CONSIDERATIONS
+
+Different pages require different animation intensity.
+
+## Homepage
+
+Use the most expressive, but still restrained, entrance sequence.
+
+- Hero content.
+- Main brand visual.
+- Category discovery.
+- Featured products.
+- Editorial story.
+- Subsequent sections.
+
+Do not replay the existing homepage animations independently if the new controller already handles the same elements.
+
+## Product Listing & Category Pages
+
+- Editorial heading.
+- Catalog toolbar.
+- Product grid.
+- Product cards.
+
+Keep filter and sorting controls usable immediately.
+
+## Product Detail Pages
+
+- Product information.
+- Product gallery controls.
+- Price.
+- Variant selectors.
+- Purchase area.
+- Description sections.
+- Reviews.
+- Related products.
+
+Do not delay purchase controls behind sequential animations.
+
+## Cart & Checkout
+
+Use a significantly more restrained presentation.
+
+- Cart heading.
+- Cart items.
+- Order summary.
+- Checkout step content.
+
+Do not animate financial amounts repeatedly.
+
+Do not animate validation messages in ways that delay error recognition.
+
+Do not interfere with step transitions or checkout submission.
+
+## Invoice & Order Tracking
+
+Prioritize readability and information visibility.
+
+Use minimal entrance transitions.
+
+Do not animate the status or financial values in a way that could confuse the customer.
+
+## About, Blog, Help & Support
+
+Use calm editorial reveals for:
+
+- Page introductions.
+- Article images.
+- Content sections.
+- FAQ groups.
+- Contact information.
+
+Do not animate every paragraph individually.
+
+---
+
+# 12. FUTURE MULTILINGUAL COMPATIBILITY
+
+DANDY will eventually provide a complete Arabic and English storefront with a language switcher.
+
+This is a future project phase and is NOT part of the current implementation.
+
+For this phase:
+
+- Do not create an English version.
+- Do not add a language switcher.
+- Do not create locale routes.
+- Do not translate existing page content.
+- Do not introduce a translation framework.
+- Do not modify existing Arabic content.
+- Do not add `hreflang` routing or localization infrastructure.
+
+However, ensure the new animation system is localization-ready.
+
+Requirements:
+
+- Do not select elements by Arabic text.
+- Do not hardcode right/left movement assumptions.
+- Use direction-independent or logical CSS behavior.
+- Work correctly with both `dir="rtl"` and `dir="ltr"`.
+- Keep animation logic independent from page text and language.
+- Use reusable semantic markers.
+- Avoid embedding Arabic-only animation messages inside JavaScript.
+
+This will allow the future English storefront to share the same motion system without rebuilding it.
+
+---
+
+# 13. STRICT BUILD & DEPLOYMENT CONFIGURATION PROTECTION
+
+**THIS REQUIREMENT IS NON-NEGOTIABLE.**
+
+Preserve the original Astro, build, package, environment, and deployment configurations exactly.
+
+Do not modify, replace, rename, delete, regenerate, or reformat:
+
+- `astro.config.mjs`
+- `vercel.json`
+- `package.json`
+- `package-lock.json`
+- `tsconfig.json`
+- `vite.config.*`
+- `patch-env.cjs`
+- `server.js`
+- `.env` and `.env.*`
+- `.npmrc`
+- `.nvmrc`
+- `.node-version`
+- Existing CI/CD workflows.
+- Existing build scripts.
+- Any other build, compiler, framework, or deployment configuration.
+
+Do not:
+
+- Install new packages.
+- Upgrade dependencies.
+- Remove dependencies.
+- Change npm scripts.
+- Change Astro settings.
+- Change Vercel settings.
+- Introduce new build tools.
+- Change deployment behavior.
+
+Use the existing GSAP and CSS capabilities.
+
+## Baseline Verification
+
+Before implementation:
+
+1. Record the exact original contents of all protected files.
+2. Calculate SHA-256 checksums where available.
+3. Save an immutable baseline snapshot.
+
+Use the previously verified Phase 5/6 checksum values as historical references where applicable, but verify the actual current workspace before relying on them.
+
+If any protected file is accidentally changed:
+
+1. Stop the affected operation.
+2. Restore its exact original pre-phase contents.
+3. Do not reconstruct it from memory.
+4. Verify its checksum against the original baseline.
+5. Document the incident.
+
+At the end of Phase 7, all protected files must remain byte-for-byte identical to their original baseline.
+
+---
+
+# 14. RESPONSIVE TESTING
+
+Test all target pages at the following viewports:
+
+- 390 × 844
+- 430 × 932
+- 768 × 1024
+- 1024 × 768
+- 1440 × 900
+
+Verify:
+
+- Animations remain subtle.
+- Text does not shift unexpectedly.
+- Images retain their correct proportions.
+- No horizontal overflow appears.
+- No visual overlap occurs.
+- No fixed component is unintentionally animated.
+- No page content remains hidden.
+- No excessive stagger delays occur.
+
+Test both RTL and an LTR test context where practical.
+
+Do not claim that every route passed all viewport sizes unless it was actually tested.
+
+---
+
+# 15. REQUIRED BROWSER TESTING
+
+Use the available Chromium/Playwright environment.
+
+Test representative routes from every major page category:
+
+- `/`
+- `/all-products`
+- `/category/skin-care`
+- `/product/facial-serum-3x1-30ml`
+- `/special-offers`
+- `/pink-friday`
+- `/cart`
+- `/invoice`
+- `/track-order`
+- `/about-us`
+- `/blog`
+- `/client-reviews`
+- `/contact-us`
+- `/help`
+- `/account-login`
+
+Test:
+
+### Initial Entrance
+
+- Content appears progressively.
+- Animation duration is appropriate.
+- No full-screen loading layer appears.
+- No unnecessary waiting occurs.
+- The main hero image is not delayed.
+- Header and navigation remain stable.
+
+### Scroll Reveal
+
+- Sections reveal when entering the viewport.
+- Each section animates only once.
+- Repeated scrolling does not replay completed animations.
+- The page does not jump vertically.
+
+### Interaction
+
+Test during animation:
+
+- Open search.
+- Open navigation drawer.
+- Click product cards.
+- Add a product to cart.
+- Use product filters.
+- Change product variants.
+- Interact with checkout fields.
+- Open and close dialogs.
+
+All actions must remain usable immediately.
+
+### Reduced Motion
+
+Enable `prefers-reduced-motion: reduce` and verify:
+
+- No unnecessary entrance motion.
+- All content is immediately visible.
+- No hidden elements remain.
+- All interactions still work.
+
+### Failure Fallback
+
+Where practical, test without JavaScript or with the animation controller disabled.
+
+All content must remain visible and usable.
+
+### Browser History
+
+Check that returning through browser back/forward does not trigger an unwanted repeated animation if the page is restored from browser cache.
+
+---
+
+# 16. PERFORMANCE VALIDATION
+
+Compare the new implementation with the existing baseline where possible.
+
+Inspect:
+
+- Largest Contentful Paint.
+- Cumulative Layout Shift.
+- Total blocking time or available interaction metrics.
+- Number of active animation instances.
+- Number of active observers.
+- Repeated event listeners.
+- Unnecessary layout recalculations.
+- Long-running animations.
+
+The new animation system must not meaningfully degrade page performance.
+
+Prefer:
+
+- CSS transforms.
+- CSS opacity.
+- Small numbers of active animation timelines.
+- Reused observers.
+- One-time section observation.
+- Efficient cleanup.
+
+Avoid:
+
+- Continuous scroll polling.
+- Animating hundreds of elements individually.
+- Large arrays of delayed animation timers.
+- Unnecessary DOM mutations.
+- Repeated GSAP initialization.
+
+If a measured performance regression occurs, reduce or remove the animation responsible instead of accepting the regression.
+
+---
+
+# 17. FINAL VALIDATION
+
+Run the existing project commands:
+
+```bash
+npm run lint
+npm run build
+```
+
+Run all relevant existing unit tests without changing project configuration.
+
+Inspect:
+
+- Browser console.
+- Runtime errors.
+- Broken routes.
+- Missing images.
+- Hidden content.
+- Unexpected animation replays.
+- Layout shifts.
+- Horizontal overflow.
+
+Run validation after the final code modifications.
+
+Do not suppress errors or alter protected configuration to force successful results.
+
+---
+
+# 18. REQUIRED FINAL REPORT
+
+Create:
+
+`DANDY_PHASE_7_FINAL_REPORT_AR.md`
+
+Write the report in professional Arabic.
+
+Include:
+
+1. Executive summary.
+2. Initial animation architecture audit.
+3. Existing animation functionality reused.
+4. Problems found in the previous animation system.
+5. New animation architecture.
+6. Global animation behavior.
+7. Progressive reveal behavior.
+8. Route coverage.
+9. Components and pages integrated.
+10. Files created.
+11. Files modified.
+12. Animation timing and motion specifications.
+13. Reduced-motion behavior.
+14. Initial rendering and LCP considerations.
+15. Browser test results.
+16. Responsive viewport results.
+17. Interaction results during animations.
+18. Performance findings.
+19. Lint results.
+20. Build results.
+21. Protected configuration SHA-256 verification.
+22. Known issues and limitations.
+23. Confirmation that no translation, locale switching, or English-version implementation was introduced.
+24. Recommended next phase.
+
+Clearly distinguish:
+
+- Implemented.
+- Actually tested.
+- Not tested.
+- Deferred.
+
+Include actual browser results rather than assumptions.
+
+---
+
+# 19. ACCEPTANCE CRITERIA
+
+Phase 7 is complete only when:
+
+- A unified page entrance system exists.
+- The main customer-facing pages use consistent entrance behavior.
+- Initial content appears progressively and smoothly.
+- Below-the-fold content reveals once when appropriate.
+- No artificial loading screen or artificial waiting period exists.
+- Critical content remains immediately available.
+- Product cards and interactive controls remain usable during animations.
+- The hero image is not unnecessarily delayed.
+- No content remains hidden when JavaScript fails.
+- Reduced-motion preferences are respected.
+- RTL and LTR compatibility is preserved.
+- No repeated animation loops or duplicated observers exist.
+- Performance does not meaningfully regress.
+- Existing phases remain visually and functionally intact.
+- All protected files remain unchanged.
+- No new dependencies are introduced.
+- Lint and production build succeed.
+- The final report exists.
+
+---
+
+# 20. EXECUTION SEQUENCE
+
+Follow this order:
+
+1. Read the previous project documentation.
+2. Inspect the current animation architecture.
+3. Identify existing reusable animation behavior.
+4. Create the pre-implementation audit.
+5. Record protected configuration baselines.
+6. Design the unified motion specification.
+7. Implement or consolidate the shared entrance controller.
+8. Update the shared animation styles.
+9. Integrate the system into the relevant customer-facing pages.
+10. Preserve all content and business interactions.
+11. Test initial page entrance.
+12. Test scroll-based reveal.
+13. Test reduced-motion behavior.
+14. Test interaction availability during animations.
+15. Test responsive layouts.
+16. Inspect performance and browser errors.
+17. Run unit tests, lint, and production build.
+18. Verify protected configuration integrity.
+19. Create the final report.
+
+Do not start implementation before completing the audit.
+
+Do not redesign any page as part of this phase.
+
+---
+
+# FINAL INSTRUCTION
+
+Execute **PHASE 7 — GLOBAL PAGE ENTRANCE & PROGRESSIVE CONTENT REVEAL ONLY**.
+
+The objective is to improve the visual experience of opening DANDY pages through elegant, subtle, progressive animations.
+
+Keep all existing page content, business logic, layouts, pricing, cart functionality, campaign behavior, checkout behavior, SEO metadata, and data structures intact.
+
+Do not create fake loading screens or delay content rendering.
+
+Do not redesign the homepage, product pages, catalog, accounts, or dashboard.
+
+Do not implement the English storefront or language switcher in this phase.
+
+Do not modify Astro, Vercel, build, package, dependency, environment, or deployment configuration.
+
+If any protected file is accidentally modified, restore its exact original pre-phase content and verify its SHA-256 checksum.
+
+Do not perform Git commits or pushes.
+
+Work exclusively in the current project workspace.
+
+**Deliver a subtle, premium, consistent motion experience across DANDY's customer-facing pages while keeping the website immediately usable, fast, accessible, and fully functional. Finish with the complete final report without automatically starting another phase.**

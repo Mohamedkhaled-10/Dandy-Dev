@@ -26,9 +26,9 @@ const {
 } = Astro.props;
 ---
 
-<header class:list={['dandy-comm-header', hideOnPrint && 'dandy-no-print']}>
+<header class:list={['dandy-comm-header', hideOnPrint && 'dandy-no-print']} data-dandy-motion="calm">
   <div class="dandy-container">
-    <nav class="dandy-comm-breadcrumb" aria-label="مسار التنقل">
+    <nav class="dandy-comm-breadcrumb" aria-label="مسار التنقل" data-dandy-entrance="0">
       <ol class="dandy-comm-breadcrumb-list">
         <li>
           <a href="/" class="dandy-comm-crumb-link">الرئيسية</a>
@@ -53,9 +53,9 @@ const {
     </nav>
 
     <div class="dandy-comm-header-body">
-      <p class="dandy-comm-eyebrow">{eyebrow}</p>
-      <h1 class="dandy-comm-title dandy-font-ar-display">{title}</h1>
-      {description && <p class="dandy-comm-desc">{description}</p>}
+      <p class="dandy-comm-eyebrow" data-dandy-entrance="1">{eyebrow}</p>
+      <h1 class="dandy-comm-title dandy-font-ar-display" data-dandy-entrance="2">{title}</h1>
+      {description && <p class="dandy-comm-desc" data-dandy-entrance="3">{description}</p>}
     </div>
   </div>
 </header>

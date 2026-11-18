@@ -16,12 +16,14 @@ export interface Props {
   product: Product;
   pinkFridayPricing?: CampaignPricingResult | null;
   priority?: boolean;
+  revealChild?: boolean;
 }
 
 const {
   product,
   pinkFridayPricing = null,
   priority = false,
+  revealChild = false,
 } = Astro.props;
 
 const vm = resolveProductCardViewModel(product, pinkFridayPricing);
@@ -37,6 +39,7 @@ const fallbackAttr = FALLBACK_PRODUCT_IMAGE;
   data-category={vm.categorySlug}
   data-price={vm.currentPrice}
   data-sold-out={vm.isSoldOut ? 'true' : 'false'}
+  data-dandy-reveal-child={revealChild ? '' : undefined}
 >
   <a
     href={vm.href}

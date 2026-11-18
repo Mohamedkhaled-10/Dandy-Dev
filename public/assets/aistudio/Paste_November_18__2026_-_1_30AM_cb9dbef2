@@ -1,0 +1,1398 @@
+# DANDY — BOTANICAL EDITORIAL COMMERCE
+# PHASE 8 — CUSTOMER ACCOUNTS, EDITORIAL CONTENT & SUPPORT RECONSTRUCTION
+
+## Customer Authentication · Account Dashboard · Brand Storytelling · Blog · Customer Reviews · Support · Legal Pages
+
+---
+
+# 1. ROLE & PROJECT CONTEXT
+
+Act as a Principal Frontend Architect, Senior Astro Engineer, and Premium E-commerce UI/UX Specialist.
+
+You are continuing the complete visual reconstruction of:
+
+**DANDY Cosmetics**
+
+Approved design direction:
+
+**BOTANICAL EDITORIAL COMMERCE**
+
+The following phases have been completed:
+
+- Phase 0 — Architecture Audit & Master Design Blueprint.
+- Phase 1 — Design System Foundation.
+- Phase 2 — Global Storefront Shell.
+- Phase 3 — Product Card & Homepage Reconstruction.
+- Phase 4 — Product Detail Page Reconstruction.
+- Phase 5 — Catalog, Categories & Campaigns.
+- Phase 6 — Cart, Checkout, Invoice & Order Tracking.
+- Phase 7 — Global Page Entrance & Progressive Content Reveal.
+
+Read the previous phase reports and the master blueprint from the current workspace before beginning.
+
+The current workspace is the authoritative source of truth.
+
+Do not search GitHub for newer changes or assume the remote repository contains the latest implementation.
+
+## Mission
+
+Reconstruct the customer account experience, authentication pages, brand storytelling pages, editorial content, customer reviews, support interfaces, and legal information pages.
+
+Every page must feel like part of the same premium beauty brand established during Phases 1–7.
+
+The result must communicate:
+
+- Premium brand identity.
+- Professional customer service.
+- Intuitive account management.
+- Refined editorial storytelling.
+- Trustworthy information.
+- Excellent Arabic RTL presentation.
+- Consistent responsive behavior.
+
+---
+
+# 2. IMPORTANT CONTEXT — PREVIOUSLY COMPLETED STANDALONE TASKS
+
+Two additional homepage-related modifications have been handled separately from the numbered implementation phases:
+
+1. Homepage synchronization with the existing Admin Studio / Dashboard customization system.
+2. Responsive refinement of the homepage Hero composition for tablet and mobile.
+
+These are NOT additional Phase 8 implementation tasks.
+
+Do not:
+
+- Rebuild these features.
+- Replace their implementation.
+- Create competing homepage customization logic.
+- Redesign Admin Studio.
+- Rework the homepage Hero.
+- Undo their existing responsive behavior.
+
+Preserve the current implementation and avoid unnecessary changes to the homepage and its dashboard synchronization contracts.
+
+Phase 8 is focused on customer account pages, editorial content, support, and legal pages.
+
+---
+
+# 3. MANDATORY PRE-IMPLEMENTATION AUDIT
+
+Before changing any source files, inspect the actual current workspace.
+
+Read the following documents whenever available:
+
+- `DANDY_COMPLETE_UI_UX_BLUEPRINT_AR.md`
+- `DANDY_PHASE_1_FINAL_REPORT_AR.md`
+- `DANDY_PHASE_2_FINAL_REPORT_AR.md`
+- `DANDY_PHASE_3_FINAL_REPORT_AR.md`
+- `DANDY_PHASE_4_FINAL_REPORT_AR.md`
+- `DANDY_PHASE_5_FINAL_REPORT_AR.md`
+- `DANDY_PHASE_6_FINAL_REPORT_AR.md`
+- `DANDY_PHASE_7_FINAL_REPORT_AR.md`
+
+Inspect the current implementation of the following routes where present:
+
+- `src/pages/account.astro`
+- `src/pages/account-login.astro`
+- `src/pages/account-signup.astro`
+- `src/pages/about-us.astro`
+- `src/pages/blog.astro`
+- `src/pages/blog/[...slug].astro`
+- `src/pages/post.astro`
+- `src/pages/client-reviews.astro`
+- `src/pages/contact-us.astro`
+- `src/pages/help.astro`
+- `src/pages/privacy-policy.astro`
+- `src/pages/terms.astro`
+- `src/pages/404.astro`
+
+Also inspect relevant supporting files:
+
+- `src/utils/articles.ts`
+- Existing account-related utilities.
+- Existing wishlist implementation.
+- Existing saved-address implementation.
+- Existing review retrieval and submission logic.
+- Existing contact form implementation.
+- Existing Turnstile integration.
+- Existing consent-management implementation.
+- Existing DandyToast implementation.
+- Existing Icon component.
+- Existing editorial image assets.
+- Existing SEO metadata and structured-data implementations.
+- Existing global animation controller from Phase 7.
+
+Identify all existing selectors, IDs, global functions, frontend events, and data contracts before changing any interface.
+
+## Required Audit Report
+
+Create:
+
+`DANDY_PHASE_8_PRE_IMPLEMENTATION_AUDIT_AR.md`
+
+Include:
+
+1. Existing routes and their responsibilities.
+2. Existing customer authentication behavior.
+3. Current account data structure.
+4. Current order-history presentation.
+5. Current wishlist implementation.
+6. Saved-address structures and checkout dependencies.
+7. Existing blog and article architecture.
+8. Current review data and presentation.
+9. Contact form implementation.
+10. Help center and FAQ architecture.
+11. Privacy and consent controls.
+12. Existing SEO and structured data.
+13. Existing animation integration.
+14. Current UI/UX issues.
+15. Reusable components.
+16. Components requiring reconstruction.
+17. Expected modified files.
+18. Potential regression risks.
+
+Do not begin implementation until the audit is complete.
+
+---
+
+# 4. STRICT PHASE SCOPE
+
+This phase authorizes changes to the following customer-facing areas:
+
+### Account & Authentication
+- Customer login.
+- Customer registration.
+- Customer account dashboard.
+- Customer order history.
+- Wishlist.
+- Saved addresses.
+- Personal information presentation.
+
+### Brand & Editorial
+- About DANDY.
+- Blog listing.
+- Blog article details.
+- Customer reviews.
+
+### Customer Support
+- Contact Us.
+- Help Center.
+- FAQ.
+
+### Legal & System
+- Privacy Policy.
+- Terms & Conditions.
+- Custom 404 page.
+
+## Explicitly Excluded
+
+Do not redesign or modify:
+
+- Admin login `/login.astro`.
+- Admin dashboard.
+- Admin Studio.
+- Homepage.
+- Homepage Hero.
+- Homepage-to-dashboard customization integration.
+- Product detail pages.
+- Product catalog.
+- Category pages.
+- Cart.
+- Checkout.
+- Invoice.
+- Order tracking.
+- Product pricing.
+- Campaign pricing.
+- Order processing.
+- Backend APIs.
+- Firebase database schemas.
+- Authentication backend behavior.
+
+The previously completed homepage and Admin Studio modifications must remain untouched unless an unavoidable shared regression is discovered and documented.
+
+---
+
+# 5. CRITICAL BUILD & DEPLOYMENT CONFIGURATION PROTECTION
+
+**THIS SECTION IS NON-NEGOTIABLE AND OVERRIDES ANY CONFLICTING IMPLEMENTATION INSTRUCTION.**
+
+Preserve the existing project's original build, framework, dependency, environment, and deployment configuration exactly.
+
+Never modify, replace, delete, rename, regenerate, or reformat:
+
+### Astro
+- `astro.config.mjs`
+- `astro.config.js`
+- Any existing Astro configuration variants.
+
+### Vercel & Deployment
+- `vercel.json`
+- `.vercelignore`
+- Deployment configuration.
+- Deployment scripts.
+
+### Package & Dependencies
+- `package.json`
+- `package-lock.json`
+- `npm-shrinkwrap.json`
+- `pnpm-lock.yaml`
+- `yarn.lock`
+- `bun.lock`
+- `bun.lockb`
+
+### Build & Compilation
+- `tsconfig.json`
+- `jsconfig.json`
+- `vite.config.*`
+- Existing compiler and build configuration files.
+
+### Environment & Tooling
+- `patch-env.cjs`
+- `server.js`
+- `.env`
+- `.env.*`
+- `.npmrc`
+- `.nvmrc`
+- `.node-version`
+- Existing CI/CD workflows.
+- Existing build scripts.
+- Any other framework, deployment, dependency, or compilation configuration.
+
+## Dependency Restrictions
+
+Do not:
+
+- Install packages.
+- Uninstall packages.
+- Upgrade or downgrade dependencies.
+- Modify dependency versions.
+- Regenerate lockfiles.
+- Change npm scripts.
+- Modify Node.js requirements.
+- Introduce new build tools.
+- Migrate the framework.
+
+Use the existing Astro, CSS, TypeScript, GSAP, Lucide, and frontend capabilities.
+
+## Baseline Verification
+
+Before implementation:
+
+1. Inspect all protected files that exist.
+2. Record their exact original contents.
+3. Calculate SHA-256 checksums where available.
+4. Preserve an immutable Phase 8 baseline snapshot.
+
+Use previous reports as historical references only. The actual current workspace must determine the active baseline.
+
+If any protected file is accidentally modified:
+
+1. Immediately stop the relevant operation.
+2. Restore the exact original pre-Phase-8 contents.
+3. Never reconstruct a configuration file from memory.
+4. Verify its SHA-256 checksum against the original baseline.
+5. Document the incident.
+
+Before final delivery, verify that all protected files remain byte-for-byte identical to their original baseline.
+
+**The existing build and deployment environment must remain completely untouched.**
+
+---
+
+# 6. CUSTOMER AUTHENTICATION — LOGIN & REGISTRATION
+
+Target routes:
+
+- `/account-login`
+- `/account-signup`
+
+These pages must become a coherent authentication experience.
+
+## 6.1 Unified Authentication Architecture
+
+Consider creating a reusable component:
+
+`src/components/account/AuthEditorialLayout.astro`
+
+The shared design must provide:
+
+- Unified typography.
+- Consistent content containers.
+- Matching input fields.
+- Consistent buttons.
+- Shared spacing rules.
+- Matching responsive behavior.
+- Premium editorial visual identity.
+
+## 6.2 Desktop Composition
+
+Use a refined split-layout composition.
+
+One side contains the form.
+
+The other side contains a sophisticated DANDY brand visual or relevant existing editorial image.
+
+Adapt the composition for Arabic RTL.
+
+Do not simply reverse every element without evaluating the visual balance.
+
+## 6.3 Mobile Composition
+
+On mobile:
+
+- Present the form clearly.
+- Keep the logo or brand identity visible.
+- Minimize unnecessary decorative imagery.
+- Ensure inputs have adequate width.
+- Maintain readable vertical spacing.
+- Keep primary actions easy to access.
+- Avoid excessive scrolling.
+
+## 6.4 Login Page
+
+Preserve existing authentication behavior.
+
+Improve:
+
+- Existing email or phone input.
+- Password field.
+- Password visibility toggle where supported.
+- Validation messages.
+- Loading state.
+- Authentication error state.
+- Registration navigation.
+- Password recovery navigation if already supported.
+
+Do not introduce unsupported authentication methods.
+
+## 6.5 Registration Page
+
+Preserve current registration behavior.
+
+Improve:
+
+- Field grouping.
+- Input labels.
+- Validation.
+- Password feedback where available.
+- Loading and success states.
+- Link to login.
+- Responsive layout.
+
+Do not introduce new mandatory registration fields unless the existing implementation requires them.
+
+## 6.6 Firebase Authentication Compatibility
+
+Preserve all existing Firebase Authentication functions and frontend contracts.
+
+Do not:
+
+- Replace Firebase Authentication.
+- Change the authentication provider.
+- Change session persistence.
+- Modify authentication methods.
+- Redesign authentication APIs.
+- Change account database structures.
+
+Preserve existing Cloudflare Turnstile integration wherever it is currently required.
+
+Inspect:
+
+- Container IDs.
+- Initialization.
+- Callback behavior.
+- Reset functionality.
+- Response-token handling.
+
+Do not repeatedly initialize Turnstile instances.
+
+Do not place its container in DOM content that is replaced using `innerHTML`.
+
+## 6.7 Authentication Test Coverage
+
+Where valid test credentials are available, test:
+
+- Successful login.
+- Invalid credentials.
+- Successful registration.
+- Existing-account errors.
+- Loading states.
+- Turnstile integration.
+- Navigation between login and signup.
+- Guest versus authenticated navigation.
+
+If no valid test customer account is available, document the limitation.
+
+Do not claim authenticated flows were tested without an actual authenticated session.
+
+---
+
+# 7. CUSTOMER ACCOUNT DASHBOARD
+
+Target:
+
+`src/pages/account.astro`
+
+Reconstruct the account dashboard into a clean, premium customer area.
+
+Recommended sections:
+
+1. Account overview.
+2. My orders.
+3. My wishlist.
+4. Saved addresses.
+5. Personal information.
+
+Use actual existing customer data and capabilities.
+
+## 7.1 Account Overview
+
+Present:
+
+- Personalized greeting using real customer information.
+- Customer account summary.
+- Recent orders when available.
+- Quick links to important sections.
+- Clear navigation.
+
+Do not invent order counts, loyalty points, spending statistics, or account status.
+
+## 7.2 Order History
+
+Display actual customer orders.
+
+Where supported by current order data, include:
+
+- Order reference.
+- Order date.
+- Order total.
+- Payment method.
+- Actual order status.
+- Invoice link.
+- Tracking link.
+
+Preserve the existing ownership and order-retrieval behavior.
+
+Support both individual products and Pink Friday collections.
+
+Do not invent order states or modify the order database.
+
+## 7.3 Wishlist
+
+Reuse the actual existing wishlist implementation.
+
+Use:
+
+`src/components/product/ProductCard.astro`
+
+Preserve:
+
+- Existing wishlist storage.
+- Existing authentication behavior.
+- Add and remove actions.
+- Existing product URLs.
+- Correct product pricing.
+- Empty wishlist state.
+
+Do not create a competing wishlist mechanism.
+
+Ensure that the existing ProductCard interactions continue working.
+
+## 7.4 Saved Addresses
+
+This is a critical compatibility area.
+
+The saved-address system is used by the Phase 6 checkout.
+
+Preserve the actual saved-address data structure and all existing contracts.
+
+The checkout currently depends on the following identifiers and behavior:
+
+- `#savedAddressesSection`
+- `#addrModeSaved`
+- `#addrModeNew`
+- `#savedSelectWrap`
+- `#savedAddressSelect`
+- `applySavedAddress`
+
+Preserve compatibility with all of them.
+
+The account interface may improve the visual organization of saved addresses, but must not alter the format expected by checkout.
+
+Where currently supported, preserve:
+
+- Create address.
+- Edit address.
+- Delete address.
+- Select default address.
+- Select a saved address.
+
+Do not invent new address fields.
+
+Do not introduce a new Firebase structure.
+
+Do not modify `/cart` or its checkout implementation to accommodate account redesign.
+
+**Mandatory regression test:** Verify that addresses managed through the account interface remain compatible with the existing checkout.
+
+## 7.5 Personal Information
+
+Preserve existing profile functionality.
+
+Improve the presentation of existing fields, including:
+
+- Customer name.
+- Email.
+- Phone.
+- Other currently supported profile attributes.
+
+Do not invent new account settings.
+
+Do not expose internal user identifiers.
+
+---
+
+# 8. ABOUT DANDY — BRAND STORYTELLING
+
+Target:
+
+`src/pages/about-us.astro`
+
+Rebuild the page as a premium editorial brand-story experience.
+
+Suggested structure:
+
+1. Editorial introduction.
+2. Brand philosophy.
+3. Existing brand story.
+4. Verified values.
+5. Relevant brand imagery.
+6. Connection to the store.
+7. Closing CTA.
+
+Use sophisticated image-and-text compositions.
+
+Maintain a comfortable reading width.
+
+Use the approved Arabic typography hierarchy.
+
+Do not invent:
+
+- Certifications.
+- Clinical results.
+- Medical claims.
+- Organic guarantees.
+- Manufacturing facts.
+- Country-of-origin claims.
+- Customer statistics.
+- Unsupported historical milestones.
+
+Use only genuine content already present in the project.
+
+Do not transform promotional language into unsupported factual guarantees.
+
+---
+
+# 9. BLOG & EDITORIAL JOURNAL
+
+Targets:
+
+- `/blog`
+- `/blog/[...slug]`
+- Existing `/post` compatibility route where applicable.
+
+Inspect:
+
+`src/utils/articles.ts`
+
+Preserve the existing article data architecture, article slugs, and content retrieval behavior.
+
+## 9.1 Blog Listing
+
+Build a premium editorial journal experience.
+
+Include where supported:
+
+- Editorial introduction.
+- Article grid.
+- Consistent image ratios.
+- Article categories.
+- Publication dates.
+- Actual author details.
+- Read-time information only when supported by existing data.
+
+Use genuine article content and existing assets.
+
+Do not invent placeholder articles.
+
+## 9.2 Article Details
+
+Create a sophisticated reading experience with:
+
+- Breadcrumb.
+- Article category.
+- Main heading.
+- Publication date where available.
+- Author information where available.
+- Featured image.
+- Structured article content.
+- Readable paragraphs.
+- Clear heading hierarchy.
+- Related articles.
+- Related products where genuine relationships exist.
+
+Recommended article content width:
+
+`var(--dandy-container-reading)`
+
+Maintain comfortable readability on mobile.
+
+Preserve existing URLs and route behavior.
+
+Do not rewrite article content unnecessarily.
+
+## 9.3 Product-to-Article Compatibility
+
+Phase 4 introduced product-related routine article associations through `PRODUCT_ARTICLE_MAP`.
+
+Preserve these references.
+
+Verify that existing article links from product pages continue to resolve correctly.
+
+Do not remove referenced articles or alter their canonical URLs.
+
+## 9.4 SEO
+
+Preserve:
+
+- Article title.
+- Meta description.
+- Canonical URL.
+- OpenGraph metadata.
+- Twitter metadata.
+- Existing Article or BlogPosting JSON-LD.
+- Breadcrumb structured data.
+
+Do not replace valid metadata with generic values.
+
+---
+
+# 10. CUSTOMER REVIEWS
+
+Target:
+
+`src/pages/client-reviews.astro`
+
+Reconstruct the reviews page using genuine existing review data.
+
+Create a refined editorial review experience.
+
+Where supported, display:
+
+- Real review text.
+- Actual customer display name.
+- Genuine rating.
+- Publication date.
+- Existing review image.
+- Product association.
+- Verified purchase status only when the existing system confirms it.
+
+Do not invent testimonials, names, review counts, ratings, dates, or product purchases.
+
+Preserve existing image viewing functionality.
+
+Ensure that any review image gallery works properly on mobile.
+
+When no reviews are available, show a sophisticated, honest empty state.
+
+Do not modify review databases or APIs.
+
+---
+
+# 11. CONTACT US
+
+Target:
+
+`src/pages/contact-us.astro`
+
+Rebuild the page around a clear and professional customer-service experience.
+
+Use existing verified contact information.
+
+Where supported, organize:
+
+- Contact channels.
+- Existing WhatsApp destination.
+- Existing email address.
+- Existing social links.
+- Contact form.
+- Available support information.
+
+Preserve the current contact-form submission mechanism.
+
+Preserve existing Turnstile integration.
+
+Improve:
+
+- Input styling.
+- Labels.
+- Inline validation.
+- Error states.
+- Loading states.
+- Successful submission feedback.
+- Keyboard accessibility.
+- Responsive behavior.
+
+Do not create a fake form.
+
+Do not change its current API endpoint or submission payload.
+
+Do not invent contact information or operating hours.
+
+Do not generate real customer messages during automated testing.
+
+---
+
+# 12. HELP CENTER & FAQ
+
+Target:
+
+`src/pages/help.astro`
+
+Rebuild the support experience with a clear information hierarchy.
+
+Suggested structure:
+
+- Editorial heading.
+- Existing FAQ groups.
+- Shipping questions.
+- Order and tracking questions.
+- Product questions.
+- Returns and policy information where already documented.
+- Contact-support CTA.
+
+Use an accessible accordion implementation.
+
+Requirements:
+
+- Semantic buttons or native details/summary elements.
+- Correct `aria-expanded`.
+- Keyboard interaction.
+- Clear active states.
+- Subtle movement.
+- Correct RTL layout.
+- No unnecessary visual decoration.
+
+Do not invent answers that conflict with the actual store policies or Phase 6 checkout and shipping behavior.
+
+Preserve existing policy content.
+
+---
+
+# 13. PRIVACY POLICY & CONSENT INTERFACE
+
+Target:
+
+`src/pages/privacy-policy.astro`
+
+This page contains functional privacy controls, not merely static content.
+
+Preserve the current privacy and consent behavior.
+
+Inspect:
+
+- Meta Pixel consent controls.
+- `ConsentBanner`.
+- Existing saved preferences.
+- BAB-related privacy controls where implemented.
+- Existing save/update mechanisms.
+
+Improve presentation and accessibility only.
+
+Requirements:
+
+- Clear information hierarchy.
+- Comfortable reading width.
+- Proper section headings.
+- Accessible preference controls.
+- Clear labels.
+- Visible preference states.
+- Keyboard support.
+- Mobile usability.
+
+Do not remove existing privacy controls.
+
+Do not silently change consent defaults.
+
+Do not change Meta Pixel initialization or preference persistence.
+
+Do not change the legal meaning of the existing policy.
+
+---
+
+# 14. TERMS & CONDITIONS
+
+Target:
+
+`src/pages/terms.astro`
+
+Rebuild the page into a professional legal document layout.
+
+Requirements:
+
+- Comfortable reading width.
+- Clear heading hierarchy.
+- Readable Arabic typography.
+- Consistent spacing.
+- Responsive layout.
+- Accessible navigation when useful.
+
+Preserve existing legal content and its meaning.
+
+Do not silently delete legal conditions.
+
+Do not invent new policies, guarantees, or contractual commitments.
+
+---
+
+# 15. CUSTOM 404 PAGE
+
+Target:
+
+`src/pages/404.astro`
+
+Reconstruct the page into a refined DANDY-branded error experience.
+
+Include:
+
+- Clear 404 indication.
+- Friendly Arabic message.
+- Homepage CTA.
+- All-products CTA.
+- Optional help-center link.
+- Suitable existing editorial visual assets.
+
+Preserve actual HTTP 404 behavior.
+
+Do not return HTTP 200 for invalid routes.
+
+Do not silently redirect unknown pages to the homepage.
+
+---
+
+# 16. GLOBAL PAGE ENTRANCE ANIMATION COMPATIBILITY
+
+Phase 7 introduced a shared page entrance and progressive content-reveal system.
+
+Preserve its existing architecture.
+
+Inspect:
+
+- `src/scripts/page-entrance.ts`
+- `src/utils/animations.ts`
+- `src/styles/animations.css`
+- Existing semantic animation markers.
+- Existing global initialization in BaseLayout.
+
+Do not rebuild or duplicate the animation engine.
+
+All reconstructed Phase 8 pages must remain compatible with the current animation system.
+
+Use the existing semantic markers only where appropriate.
+
+Requirements:
+
+- No hidden content when JavaScript fails.
+- Respect `prefers-reduced-motion`.
+- Avoid duplicate animation initialization.
+- Avoid replaying entrance animations unnecessarily.
+- Keep forms and controls immediately usable.
+- Avoid animating every paragraph individually.
+- Use calm editorial motion rather than excessive effects.
+
+Test the actual page entrance behavior on representative rebuilt pages.
+
+---
+
+# 17. FUTURE ENGLISH VERSION COMPATIBILITY
+
+DANDY will eventually have complete Arabic and English storefront versions with a language switcher.
+
+This is a future phase and must NOT be implemented now.
+
+Do not:
+
+- Create English page versions.
+- Add a language switcher.
+- Create localization routes.
+- Introduce translation dependencies.
+- Translate existing Arabic content.
+- Change current URLs to accommodate hypothetical localized paths.
+- Modify SEO language routing.
+
+However, implement new UI components using localization-ready architecture.
+
+Requirements:
+
+- No Arabic text embedded in technical selectors.
+- Keep content independent from component behavior where practical.
+- Use logical CSS properties.
+- Preserve both RTL and LTR compatibility.
+- Avoid hardcoded physical left/right positioning.
+- Keep labels and content easy to localize later.
+
+The future English version should be able to reuse these components without requiring another complete frontend rebuild.
+
+---
+
+# 18. STRICT INTEGRATION PRESERVATION
+
+The following systems must remain compatible.
+
+### Customer Authentication
+
+- Existing Firebase Authentication.
+- Existing session handling.
+- Existing customer state.
+- Existing account navigation.
+
+### Saved Addresses
+
+Maintain exact compatibility with:
+
+- `#savedAddressesSection`
+- `#addrModeSaved`
+- `#addrModeNew`
+- `#savedSelectWrap`
+- `#savedAddressSelect`
+- `applySavedAddress`
+
+### Wishlist
+
+Preserve existing wishlist storage and update behavior.
+
+### Product Cards
+
+Preserve:
+
+- `ProductCard.astro`
+- Product links.
+- Product pricing.
+- Wishlist interactions.
+- Existing cart interactions.
+
+### Reviews
+
+Preserve existing review retrieval and submission contracts.
+
+### Editorial Content
+
+Preserve:
+
+- Article records.
+- Article slugs.
+- Product article mapping.
+- Related-article links.
+- SEO metadata.
+
+### Contact
+
+Preserve existing form integrations and Turnstile behavior.
+
+### Privacy
+
+Preserve existing consent configuration and stored preferences.
+
+### Global Storefront
+
+Preserve:
+
+- SiteHeader.
+- SiteFooter.
+- AnnouncementBar.
+- SearchDrawer.
+- MobileNavDrawer.
+- BottomMobileNav.
+- DandyToast.
+- BAB widget.
+- Phase 7 motion controller.
+
+Do not duplicate global components.
+
+---
+
+# 19. STRICTLY OUT-OF-SCOPE AREAS
+
+Do not modify:
+
+- Admin login `/login.astro`.
+- Admin dashboard.
+- Admin Studio.
+- Homepage.
+- Homepage-to-dashboard synchronization.
+- Homepage Hero responsive layout.
+- Product detail page.
+- Product catalog.
+- Category pages.
+- Cart.
+- Checkout.
+- Invoice.
+- Order tracking.
+- Product pricing.
+- Campaign pricing.
+- Firebase database schemas.
+- API implementations.
+- Order processing.
+- Payment systems.
+- Deployment configuration.
+
+Do not change the Phase 6 guest checkout behavior.
+
+**Customers must remain able to shop and complete purchases without mandatory registration.**
+
+---
+
+# 20. DESIGN SYSTEM REQUIREMENTS
+
+Use the established Phase 1 design system.
+
+Preserve:
+
+- `tokens.css`
+- `base.css`
+- `components.css`
+- `animations.css`
+- Typography tokens.
+- Color palette.
+- Spacing.
+- Radii.
+- Shadows.
+- Icon system.
+- DandyToast.
+
+Reuse existing components wherever possible.
+
+The account and content pages may have different compositions depending on their purpose, but they must all belong to the same DANDY brand system.
+
+Avoid:
+
+- Generic AI-generated templates.
+- Excessive pink backgrounds.
+- Repeated rounded cards.
+- Unnecessary gradients.
+- Inconsistent font families.
+- Mixed icon libraries.
+- Inconsistent spacing.
+- Decorative UI without a clear purpose.
+
+Arabic RTL remains the primary design direction.
+
+Use CSS logical properties to preserve LTR compatibility.
+
+---
+
+# 21. RESPONSIVE & ACCESSIBILITY VALIDATION
+
+Test all Phase 8 target routes using these viewport dimensions:
+
+- 390 × 844
+- 430 × 932
+- 768 × 1024
+- 1024 × 768
+- 1440 × 900
+
+Verify:
+
+- No horizontal overflow.
+- No clipped form controls.
+- Correct RTL layout.
+- Readable article content.
+- Consistent typography.
+- Accessible navigation.
+- Visible keyboard focus.
+- Dialog behavior.
+- Correct image sizing.
+- Touch targets.
+- Reduced-motion compatibility.
+- No overlap with global Header, BottomMobileNav, Toast, or BAB.
+
+Use actual Chromium/Playwright testing.
+
+Provide a route-by-route viewport matrix.
+
+Do not claim all routes passed all five viewport sizes unless each was actually tested.
+
+---
+
+# 22. FUNCTIONAL TESTING
+
+## Authentication
+
+Where valid test credentials exist, verify:
+
+- Guest state.
+- Authenticated customer state.
+- Login.
+- Registration.
+- Logout.
+- Login failure.
+- Registration validation.
+- Turnstile.
+- Navigation between authentication pages.
+
+If authenticated testing cannot be performed, explain why.
+
+Do not invent successful login or registration results.
+
+## Account
+
+Test:
+
+- Dashboard loading.
+- Actual customer profile presentation.
+- Existing order history where available.
+- Wishlist loading and removal.
+- Saved-address behavior.
+- Checkout compatibility with saved addresses.
+
+Use a safe test account or isolated test environment where possible.
+
+Do not alter real customer records.
+
+## Editorial
+
+Test:
+
+- Blog navigation.
+- Article route resolution.
+- Product-to-article links.
+- Image loading.
+- Metadata.
+- Related content.
+- Invalid article behavior.
+
+## Reviews
+
+Test genuine review presentation and empty states.
+
+Do not generate fake reviews.
+
+## Contact & Help
+
+Test:
+
+- Contact form validation.
+- Existing Turnstile integration.
+- Existing submission behavior where safely testable.
+- FAQ keyboard and pointer interaction.
+
+Do not generate real customer messages during testing.
+
+## Privacy
+
+Test:
+
+- Existing consent controls.
+- Preference changes.
+- Save behavior.
+- Persistence after refresh.
+- Meta Pixel consent compatibility.
+
+## Regression
+
+Recheck representative routes from previous phases:
+
+- `/`
+- `/all-products`
+- `/category/skin-care`
+- `/product/facial-serum-3x1-30ml`
+- `/cart`
+- `/invoice`
+- `/track-order`
+- `/pink-friday`
+
+Ensure Phase 8 changes have not affected the established shopping journey.
+
+---
+
+# 23. TESTS, LINT & BUILD
+
+Run all existing unit tests without modifying project configuration.
+
+Run:
+
+```bash
+npm run lint
+npm run build
+```
+
+Do not modify scripts or configuration to make these commands pass.
+
+After the final source changes, rerun all required checks.
+
+Inspect:
+
+- Console errors.
+- Network errors.
+- Missing images.
+- Missing fonts.
+- Broken navigation.
+- Duplicate IDs.
+- Authentication errors.
+- Turnstile initialization errors.
+- Responsive issues.
+- Unintended changes to previous phases.
+
+Report exact results.
+
+---
+
+# 24. REQUIRED FINAL REPORT
+
+Create:
+
+`DANDY_PHASE_8_FINAL_REPORT_AR.md`
+
+Write the report in professional Arabic.
+
+Include:
+
+1. Executive summary.
+2. Pre-implementation audit findings.
+3. Customer authentication reconstruction.
+4. Account dashboard reconstruction.
+5. Orders section.
+6. Wishlist integration.
+7. Saved-address management and checkout compatibility.
+8. About DANDY reconstruction.
+9. Blog listing reconstruction.
+10. Article details reconstruction.
+11. Customer reviews.
+12. Contact Us.
+13. Help Center and FAQ.
+14. Privacy Policy.
+15. Terms and Conditions.
+16. Custom 404.
+17. Phase 7 animation compatibility.
+18. Files created.
+19. Files modified.
+20. Files deleted, if any, with justification.
+21. Existing integrations preserved.
+22. Routes tested.
+23. Responsive viewport matrix.
+24. Authentication test coverage and limitations.
+25. Functional test results.
+26. Unit test results.
+27. Lint results.
+28. Build results.
+29. Protected configuration SHA-256 verification.
+30. Known issues.
+31. Deferred features.
+32. Confirmation that no Git commit or push was performed.
+33. Recommended next phase.
+
+Clearly distinguish:
+
+- Implemented.
+- Actually tested.
+- Not tested.
+- Deferred.
+- Not implemented.
+
+Do not claim authenticated testing without an actual authenticated session.
+
+---
+
+# 25. PHASE 8 ACCEPTANCE CRITERIA
+
+Phase 8 is complete only when:
+
+- Login and registration share a coherent design.
+- Existing Firebase authentication remains intact.
+- Customer dashboard is reconstructed.
+- Existing orders remain accessible.
+- Wishlist functionality works.
+- Saved-address compatibility with Phase 6 checkout is preserved.
+- About DANDY has a premium editorial presentation.
+- Blog and article layouts are unified.
+- Product article relationships remain valid.
+- Genuine customer reviews display correctly.
+- Contact form remains functional.
+- Turnstile remains compatible.
+- Help Center and FAQ work accessibly.
+- Privacy controls remain functional.
+- Terms retain their original legal meaning.
+- The custom 404 preserves correct HTTP status.
+- Phase 7 motion remains compatible.
+- All target pages are responsive.
+- No previous phase functionality is broken.
+- No protected configuration file is modified.
+- No unauthorized dependency is installed.
+- Lint and production build pass.
+- The final report exists.
+
+---
+
+# 26. EXECUTION SEQUENCE
+
+Follow this sequence strictly:
+
+1. Read the Phase 0–7 documentation.
+2. Inspect the actual current workspace.
+3. Complete the Phase 8 pre-implementation audit.
+4. Record the protected configuration baseline.
+5. Reconstruct customer login and registration.
+6. Reconstruct the customer dashboard.
+7. Rebuild orders, wishlist, and saved-address presentation.
+8. Verify saved-address compatibility with checkout.
+9. Reconstruct About DANDY.
+10. Reconstruct blog and article pages.
+11. Reconstruct customer reviews.
+12. Reconstruct Contact Us and Help Center.
+13. Reconstruct Privacy Policy and Terms.
+14. Reconstruct the custom 404.
+15. Verify Phase 7 animation compatibility.
+16. Run functional and responsive tests.
+17. Run unit tests, lint, and production build.
+18. Verify protected file checksums.
+19. Review previous phases for regressions.
+20. Create the final report.
+
+Do not begin implementation before completing the audit.
+
+Do not combine all pages into a single enormous component.
+
+Do not change business logic to simplify the UI.
+
+---
+
+# FINAL INSTRUCTION
+
+Execute **PHASE 8 ONLY**.
+
+Reconstruct the customer-facing account, authentication, editorial, support, and legal experiences while preserving all existing functionality.
+
+Do not redesign administrative interfaces or Admin Studio.
+
+Do not reimplement the separately completed homepage-dashboard synchronization or responsive Hero modifications.
+
+Do not modify Firebase schemas, API implementations, authentication backend behavior, or order processing.
+
+Do not alter Phase 6 guest checkout behavior.
+
+Do not rebuild the homepage, catalog, product pages, or global navigation.
+
+Do not modify Astro, Vercel, build, package, dependency, environment, or deployment configuration.
+
+If any protected file is accidentally modified, restore its exact original pre-phase content and verify its SHA-256 checksum.
+
+Do not introduce the English storefront or language switcher yet.
+
+Keep new UI components localization-ready for the planned future Arabic/English storefront.
+
+Do not perform Git commits or pushes.
+
+Work exclusively in the current project workspace.
+
+**Deliver a cohesive, premium DANDY customer experience across authentication, account management, editorial content, customer reviews, support, and legal pages. Complete all verification and provide the final Arabic report without automatically starting another phase.**

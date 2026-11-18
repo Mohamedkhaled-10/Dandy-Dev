@@ -34,7 +34,7 @@ const cols = items.length === 2 ? 2 : items.length >= 4 ? 4 : 3;
 >
   <div class="dandy-container">
     {hasHeader && (
-      <header class="dandy-section-header dandy-trust-header">
+      <header class="dandy-section-header dandy-trust-header" data-dandy-reveal>
         <div class="dandy-section-titles">
           {subtitle && <p class="dandy-section-kicker" data-trust-subtitle dir="auto">{subtitle}</p>}
           {title && <h2 class="dandy-section-heading" data-trust-title dir="auto">{title}</h2>}
@@ -42,9 +42,14 @@ const cols = items.length === 2 ? 2 : items.length >= 4 ? 4 : 3;
       </header>
     )}
 
-    <div class={`dandy-trust-grid dandy-trust-cols-${cols}`} data-trust-grid>
+    <div
+      class={`dandy-trust-grid dandy-trust-cols-${cols}`}
+      data-trust-grid
+      data-dandy-reveal
+      data-dandy-stagger="group"
+    >
       {items.map((item) => (
-        <article class="dandy-trust-item">
+        <article class="dandy-trust-item" data-dandy-reveal-child>
           <div class="dandy-trust-icon-box" aria-hidden="true">
             <Icon name={item.iconName} size={20} strokeWidth={1.75} />
           </div>

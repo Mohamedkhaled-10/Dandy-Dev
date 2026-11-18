@@ -90,12 +90,12 @@ const pageDescription =
     <div class="dandy-container">
       <div class="dandy-offers-header-row">
         <div class="dandy-offers-copy">
-          <p class="dandy-offers-kicker">تخفيضات داندي الحصرية</p>
-          <h1 class="dandy-offers-title dandy-font-ar-display">العروض الخاصة والتخفيضات</h1>
-          <p class="dandy-offers-desc">
+          <p class="dandy-offers-kicker" data-dandy-entrance="0">تخفيضات داندي الحصرية</p>
+          <h1 class="dandy-offers-title dandy-font-ar-display" data-dandy-entrance="1">العروض الخاصة والتخفيضات</h1>
+          <p class="dandy-offers-desc" data-dandy-entrance="2">
             مجموعات العناية والمنتجات المخفّضة رسمياً من داندي، بأسعار ومقارنات حقيقية دون أي عروض وهمية.
           </p>
-          <div class="dandy-offers-meta">
+          <div class="dandy-offers-meta" data-dandy-entrance="3">
             <span class="dandy-tabular">{offerEntries.length} عرض نشط</span>
             <span aria-hidden="true" class="dandy-offers-dot">·</span>
             <a href="/all-products" class="dandy-offers-link">
@@ -105,7 +105,7 @@ const pageDescription =
         </div>
 
         {showPinkFridayCrossLink && (
-          <aside class="dandy-offers-pf-callout" aria-label="حملة Pink Friday">
+          <aside class="dandy-offers-pf-callout" aria-label="حملة Pink Friday" data-dandy-entrance="4">
             <div class="dandy-offers-pf-icon" aria-hidden="true">
               <Icon name="sparkles" size={20} strokeWidth={1.75} />
             </div>
@@ -152,11 +152,12 @@ const pageDescription =
             hasSoldOutItems={hasOfferSoldOut}
           />
 
-          <div class="dandy-catalog-grid" id="offersContainer" data-catalog-grid>
+          <div class="dandy-catalog-grid" id="offersContainer" data-catalog-grid data-dandy-stagger="grid">
             {offerEntries.map(({ product, pfPricing, meta }, index) => (
               <div
                 class="dandy-catalog-slot"
                 data-catalog-item
+                data-dandy-reveal-child
                 data-product-id={meta.id}
                 data-index={meta.index}
                 data-name={meta.name}

@@ -1,5 +1,6 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
+import EditorialPageHeader from '../components/editorial/EditorialPageHeader.astro';
 ---
 
 <BaseLayout
@@ -8,201 +9,93 @@ import BaseLayout from '../layouts/BaseLayout.astro';
   keywords="Dandy, Dandy Cosmetics, دندي, داندي, آراء العملاء, تجارب العملاء, تقييمات داندي"
   canonical="https://dandy-ebon.vercel.app/client-reviews"
 >
-  <slot name="head" slot="head">
+  <Fragment slot="head">
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://dandy-ebon.vercel.app/client-reviews" />
     <meta property="og:title" content="آراء وتجارب العملاء | Dandy Cosmetics" />
     <meta property="og:description" content="تجارب وآراء حقيقية لعملاء داندي حول جودة وفعالية منتجات العناية بالبشرة والشعر." />
     <meta property="og:image" content="https://res.cloudinary.com/dogk78w9z/image/upload/v1789152384/WhatsApp_Image_2026-06-18_at_5.55.06_PM.jpg" />
     <meta name="twitter:card" content="summary_large_image" />
-
-    <!-- GLightbox CSS -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/glightbox/dist/css/glightbox.min.css" />
+  </Fragment>
 
-    <style is:global>
-      .reviews-page-header {
-        padding: 120px 20px 32px;
-        text-align: right;
-        max-width: 1200px;
-        margin: 0 auto;
-      }
+  <EditorialPageHeader
+    eyebrow="تجارب موثقة"
+    title="تجارب وآراء العملاء"
+    description="مشاركات وتجارب حقيقية شاركتها عميلاتنا بعد استخدام مستحضرات داندي للعناية بالبشرة والشعر."
+    currentCrumb="آراء العملاء"
+  />
 
-      .reviews-page-header h1 {
-        font-size: 2rem;
-        font-weight: 800;
-        color: var(--color-primary);
-        margin: 0 0 8px 0;
-        letter-spacing: -0.02em;
-      }
+  <main class="dandy-page-band" data-dandy-motion="calm">
+    <div class="dandy-container">
+      <section class="dandy-rev-group" aria-labelledby="revPhotosTitle">
+        <h2 id="revPhotosTitle" class="dandy-rev-group-title dandy-font-ar-display" data-dandy-reveal>
+          تجارب وصور العملاء
+        </h2>
+        <div class="dandy-rev-gallery" id="testimonial-images">
+          <p class="dandy-rev-loading">جاري تحميل التجارب المصورة...</p>
+        </div>
+      </section>
 
-      .reviews-page-header p {
-        font-size: 0.95rem;
-        color: var(--color-muted);
-        margin: 0;
-        max-width: 600px;
-        line-height: 1.6;
-      }
-
-      .reviews-section {
-        padding: 10px 0 80px;
-      }
-
-      .reviews-category-title {
-        font-size: 1.2rem;
-        font-weight: 800;
-        color: var(--color-primary);
-        margin: 32px 0 20px;
-      }
-
-      .gallery-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-        gap: 20px;
-        margin-bottom: 40px;
-      }
-
-      .review-capsule {
-        background: var(--color-surface);
-        border: 1px solid var(--border-light);
-        border-radius: var(--border-radius-md);
-        overflow: hidden;
-        transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
-      }
-
-      .review-capsule:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.05);
-        border-color: var(--color-rose-kiss-500, #fe5d9f);
-      }
-
-      .review-capsule img {
-        width: 100%;
-        height: 320px;
-        object-fit: cover;
-        display: block;
-        transition: transform 0.3s ease;
-      }
-
-      .review-capsule:hover img {
-        transform: scale(1.02);
-      }
-
-      .video-thumbnail-play {
-        background: #18181b;
-        width: 100%;
-        height: 320px;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        color: #fff;
-        position: relative;
-        cursor: pointer;
-      }
-
-      .video-thumbnail-play i {
-        font-size: 2.8rem;
-        color: var(--color-rose-kiss-500, #fe5d9f);
-        margin-bottom: 10px;
-        transition: transform 0.2s ease;
-      }
-
-      .review-capsule:hover .video-thumbnail-play i {
-        transform: scale(1.1);
-      }
-
-      .video-thumbnail-play span {
-        font-weight: 600;
-        font-size: 0.85rem;
-        color: rgba(255, 255, 255, 0.85);
-      }
-
-      .reviews-empty {
-        text-align: center;
-        grid-column: 1 / -1;
-        padding: 40px 20px;
-        color: var(--color-muted);
-        font-size: 0.9rem;
-        background: var(--color-surface);
-        border: 1px dashed var(--border-light);
-        border-radius: var(--border-radius-md);
-      }
-
-      @media (max-width: 640px) {
-        .reviews-page-header {
-          padding-top: 100px;
-        }
-        .gallery-grid {
-          grid-template-columns: repeat(2, 1fr);
-          gap: 12px;
-        }
-        .review-capsule img,
-        .video-thumbnail-play {
-          height: 220px;
-        }
-      }
-    </style>
-  </slot>
-
-  <!-- Header -->
-  <header class="reviews-page-header" dir="rtl">
-    <h1>تجارب وآراء العملاء</h1>
-    <p>مشاركات وتجارب حقيقية شاركها عملاؤنا بعد استخدام منتجات داندي للعناية بالبشرة والشعر.</p>
-  </header>
-
-  <!-- Gallery Grids -->
-  <main class="reviews-section container" dir="rtl">
-    <h2 class="reviews-category-title">تجارب وصور العملاء</h2>
-    <div class="gallery-grid" id="testimonial-images">
-      <p style="text-align: center; grid-column: 1 / -1; color: var(--color-muted); padding: 30px 0;">جاري تحميل التجارب المصورة...</p>
-    </div>
-
-    <h2 class="reviews-category-title">تجارب مرئية</h2>
-    <div class="gallery-grid" id="testimonial-videos">
-      <p style="text-align: center; grid-column: 1 / -1; color: var(--color-muted); padding: 30px 0;">جاري تحميل التجارب المرئية...</p>
+      <section class="dandy-rev-group" aria-labelledby="revVideosTitle">
+        <h2 id="revVideosTitle" class="dandy-rev-group-title dandy-font-ar-display" data-dandy-reveal>
+          تجارب مرئية
+        </h2>
+        <div class="dandy-rev-gallery" id="testimonial-videos">
+          <p class="dandy-rev-loading">جاري تحميل التجارب المرئية...</p>
+        </div>
+      </section>
     </div>
   </main>
 
-  <!-- GLightbox JS plugin -->
   <script is:inline src="https://cdn.jsdelivr.net/npm/glightbox/dist/js/glightbox.min.js"></script>
+  <script>
+    import { getIconSvg } from '../scripts/icons';
 
-  <script is:inline>
-    const db = window.db || (window.firebase && firebase.database ? firebase.database() : null);
-    const imageSection = document.getElementById("testimonial-images");
-    const videoSection = document.getElementById("testimonial-videos");
+    const db = (window as any).db || ((window as any).firebase && (window as any).firebase.database ? (window as any).firebase.database() : null);
+    const imageSection = document.getElementById('testimonial-images');
+    const videoSection = document.getElementById('testimonial-videos');
 
-    if (db) {
-      db.ref('testimonials').on('value', (snapshot) => {
+    function renderEmpty(el: HTMLElement | null, msg: string): void {
+      if (!el) return;
+      el.innerHTML = `<div class="dandy-rev-empty"><p>${msg}</p></div>`;
+    }
+
+    if (db && imageSection && videoSection) {
+      db.ref('testimonials').on('value', (snapshot: any) => {
         const data = snapshot.val();
-        if (!imageSection || !videoSection) return;
         imageSection.innerHTML = '';
         videoSection.innerHTML = '';
 
         if (!data) {
-          imageSection.innerHTML = '<div class="reviews-empty"><p>لا توجد تجارب مصورة منشورة حالياً.</p></div>';
-          videoSection.innerHTML = '<div class="reviews-empty"><p>لا توجد تجارب مرئية منشورة حالياً.</p></div>';
+          renderEmpty(imageSection, 'لا توجد تجارب مصورة منشورة حالياً.');
+          renderEmpty(videoSection, 'لا توجد تجارب مرئية منشورة حالياً.');
           return;
         }
 
         let imageCount = 0;
         let videoCount = 0;
 
-        Object.values(data).forEach(item => {
+        Object.values(data).forEach((rawItem: unknown) => {
+          const item = rawItem as { type?: string; url?: string } | null;
+          if (!item || !item.url) return;
+
           const capsule = document.createElement('div');
-          capsule.className = 'review-capsule';
+          capsule.className = 'dandy-rev-capsule';
 
           if (item.type === 'image') {
             imageCount++;
             const link = document.createElement('a');
             link.href = item.url;
-            link.className = 'glightbox';
+            link.className = 'glightbox dandy-rev-link';
             link.setAttribute('data-gallery', 'testimonial-images');
-            link.setAttribute('data-title', 'تجربة عميل مع منتجات داندي');
+            link.setAttribute('data-title', 'تجربة عميلة مع منتجات داندي');
 
             const img = document.createElement('img');
             img.src = item.url;
-            img.alt = "تجربة استخدام منتجات داندي";
-            img.loading = "lazy";
+            img.alt = 'تجربة استخدام منتجات داندي';
+            img.loading = 'lazy';
+            img.referrerPolicy = 'no-referrer';
 
             link.appendChild(img);
             capsule.appendChild(link);
@@ -211,16 +104,16 @@ import BaseLayout from '../layouts/BaseLayout.astro';
             videoCount++;
             const link = document.createElement('a');
             link.href = item.url;
-            link.className = 'glightbox';
+            link.className = 'glightbox dandy-rev-link';
             link.setAttribute('data-gallery', 'testimonial-videos');
             link.setAttribute('data-type', 'video');
             link.setAttribute('data-title', 'تجربة فيديو مع داندي');
 
             const thumb = document.createElement('div');
-            thumb.className = 'video-thumbnail-play';
+            thumb.className = 'dandy-rev-video-tile';
             thumb.innerHTML = `
-              <i class="fas fa-play-circle"></i>
-              <span>مشاهدة الفيديو</span>
+              <span class="dandy-rev-play-circle">${getIconSvg('play', { size: 22, strokeWidth: 1.9 })}</span>
+              <span>مشاهدة التجربة</span>
             `;
 
             link.appendChild(thumb);
@@ -229,21 +122,126 @@ import BaseLayout from '../layouts/BaseLayout.astro';
           }
         });
 
-        if (imageCount === 0) {
-          imageSection.innerHTML = '<div class="reviews-empty"><p>لا توجد تجارب مصورة منشورة حالياً.</p></div>';
-        }
-        if (videoCount === 0) {
-          videoSection.innerHTML = '<div class="reviews-empty"><p>لا توجد تجارب مرئية منشورة حالياً.</p></div>';
-        }
+        if (imageCount === 0) renderEmpty(imageSection, 'لا توجد تجارب مصورة منشورة حالياً.');
+        if (videoCount === 0) renderEmpty(videoSection, 'لا توجد تجارب مرئية منشورة حالياً.');
 
-        if (window.GLightbox) {
-          GLightbox({ selector: '.glightbox' });
+        if ((window as any).GLightbox) {
+          (window as any).GLightbox({ selector: '.glightbox' });
         }
       });
     } else {
-      if (imageSection) imageSection.innerHTML = '<div class="reviews-empty"><p>لا توجد تجارب متاحة حالياً.</p></div>';
-      if (videoSection) videoSection.innerHTML = '<div class="reviews-empty"><p>لا توجد تجارب متاحة حالياً.</p></div>';
+      renderEmpty(imageSection, 'لا توجد تجارب متاحة حالياً.');
+      renderEmpty(videoSection, 'لا توجد تجارب متاحة حالياً.');
     }
   </script>
 </BaseLayout>
 
+<style is:global>
+  .dandy-rev-group + .dandy-rev-group {
+    margin-top: 44px;
+  }
+
+  .dandy-rev-group-title {
+    margin: 0 0 18px;
+    font-size: clamp(1.25rem, 2vw, 1.5rem);
+    font-weight: 700;
+    color: var(--dandy-ink-primary);
+  }
+
+  .dandy-rev-gallery {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: 18px;
+  }
+
+  .dandy-rev-loading {
+    grid-column: 1 / -1;
+    text-align: center;
+    padding: 36px 20px;
+    color: var(--dandy-ink-muted);
+    font-size: var(--dandy-text-sm);
+    margin: 0;
+  }
+
+  .dandy-rev-capsule {
+    background-color: var(--dandy-bg-page);
+    border: 1px solid var(--dandy-border-subtle);
+    border-radius: var(--dandy-radius-md);
+    overflow: hidden;
+    transition: transform var(--dandy-transition-base), border-color var(--dandy-transition-base), box-shadow var(--dandy-transition-base);
+  }
+
+  .dandy-rev-capsule:hover {
+    transform: translateY(-2px);
+    border-color: var(--dandy-border-default);
+    box-shadow: var(--dandy-shadow-sm);
+  }
+
+  .dandy-rev-link {
+    display: block;
+    text-decoration: none;
+  }
+
+  .dandy-rev-capsule img {
+    width: 100%;
+    aspect-ratio: 4 / 5;
+    object-fit: cover;
+    display: block;
+    background-color: var(--dandy-bg-stage);
+  }
+
+  .dandy-rev-video-tile {
+    width: 100%;
+    aspect-ratio: 4 / 5;
+    background-color: var(--dandy-bg-dark);
+    color: var(--dandy-ink-inverse);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    font-size: var(--dandy-text-sm);
+    font-weight: 600;
+  }
+
+  .dandy-rev-play-circle {
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background-color: rgba(250, 248, 246, 0.14);
+    border: 1px solid rgba(250, 248, 246, 0.35);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--dandy-ink-inverse);
+    transition: background-color var(--dandy-transition-fast), transform var(--dandy-transition-fast);
+  }
+
+  .dandy-rev-capsule:hover .dandy-rev-play-circle {
+    background-color: var(--dandy-accent-primary);
+    border-color: var(--dandy-accent-primary);
+    transform: scale(1.06);
+  }
+
+  .dandy-rev-empty {
+    grid-column: 1 / -1;
+    text-align: center;
+    padding: 36px 20px;
+    background-color: var(--dandy-bg-editorial);
+    border: 1px dashed var(--dandy-border-default);
+    border-radius: var(--dandy-radius-md);
+    color: var(--dandy-ink-muted);
+    font-size: var(--dandy-text-sm);
+  }
+
+  .dandy-rev-empty p {
+    margin: 0;
+  }
+
+  @media (max-width: 639px) {
+    .dandy-rev-gallery {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+  }
+</style>

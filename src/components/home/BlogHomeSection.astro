@@ -51,7 +51,7 @@ function getArticleDateLabel(article: Article): string {
   hidden={hidden || undefined}
 >
   <div class="dandy-container">
-    <header class="dandy-section-header">
+    <header class="dandy-section-header" data-dandy-reveal>
       <div class="dandy-section-titles">
         <p class="dandy-section-kicker">مدونة العناية والجمال</p>
         <h2 id="home-blog-heading" class="dandy-section-heading">
@@ -65,7 +65,7 @@ function getArticleDateLabel(article: Article): string {
     </header>
 
     {latestArticles.length > 0 ? (
-      <div class="dandy-blog-home-grid">
+      <div class="dandy-blog-home-grid" data-dandy-reveal data-dandy-stagger="group">
         {latestArticles.map((article) => {
           const excerpt = getArticleExcerpt(article);
           const dateLabel = getArticleDateLabel(article);
@@ -75,7 +75,7 @@ function getArticleDateLabel(article: Article): string {
               : fallbackBlogImg;
 
           return (
-            <article class="dandy-blog-home-card">
+            <article class="dandy-blog-home-card" data-dandy-reveal-child>
               <a href={`/blog/${encodeURIComponent(article.slug)}`} class="dandy-blog-home-media">
                 <img
                   src={imgSrc}

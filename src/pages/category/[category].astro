@@ -209,11 +209,12 @@ const categoryArticle = categoryConfig ? CATEGORY_ARTICLE_MAP[categoryConfig.slu
                 hasSoldOutItems={hasSoldOutItems}
               />
 
-              <div class="dandy-catalog-grid" id="category-grid" data-catalog-grid>
+              <div class="dandy-catalog-grid" id="category-grid" data-catalog-grid data-dandy-stagger="grid">
                 {categoryEntries.map(({ product, pfPricing, meta }, index) => (
                   <div
                     class="dandy-catalog-slot"
                     data-catalog-item
+                    data-dandy-reveal-child
                     data-product-id={meta.id}
                     data-index={meta.index}
                     data-name={meta.name}
@@ -255,7 +256,7 @@ const categoryArticle = categoryConfig ? CATEGORY_ARTICLE_MAP[categoryConfig.slu
           )}
 
           {categoryArticle && (
-            <aside class="dandy-cat-guide-card" aria-label="دليل العناية التحريري">
+            <aside class="dandy-cat-guide-card" aria-label="دليل العناية التحريري" data-dandy-reveal>
               <div class="dandy-cat-guide-icon" aria-hidden="true">
                 <Icon name="book-open" size={22} strokeWidth={1.75} />
               </div>

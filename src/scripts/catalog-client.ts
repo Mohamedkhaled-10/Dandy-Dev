@@ -250,6 +250,8 @@ function setupCatalogRoot(root: HTMLElement): void {
     if (options.updateUrl !== false) {
       updateUrlFromState(state);
     }
+
+    document.dispatchEvent(new CustomEvent('dandy:catalog-updated', { detail: { grid: gridEl } }));
   }
 
   function resetAllFilters(): void {

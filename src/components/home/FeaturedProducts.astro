@@ -50,7 +50,7 @@ const headingId = `home-products-heading-${sectionId}`;
   hidden={hidden || undefined}
 >
   <div class="dandy-container">
-    <header class="dandy-section-header">
+    <header class="dandy-section-header" data-dandy-reveal>
       <div class="dandy-section-titles">
         <p class="dandy-section-kicker" data-sec-subtitle dir="auto">{kicker}</p>
         <h2 id={headingId} class="dandy-section-heading" data-sec-title dir="auto">
@@ -63,7 +63,12 @@ const headingId = `home-products-heading-${sectionId}`;
       </a>
     </header>
 
-    <div class="dandy-featured-grid" data-products-grid hidden={products.length === 0 || undefined}>
+    <div
+      class="dandy-featured-grid"
+      data-products-grid
+      data-dandy-stagger="grid"
+      hidden={products.length === 0 || undefined}
+    >
       {products.map((product, index) => {
         const pfPricing = pinkFridayCampaign
           ? calculatePinkFridayPricing(product, pinkFridayCampaign)
@@ -73,6 +78,7 @@ const headingId = `home-products-heading-${sectionId}`;
             product={product}
             pinkFridayPricing={pfPricing}
             priority={index < 4}
+            revealChild={true}
           />
         );
       })}

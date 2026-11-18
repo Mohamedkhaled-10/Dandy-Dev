@@ -83,16 +83,16 @@ if (id) {
     </style>
   </slot>
 
-  <main class="container">
+  <main class="container" data-dandy-motion="calm">
     <div class="not-found-container">
-      <div class="not-found-icon">
+      <div class="not-found-icon" data-dandy-entrance="0">
         <i class="fas fa-search"></i>
       </div>
-      <h1 class="not-found-title">عذراً، المستحضر المطلوب غير متوفر</h1>
-      <p class="not-found-desc">
+      <h1 class="not-found-title" data-dandy-entrance="1">عذراً، المستحضر المطلوب غير متوفر</h1>
+      <p class="not-found-desc" data-dandy-entrance="2">
         لم نتمكن من العثور على المنتج المطلوب برقم التعريف ({id || 'غير محدد'}). قد يكون المنتج قد نفد أو تم حذفه من التشكيلة.
       </p>
-      <a href="/all-products" class="btn-catalog-cta">
+      <a href="/all-products" class="btn-catalog-cta" data-dandy-entrance="3">
         <i class="fas fa-th-large"></i>
         <span>تصفح تشكيلة منتجات داندي</span>
       </a>

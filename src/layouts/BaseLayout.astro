@@ -6,6 +6,7 @@ import DashboardNav from '../components/DashboardNav.astro';
 import ConsentBanner from '../components/ConsentBanner.astro';
 import ToastHost from '../components/ui/ToastHost.astro';
 import { getPublishedPinkFridayCampaign } from '../utils/pink-friday-server.ts';
+import { isExcludedMotionRoute } from '../scripts/page-entrance';
 import '../styles/tokens.css';
 import '../styles/base.css';
 import '../styles/components.css';
@@ -43,6 +44,8 @@ const resolvedCanonical = canonical || defaultCanonical;
 
 const firebaseApiKey = process.env.FIREBASE_API_KEY || '';
 const pinkFridayCampaign = await getPublishedPinkFridayCampaign();
+const enableStorefrontMotion =
+  !showDashboardNav && !isExcludedMotionRoute(Astro.url.pathname || '/', Astro.url.search || '');
 ---
 
 <!DOCTYPE html>
@@ -138,6 +141,28 @@ const pinkFridayCampaign = await getPublishedPinkFridayCampaign();
     }
   </script>
 
+  {enableStorefrontMotion && (
+    <script is:inline>
+      (function () {
+        try {
+          if (
+            'IntersectionObserver' in window &&
+            !window.matchMedia('(prefers-reduced-motion: reduce)').matches &&
+            !window.location.search.includes('studio_preview=1')
+          ) {
+            var root = document.documentElement;
+            root.classList.add('dandy-motion-ready');
+            window.setTimeout(function () {
+              if (!window.__dandyMotionBooted) {
+                root.classList.remove('dandy-motion-ready');
+              }
+            }, 900);
+          }
+        } catch (e) {}
+      })();
+    </script>
+  )}
+
   <slot name="head" />
 </head>
 <body data-astro-layout="true">
@@ -163,5 +188,12 @@ const pinkFridayCampaign = await getPublishedPinkFridayCampaign();
 
   <!-- Cookie Consent Banner for Marketing & Analytics Tracking -->
   <ConsentBanner />
+
+  {enableStorefrontMotion && (
+    <script>
+      import { DandyAnimationController } from '../utils/animations';
+      DandyAnimationController.getInstance().init();
+    </script>
+  )}
 </body>
 </html>

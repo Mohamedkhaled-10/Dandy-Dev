@@ -94,9 +94,9 @@ const pageDescription =
   <header class="dandy-all-header">
     <div class="dandy-container">
       <div class="dandy-all-header-inner">
-        <p class="dandy-all-kicker">كتالوج داندي الكامل</p>
-        <h1 class="dandy-all-title dandy-font-ar-display">جميع مستحضرات داندي الطبيعية</h1>
-        <p class="dandy-all-desc">
+        <p class="dandy-all-kicker" data-dandy-entrance="0">كتالوج داندي الكامل</p>
+        <h1 class="dandy-all-title dandy-font-ar-display" data-dandy-entrance="1">جميع مستحضرات داندي الطبيعية</h1>
+        <p class="dandy-all-desc" data-dandy-entrance="2">
           تركيبات طبيعية لطيفة للعناية اليومية بالبشرة والشعر والجسم، مع بحث فوري وتصفية واضحة حسب الفئة والسعر.
         </p>
       </div>
@@ -130,11 +130,12 @@ const pageDescription =
 
       {catalogEntries.length > 0 ? (
         <>
-          <div class="dandy-catalog-grid" id="productContainer" data-catalog-grid>
+          <div class="dandy-catalog-grid" id="productContainer" data-catalog-grid data-dandy-stagger="grid">
             {catalogEntries.map(({ product, pfPricing, meta }, index) => (
               <div
                 class="dandy-catalog-slot"
                 data-catalog-item
+                data-dandy-reveal-child
                 data-product-id={meta.id}
                 data-index={meta.index}
                 data-name={meta.name}

@@ -446,7 +446,7 @@ const SECTION_ICONS: Record<string, 'book-open' | 'sparkles' | 'leaf' | 'check-c
         <!-- 1. Breadcrumb & Primary Hero Split -->
         <section class="dandy-pdp-hero">
           <div class="dandy-container">
-            <nav class="dandy-pdp-breadcrumb" id="product-breadcrumb" aria-label="مسار التنقل">
+            <nav class="dandy-pdp-breadcrumb" id="product-breadcrumb" aria-label="مسار التنقل" data-dandy-entrance="0">
               <a href="/">الرئيسية</a>
               <Icon name="chevron-left" size={14} strokeWidth={1.8} class="dandy-pdp-bread-sep" />
               <a href={`/category/${categoryMeta.slug}`}>{categoryMeta.labelAr}</a>
@@ -456,7 +456,7 @@ const SECTION_ICONS: Record<string, 'book-open' | 'sparkles' | 'leaf' | 'check-c
 
             <!-- RTL Grid: Gallery (Right visual column) | Info & Purchase Controls (Left visual column) -->
             <div class="dandy-pdp-grid" id="detailFrame">
-              <div class="dandy-pdp-col-gallery">
+              <div class="dandy-pdp-col-gallery" data-dandy-media-settle>
                 <ProductGallery
                   productId={product!.id}
                   productName={product!.name}
@@ -498,7 +498,7 @@ const SECTION_ICONS: Record<string, 'book-open' | 'sparkles' | 'leaf' | 'check-c
           aria-labelledby="details-section-heading"
         >
           <div class="dandy-container">
-            <header class="dandy-pdp-section-head">
+            <header class="dandy-pdp-section-head" data-dandy-reveal>
               <p class="dandy-pdp-section-kicker">تفاصيل التركيبة والعناية</p>
               <h2 id="details-section-heading" class="dandy-pdp-section-heading">
                 تفاصيل وخواص المستحضر
@@ -506,10 +506,10 @@ const SECTION_ICONS: Record<string, 'book-open' | 'sparkles' | 'leaf' | 'check-c
             </header>
 
             <div class="dandy-pdp-details-layout">
-              <div id="product-desc" class="dandy-pdp-desc-stack dandy-prose">
+              <div id="product-desc" class="dandy-pdp-desc-stack dandy-prose" data-dandy-reveal data-dandy-stagger="group">
                 {parsedDescription.sections.length > 0 ? (
                   parsedDescription.sections.map((section) => (
-                    <article class="dandy-pdp-desc-card" data-desc-section={section.id}>
+                    <article class="dandy-pdp-desc-card" data-desc-section={section.id} data-dandy-reveal-child>
                       <h3 class="dandy-pdp-desc-title">
                         <span class="dandy-pdp-desc-icon" aria-hidden="true">
                           <Icon name={SECTION_ICONS[section.id] || 'sparkles'} size={17} strokeWidth={1.8} />
@@ -552,7 +552,7 @@ const SECTION_ICONS: Record<string, 'book-open' | 'sparkles' | 'leaf' | 'check-c
 
               {productArticle && (
                 <aside class="dandy-pdp-routine-aside" aria-label="دليل العناية والروتين">
-                  <div class="dandy-pdp-routine-card">
+                  <div class="dandy-pdp-routine-card" data-dandy-reveal>
                     <span class="dandy-pdp-routine-kicker">
                       <Icon name="book-open" size={15} strokeWidth={1.9} />
                       <span>{productArticle.label}</span>
@@ -586,7 +586,7 @@ const SECTION_ICONS: Record<string, 'book-open' | 'sparkles' | 'leaf' | 'check-c
             aria-labelledby="related-products-heading"
           >
             <div class="dandy-container">
-              <header class="dandy-pdp-related-header">
+              <header class="dandy-pdp-related-header" data-dandy-reveal>
                 <div>
                   <p class="dandy-pdp-section-kicker">تكمّل روتينكِ</p>
                   <h2 id="related-products-heading" class="dandy-pdp-section-heading">
@@ -599,7 +599,7 @@ const SECTION_ICONS: Record<string, 'book-open' | 'sparkles' | 'leaf' | 'check-c
                 </a>
               </header>
 
-              <div class="dandy-pdp-related-grid" id="related-products-grid">
+              <div class="dandy-pdp-related-grid" id="related-products-grid" data-dandy-reveal data-dandy-stagger="group">
                 {relatedProducts.map((relProd) => {
                   const relPfPricing = livePfCampaign
                     ? calculatePinkFridayPricing(relProd, livePfCampaign)
@@ -609,6 +609,7 @@ const SECTION_ICONS: Record<string, 'book-open' | 'sparkles' | 'leaf' | 'check-c
                       product={relProd}
                       pinkFridayPricing={relPfPricing}
                       priority={true}
+                      revealChild={true}
                     />
                   );
                 })}

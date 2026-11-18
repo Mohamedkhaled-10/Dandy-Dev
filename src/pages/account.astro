@@ -1,2086 +1,1557 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
+import Icon from '../components/ui/Icon.astro';
+import EditorialPageHeader from '../components/editorial/EditorialPageHeader.astro';
+import { GOVERNORATES } from '../scripts/purchase-flow';
 ---
 
 <BaseLayout
-  title="حسابي | Dandy"
-  description="إدارة حساب العميل، متابعة الطلبات السابقة، إدارة العناوين المحفوظة، واستعراض قائمة المفضلة في متجر داندي."
+  title="حسابي | Dandy Cosmetics"
+  description="إدارة حساب العميلة، متابعة الطلبات السابقة، العناوين المحفوظة، وقائمة المفضلة في متجر داندي."
   robots="noindex, nofollow"
 >
-  <slot name="head" slot="head">
-    <style is:global>
-      .account-page-wrapper {
-        padding-top: 110px;
-        padding-bottom: 70px;
-        min-height: 85vh;
-      }
-
-      /* Hero Header */
-      .account-hero-card {
-        background: var(--color-surface);
-        border: 1px solid var(--border-light);
-        border-radius: var(--border-radius-md);
-        padding: 24px 28px;
-        margin-bottom: 28px;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        flex-wrap: wrap;
-        gap: 20px;
-      }
-
-      .account-user-meta {
-        display: flex;
-        align-items: center;
-        gap: 16px;
-      }
-
-      .account-avatar {
-        width: 52px;
-        height: 52px;
-        border-radius: 50%;
-        background: var(--color-surface-soft);
-        border: 1px solid var(--border-light);
-        color: var(--color-blush);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 1.4rem;
-        font-weight: 800;
-      }
-
-      .account-greeting h1 {
-        font-size: 1.25rem;
-        font-weight: 800;
-        color: var(--color-primary);
-        margin: 0 0 4px;
-      }
-
-      .account-greeting p {
-        color: var(--color-muted);
-        font-size: 0.88rem;
-        margin: 0;
-        direction: ltr;
-        text-align: right;
-      }
-
-      .account-header-actions {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-      }
-
-      .btn-account-logout {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        background: transparent;
-        color: #dc2626;
-        border: 1px solid #fee2e2;
-        padding: 8px 16px;
-        border-radius: 99px;
-        font-size: 0.85rem;
-        font-weight: 700;
-        cursor: pointer;
-        transition: all 0.2s;
-        font-family: inherit;
-      }
-
-      .btn-account-logout:hover {
-        background: #fef2f2;
-        border-color: #fca5a5;
-      }
-
-      /* Tabs Navigation */
-      .account-nav-tabs {
-        display: flex;
-        gap: 8px;
-        border-bottom: 1px solid var(--border-light);
-        margin-bottom: 28px;
-        overflow-x: auto;
-        padding-bottom: 0;
-      }
-
-      .account-tab-btn {
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        background: none;
-        border: none;
-        padding: 12px 18px;
-        font-size: 0.95rem;
-        font-weight: 700;
-        color: var(--color-muted);
-        cursor: pointer;
-        position: relative;
-        transition: all 0.2s;
-        white-space: nowrap;
-        font-family: inherit;
-        border-bottom: 2px solid transparent;
-        margin-bottom: -1px;
-      }
-
-      .account-tab-btn i {
-        font-size: 1rem;
-      }
-
-      .account-tab-btn .badge-counter {
-        background: var(--color-surface-soft);
-        color: var(--color-muted);
-        font-size: 0.75rem;
-        font-weight: 700;
-        padding: 1px 7px;
-        border-radius: 99px;
-        transition: all 0.2s;
-        border: 1px solid var(--border-light);
-      }
-
-      .account-tab-btn:hover {
-        color: var(--color-primary);
-      }
-
-      .account-tab-btn.active {
-        color: var(--color-blush);
-        border-bottom-color: var(--color-blush);
-      }
-
-      .account-tab-btn.active .badge-counter {
-        background: var(--color-blush);
-        color: #fff;
-        border-color: var(--color-blush);
-      }
-
-      /* Tab Panels */
-      .account-tab-content {
-        display: none;
-      }
-
-      .account-tab-content.active {
-        display: block;
-      }
-
-      /* Orders Section */
-      .orders-grid {
-        display: flex;
-        flex-direction: column;
-        gap: 16px;
-      }
-
-      .order-history-card {
-        background: var(--color-surface);
-        border: 1px solid var(--border-light);
-        border-radius: var(--border-radius-md);
-        padding: 20px 24px;
-        transition: border-color 0.2s, box-shadow 0.2s;
-      }
-
-      .order-history-card:hover {
-        border-color: var(--color-blush);
-        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
-      }
-
-      .order-card-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        flex-wrap: wrap;
-        gap: 12px;
-        padding-bottom: 12px;
-        border-bottom: 1px solid var(--border-light);
-        margin-bottom: 16px;
-      }
-
-      .order-code-badge {
-        font-weight: 800;
-        font-size: 0.98rem;
-        color: var(--color-primary);
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        direction: ltr;
-      }
-
-      .order-date-text {
-        font-size: 0.82rem;
-        color: var(--color-muted);
-      }
-
-      .order-card-body {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-        gap: 14px;
-        align-items: center;
-        margin-bottom: 16px;
-      }
-
-      .order-info-item {
-        font-size: 0.88rem;
-      }
-
-      .order-info-item .label {
-        color: var(--color-muted);
-        margin-bottom: 2px;
-        font-size: 0.78rem;
-      }
-
-      .order-info-item .val {
-        font-weight: 700;
-        color: var(--color-primary);
-      }
-
-      .order-status-pill {
-        display: inline-block;
-        padding: 4px 12px;
-        border-radius: 99px;
-        font-size: 0.8rem;
-        font-weight: 700;
-      }
-
-      .status-new { background: #eff6ff; color: #1e40af; }
-      .status-processing { background: #fff7ed; color: #9a3412; }
-      .status-shipped { background: #faf5ff; color: #6b21a8; }
-      .status-delivered { background: #f0fdf4; color: #166534; }
-      .status-cancelled { background: #fef2f2; color: #991b1b; }
-
-      .order-card-footer {
-        display: flex;
-        justify-content: flex-end;
-        align-items: center;
-        gap: 10px;
-        flex-wrap: wrap;
-        border-top: 1px dashed var(--border-light);
-        padding-top: 14px;
-      }
-
-      .btn-order-action {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        padding: 8px 16px;
-        border-radius: 99px;
-        font-size: 0.85rem;
-        font-weight: 700;
-        text-decoration: none;
-        transition: all 0.2s;
-        font-family: inherit;
-      }
-
-      .btn-order-action.primary {
-        background: var(--color-blush);
-        color: #fff;
-      }
-
-      .btn-order-action.primary:hover {
-        background: var(--color-primary);
-      }
-
-      .btn-order-action.secondary {
-        background: var(--color-surface-soft);
-        color: var(--color-primary);
-        border: 1px solid var(--border-light);
-      }
-
-      .btn-order-action.secondary:hover {
-        background: #f3f4f6;
-      }
-
-      /* Addresses Section */
-      .addresses-header-bar {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 20px;
-        flex-wrap: wrap;
-        gap: 12px;
-      }
-
-      .btn-add-address {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        background: var(--color-blush);
-        color: #fff;
-        font-weight: 700;
-        padding: 9px 18px;
-        border-radius: 99px;
-        border: none;
-        cursor: pointer;
-        font-size: 0.88rem;
-        transition: all 0.2s;
-        box-shadow: 0 4px 12px rgba(219, 39, 119, 0.15);
-        font-family: inherit;
-      }
-
-      .btn-add-address:hover {
-        background: var(--color-primary);
-      }
-
-      .addresses-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-        gap: 16px;
-      }
-
-      .address-card {
-        background: var(--color-surface);
-        border: 1px solid var(--border-light);
-        border-radius: var(--border-radius-md);
-        padding: 20px;
-        position: relative;
-        display: flex;
-        flex-direction: column;
-        justify-content: space-between;
-        transition: border-color 0.2s, box-shadow 0.2s;
-      }
-
-      .address-card.is-default {
-        border-color: var(--color-blush);
-        background: #fffafa;
-      }
-
-      .address-card-top {
-        display: flex;
-        justify-content: space-between;
-        align-items: flex-start;
-        margin-bottom: 12px;
-      }
-
-      .address-label {
-        font-size: 1rem;
-        font-weight: 800;
-        color: var(--color-primary);
-        display: flex;
-        align-items: center;
-        gap: 6px;
-      }
-
-      .badge-default-address {
-        background: var(--color-blush);
-        color: #fff;
-        font-size: 0.72rem;
-        font-weight: 700;
-        padding: 3px 8px;
-        border-radius: 99px;
-      }
-
-      .address-details {
-        color: var(--color-muted);
-        font-size: 0.88rem;
-        line-height: 1.6;
-        margin-bottom: 16px;
-      }
-
-      .address-details strong {
-        color: var(--color-primary);
-        font-weight: 700;
-      }
-
-      .address-card-actions {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        border-top: 1px solid var(--border-light);
-        padding-top: 12px;
-        flex-wrap: wrap;
-      }
-
-      .btn-addr-action {
-        background: none;
-        border: none;
-        cursor: pointer;
-        font-size: 0.82rem;
-        font-weight: 700;
-        padding: 5px 10px;
-        border-radius: 6px;
-        display: inline-flex;
-        align-items: center;
-        gap: 4px;
-        transition: background 0.2s, color 0.2s;
-        font-family: inherit;
-      }
-
-      .btn-addr-action.edit {
-        color: #2563eb;
-        background: #eff6ff;
-      }
-      .btn-addr-action.edit:hover { background: #dbeafe; }
-
-      .btn-addr-action.delete {
-        color: #dc2626;
-        background: #fef2f2;
-      }
-      .btn-addr-action.delete:hover { background: #fee2e2; }
-
-      .btn-addr-action.set-default {
-        color: var(--color-blush);
-        background: #fdf2f8;
-        margin-right: auto;
-      }
-      .btn-addr-action.set-default:hover { background: #fce7f3; }
-
-      /* Wishlist Grid & Product Card */
-      .wishlist-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-        gap: 16px;
-      }
-
-      .wishlist-product-card {
-        background: var(--color-surface);
-        border: 1px solid var(--border-light);
-        border-radius: var(--border-radius-md);
-        overflow: hidden;
-        display: flex;
-        flex-direction: column;
-        transition: border-color 0.2s, box-shadow 0.2s;
-        position: relative;
-      }
-
-      .wishlist-product-card:hover {
-        border-color: var(--color-blush);
-        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.05);
-      }
-
-      .wishlist-img-wrap {
-        position: relative;
-        aspect-ratio: 1/1;
-        background: var(--color-surface-soft);
-        overflow: hidden;
-        cursor: pointer;
-      }
-
-      .wishlist-img-wrap img {
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-        transition: transform 0.3s;
-      }
-
-      .wishlist-product-card:hover .wishlist-img-wrap img {
-        transform: scale(1.04);
-      }
-
-      .wishlist-sale-badge {
-        position: absolute;
-        top: 8px;
-        right: 8px;
-        background: var(--color-blush);
-        color: #fff;
-        font-size: 0.7rem;
-        font-weight: 700;
-        padding: 3px 6px;
-        border-radius: 4px;
-        z-index: 2;
-      }
-
-      .wishlist-card-content {
-        padding: 14px;
-        display: flex;
-        flex-direction: column;
-        flex-grow: 1;
-      }
-
-      .wishlist-product-title {
-        font-size: 0.92rem;
-        font-weight: 700;
-        color: var(--color-primary);
-        margin: 0 0 6px;
-        cursor: pointer;
-        line-height: 1.4;
-      }
-
-      .wishlist-product-title:hover {
-        color: var(--color-blush);
-      }
-
-      .wishlist-price-row {
-        margin-bottom: 12px;
-        font-size: 0.95rem;
-        font-weight: 800;
-        color: var(--color-primary);
-      }
-
-      .wishlist-price-row .old-price {
-        font-size: 0.8rem;
-        color: var(--color-muted);
-        text-decoration: line-through;
-        margin-left: 6px;
-        font-weight: 500;
-      }
-
-      .wishlist-actions {
-        margin-top: auto;
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
-      }
-
-      .btn-wishlist-add-cart {
-        background: var(--color-primary);
-        color: #fff;
-        border: none;
-        padding: 9px 12px;
-        border-radius: 99px;
-        font-weight: 700;
-        font-size: 0.82rem;
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 6px;
-        transition: background 0.2s;
-        font-family: inherit;
-      }
-
-      .btn-wishlist-add-cart:hover {
-        background: var(--color-blush);
-      }
-
-      .btn-wishlist-remove {
-        background: transparent;
-        color: var(--color-muted);
-        border: 1px solid var(--border-light);
-        padding: 6px 10px;
-        border-radius: 99px;
-        font-weight: 700;
-        font-size: 0.78rem;
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 4px;
-        transition: all 0.2s;
-        font-family: inherit;
-      }
-
-      .btn-wishlist-remove:hover {
-        background: #fef2f2;
-        color: #dc2626;
-        border-color: #fee2e2;
-      }
-
-      /* Empty State */
-      .account-empty-state {
-        text-align: center;
-        padding: 48px 20px;
-        background: var(--color-surface);
-        border: 1px dashed var(--border-light);
-        border-radius: var(--border-radius-md);
-      }
-
-      .account-empty-state i {
-        font-size: 2.8rem;
-        color: var(--color-muted);
-        opacity: 0.6;
-        margin-bottom: 12px;
-        display: inline-block;
-      }
-
-      .account-empty-state h3 {
-        font-size: 1.15rem;
-        font-weight: 800;
-        color: var(--color-primary);
-        margin-bottom: 6px;
-      }
-
-      .account-empty-state p {
-        color: var(--color-muted);
-        font-size: 0.88rem;
-        max-width: 400px;
-        margin: 0 auto 20px;
-        line-height: 1.5;
-      }
-
-      .btn-empty-action {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        background: var(--color-blush);
-        color: #fff;
-        font-weight: 700;
-        padding: 10px 22px;
-        border-radius: 99px;
-        text-decoration: none;
-        box-shadow: 0 4px 12px rgba(219, 39, 119, 0.2);
-        transition: background 0.2s;
-        font-size: 0.88rem;
-      }
-
-      .btn-empty-action:hover {
-        background: var(--color-primary);
-      }
-
-      /* Address Modal */
-      .modal-overlay {
-        display: none;
-        position: fixed;
-        inset: 0;
-        background: rgba(0, 0, 0, 0.4);
-        z-index: 9999;
-        justify-content: center;
-        align-items: center;
-        padding: 20px;
-        backdrop-filter: blur(4px);
-      }
-
-      .modal-overlay.active {
-        display: flex;
-      }
-
-      .modal-card {
-        background: #fff;
-        border-radius: var(--border-radius-md);
-        width: 100%;
-        max-width: 460px;
-        padding: 24px;
-        box-shadow: 0 16px 36px rgba(0, 0, 0, 0.12);
-        max-height: 90vh;
-        overflow-y: auto;
-      }
-
-      .modal-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 18px;
-        padding-bottom: 10px;
-        border-bottom: 1px solid var(--border-light);
-      }
-
-      .modal-header h3 {
-        margin: 0;
-        font-size: 1.15rem;
-        font-weight: 800;
-        color: var(--color-primary);
-      }
-
-      .btn-modal-close {
-        background: none;
-        border: none;
-        font-size: 1.2rem;
-        color: var(--color-muted);
-        cursor: pointer;
-      }
-
-      .modal-form-group {
-        margin-bottom: 14px;
-        text-align: right;
-      }
-
-      .modal-form-group label {
-        display: block;
-        font-weight: 700;
-        font-size: 0.85rem;
-        color: var(--color-primary);
-        margin-bottom: 5px;
-      }
-
-      .modal-form-group input,
-      .modal-form-group select,
-      .modal-form-group textarea {
-        width: 100%;
-        padding: 9px 12px;
-        border: 1px solid var(--border-light);
-        border-radius: 8px;
-        font-size: 0.9rem;
-        font-family: inherit;
-        background: var(--color-surface-soft);
-        box-sizing: border-box;
-      }
-
-      .modal-form-group select {
-        background: var(--color-surface-soft);
-      }
-
-      .modal-form-group input:focus,
-      .modal-form-group select:focus,
-      .modal-form-group textarea:focus {
-        border-color: var(--color-blush);
-        background: #fff;
-        outline: none;
-      }
-
-      .modal-checkbox-row {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        cursor: pointer;
-        margin-top: 8px;
-        font-size: 0.85rem;
-        font-weight: 700;
-        color: var(--color-primary);
-      }
-
-      .modal-checkbox-row input {
-        width: 16px;
-        height: 16px;
-        accent-color: var(--color-blush);
-      }
-
-      .modal-actions {
-        display: flex;
-        gap: 10px;
-        margin-top: 20px;
-      }
-
-      .btn-modal-save {
-        flex: 1;
-        background: var(--color-blush);
-        color: #fff;
-        border: none;
-        padding: 10px 16px;
-        border-radius: 99px;
-        font-weight: 700;
-        font-size: 0.9rem;
-        cursor: pointer;
-        font-family: inherit;
-      }
-
-      .btn-modal-save:hover {
-        background: var(--color-primary);
-      }
-
-      .btn-modal-cancel {
-        background: var(--color-surface-soft);
-        color: var(--color-muted);
-        border: 1px solid var(--border-light);
-        padding: 10px 18px;
-        border-radius: 99px;
-        font-weight: 700;
-        font-size: 0.9rem;
-        cursor: pointer;
-        font-family: inherit;
-        transition: all 0.2s ease;
-      }
-
-      .btn-modal-cancel:hover {
-        background: #e5e7eb;
-        color: var(--color-primary);
-      }
-
-      /* Order Products Breakdown inside Card */
-      .order-products-section {
-        border-top: 1px dashed var(--border-light);
-        padding-top: 14px;
-        margin-top: 14px;
-        margin-bottom: 14px;
-      }
-
-      .order-products-title {
-        font-size: 0.84rem;
-        font-weight: 700;
-        color: var(--color-muted);
-        margin-bottom: 10px;
-        display: flex;
-        align-items: center;
-        gap: 6px;
-      }
-
-      .order-products-list {
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-      }
-
-      .order-product-row {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 12px;
-        background: var(--color-surface-soft, #faf8f7);
-        border: 1px solid var(--border-light, #ede7e4);
-        border-radius: 8px;
-        padding: 10px 14px;
-        flex-wrap: wrap;
-      }
-
-      .order-product-info {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        flex: 1;
-        min-width: 200px;
-      }
-
-      .order-product-thumb {
-        width: 44px;
-        height: 44px;
-        border-radius: 6px;
-        object-fit: cover;
-        background: #fff;
-        border: 1px solid var(--border-light);
-        flex-shrink: 0;
-      }
-
-      .order-product-details {
-        display: flex;
-        flex-direction: column;
-        gap: 2px;
-      }
-
-      .order-product-name {
-        font-weight: 700;
-        font-size: 0.88rem;
-        color: var(--color-primary);
-        line-height: 1.4;
-      }
-
-      .order-product-meta {
-        font-size: 0.78rem;
-        color: var(--color-muted);
-      }
-
-      .btn-review-product {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        background: #fff;
-        border: 1px solid rgba(254, 93, 159, 0.4);
-        color: var(--color-rose-kiss-600, #df3f85);
-        padding: 6px 14px;
-        border-radius: 99px;
-        font-size: 0.82rem;
-        font-weight: 700;
-        cursor: pointer;
-        transition: all 0.2s ease;
-        font-family: inherit;
-        white-space: nowrap;
-      }
-
-      .btn-review-product:hover {
-        background: var(--color-rose-kiss-500, #fe5d9f);
-        color: #fff;
-        border-color: var(--color-rose-kiss-500, #fe5d9f);
-      }
-
-      .btn-review-product.has-review {
-        border-color: #f59e0b;
-        color: #b45309;
-        background: #fffbeb;
-      }
-
-      .btn-review-product.has-review:hover {
-        background: #f59e0b;
-        color: #fff;
-      }
-
-      /* Review Modal Specifics */
-      .review-modal-card {
-        max-width: 480px;
-      }
-
-      .review-product-preview {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        background: var(--color-surface-soft);
-        border: 1px solid var(--border-light);
-        border-radius: 8px;
-        padding: 12px 14px;
-        margin-bottom: 18px;
-      }
-
-      .review-preview-thumb {
-        width: 52px;
-        height: 52px;
-        border-radius: 8px;
-        object-fit: cover;
-        background: #fff;
-        border: 1px solid var(--border-light);
-        flex-shrink: 0;
-      }
-
-      .review-preview-meta {
-        display: flex;
-        flex-direction: column;
-        gap: 2px;
-        flex: 1;
-        min-width: 0;
-      }
-
-      .verified-badge {
-        display: inline-flex;
-        align-items: center;
-        gap: 4px;
-        background: #dcfce7;
-        color: #15803d;
-        font-size: 0.72rem;
-        font-weight: 700;
-        padding: 2px 8px;
-        border-radius: 99px;
-        width: fit-content;
-        margin-bottom: 2px;
-      }
-
-      .review-preview-title {
-        font-size: 0.92rem;
-        font-weight: 700;
-        color: var(--color-primary);
-        margin: 0;
-        line-height: 1.35;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-      }
-
-      .review-preview-order {
-        font-size: 0.76rem;
-        color: var(--color-muted);
-      }
-
-      .star-rating-selector {
-        display: flex;
-        justify-content: center;
-        gap: 10px;
-        margin: 8px 0;
-        direction: ltr;
-      }
-
-      .star-rating-selector .star-btn {
-        background: none;
-        border: none;
-        cursor: pointer;
-        font-size: 1.9rem;
-        padding: 4px;
-        line-height: 1;
-        transition: transform 0.15s ease;
-      }
-
-      .star-rating-selector .star-btn:hover {
-        transform: scale(1.2);
-      }
-
-      .rating-desc-text {
-        text-align: center;
-        font-size: 0.85rem;
-        font-weight: 700;
-        color: var(--color-primary);
-        min-height: 22px;
-        margin-bottom: 14px;
-      }
-
-      /* Account Loading Spinner */
-      .account-loading-overlay {
-        text-align: center;
-        padding: 70px 20px;
-      }
-      .account-loading-overlay i {
-        font-size: 2.2rem;
-        color: var(--color-blush);
-        margin-bottom: 12px;
-      }
-    </style>
-  </slot>
-
-  <main class="account-page-wrapper container" id="accountMainContainer">
-    <!-- Initial Loading State -->
-    <div id="accountLoading" class="account-loading-overlay">
-      <i class="fas fa-circle-notch fa-spin"></i>
-      <p style="color:var(--color-muted); font-size:1.1rem; font-weight:700;">جاري تحميل حسابكِ...</p>
-    </div>
-
-    <!-- Main Account Area (Shown after auth check) -->
-    <div id="accountContent" style="display:none;">
-      <!-- Hero Customer Info -->
-      <section class="account-hero-card" id="accountHero">
-        <div class="account-user-meta">
-          <div class="account-avatar" id="customerAvatar">
-            <i class="fas fa-user"></i>
-          </div>
-          <div class="account-greeting">
-            <h1 id="customerGreetingName">مرحباً بكِ!</h1>
-            <p id="customerEmailText"></p>
-          </div>
-        </div>
-
-        <div class="account-header-actions">
-          <a href="/all-products" class="btn-order-action secondary">
-            <i class="fas fa-shopping-bag"></i> تسوقي الآن
-          </a>
-          <button type="button" id="logoutBtn" class="btn-account-logout">
-            <i class="fas fa-sign-out-alt"></i> تسجيل الخروج
-          </button>
-        </div>
-      </section>
-
-      <!-- Navigation Tabs -->
-      <div class="account-nav-tabs" role="tablist">
-        <button type="button" class="account-tab-btn active" data-tab="orders" id="tabBtnOrders">
-          <i class="fas fa-box-open"></i>
-          <span>سجل الطلبات</span>
-          <span class="badge-counter" id="ordersCountBadge">0</span>
-        </button>
-
-        <button type="button" class="account-tab-btn" data-tab="addresses" id="tabBtnAddresses">
-          <i class="fas fa-map-marked-alt"></i>
-          <span>العناوين المحفوظة</span>
-          <span class="badge-counter" id="addressesCountBadge">0</span>
-        </button>
-
-        <button type="button" class="account-tab-btn" data-tab="wishlist" id="tabBtnWishlist">
-          <i class="fas fa-heart"></i>
-          <span>قائمة المفضلة</span>
-          <span class="badge-counter" id="wishlistCountBadge">0</span>
-        </button>
+  <EditorialPageHeader
+    eyebrow="حساب العميلة"
+    title="مساحتكِ الخاصة في داندي"
+    description="تابعي طلباتكِ، احتفظي بعناوين التوصيل المفضلة، وأديري قائمة منتجاتكِ المحفوظة بسهولة."
+    currentCrumb="حسابي"
+  />
+
+  <main class="dandy-page-band" id="accountMainContainer" data-dandy-motion="calm">
+    <div class="dandy-container">
+      <!-- Initial Auth Guard Loading -->
+      <div id="accountLoading" class="dandy-acc-auth-loading" role="status" aria-live="polite">
+        <div class="dandy-acc-spinner" aria-hidden="true"></div>
+        <p>جاري التحقق من بيانات حسابكِ...</p>
       </div>
 
-      <!-- Tab 1: Orders Section -->
-      <section id="panelOrders" class="account-tab-content active">
-        <div id="ordersLoading" style="text-align:center; padding:40px;">
-          <i class="fas fa-spinner fa-spin" style="color:var(--color-blush); font-size:2rem;"></i>
-          <p style="margin-top:10px; color:var(--color-muted);">جاري تحميل سجل طلباتكِ...</p>
-        </div>
-        <div id="ordersContainer" class="orders-grid" style="display:none;"></div>
-        <div id="ordersEmpty" class="account-empty-state" style="display:none;">
-          <i class="fas fa-shopping-basket"></i>
-          <h3>لا توجد طلبات سابقة حتى الآن</h3>
-          <p>لم تقومي بأي طلبات بعد! اكتشفي مجموعتنا المميزة من منتجات العناية الطبيعية بالبشرة والشعر واطلبي الآن.</p>
-          <a href="/all-products" class="btn-empty-action">
-            <i class="fas fa-sparkles"></i> استكشاف المنتجات
-          </a>
-        </div>
-      </section>
-
-      <!-- Tab 2: Addresses Section -->
-      <section id="panelAddresses" class="account-tab-content">
-        <div class="addresses-header-bar">
-          <div>
-            <h2 style="font-size:1.25rem; font-weight:800; color:var(--color-primary); margin:0 0 4px;">عناوين التوصيل</h2>
-            <p style="color:var(--color-muted); font-size:0.9rem; margin:0;">أضيفي عناويناتكِ المفضلة لتسهيل عملية الشراء وسرعة الشحن مستقبلاً.</p>
+      <!-- Authenticated Account Workspace -->
+      <div id="accountContent" class="dandy-acc-shell" hidden>
+        <!-- Customer Identity Summary Bar -->
+        <section class="dandy-acc-identity" aria-label="ملخص الحساب">
+          <div class="dandy-acc-user">
+            <div class="dandy-acc-avatar" id="customerAvatar" aria-hidden="true">D</div>
+            <div class="dandy-acc-user-meta">
+              <h2 id="customerGreetingName" class="dandy-acc-greeting dandy-font-ar-display">مرحباً بكِ</h2>
+              <p id="customerEmailText" class="dandy-acc-email" dir="ltr"></p>
+            </div>
           </div>
-          <button type="button" id="openAddAddressModalBtn" class="btn-add-address">
-            <i class="fas fa-plus"></i> إضافة عنوان جديد
-          </button>
+
+          <div class="dandy-acc-top-actions">
+            <a href="/all-products" class="dandy-btn dandy-btn--outline">
+              <Icon name="shopping-bag" size={16} strokeWidth={1.85} />
+              <span>تسوقي الآن</span>
+            </a>
+            <button type="button" id="logoutBtn" class="dandy-btn dandy-btn--outline dandy-acc-logout-btn">
+              <Icon name="log-out" size={16} strokeWidth={1.85} />
+              <span>تسجيل الخروج</span>
+            </button>
+          </div>
+        </section>
+
+        <!-- Semantic Account Tabs -->
+        <div class="dandy-acc-tabs-wrap">
+          <nav class="dandy-acc-tabs" id="accountTabsBar" role="tablist" aria-label="أقسام الحساب">
+            <button
+              type="button"
+              role="tab"
+              id="tabOverview"
+              aria-selected="true"
+              aria-controls="panelOverview"
+              data-account-tab="overview"
+              class="dandy-acc-tab is-active"
+              tabindex="0"
+            >
+              <Icon name="user" size={16} strokeWidth={1.85} />
+              <span>نظرة عامة</span>
+            </button>
+
+            <button
+              type="button"
+              role="tab"
+              id="tabOrders"
+              aria-selected="false"
+              aria-controls="panelOrders"
+              data-account-tab="orders"
+              class="dandy-acc-tab"
+              tabindex="-1"
+            >
+              <Icon name="package" size={16} strokeWidth={1.85} />
+              <span>طلباتي</span>
+              <span class="dandy-acc-tab-count dandy-tabular" id="ordersCountBadge">0</span>
+            </button>
+
+            <button
+              type="button"
+              role="tab"
+              id="tabWishlist"
+              aria-selected="false"
+              aria-controls="panelWishlist"
+              data-account-tab="wishlist"
+              class="dandy-acc-tab"
+              tabindex="-1"
+            >
+              <Icon name="heart" size={16} strokeWidth={1.85} />
+              <span>المفضلة</span>
+              <span class="dandy-acc-tab-count dandy-tabular" id="wishlistCountBadge">0</span>
+            </button>
+
+            <button
+              type="button"
+              role="tab"
+              id="tabAddresses"
+              aria-selected="false"
+              aria-controls="panelAddresses"
+              data-account-tab="addresses"
+              class="dandy-acc-tab"
+              tabindex="-1"
+            >
+              <Icon name="map-pin" size={16} strokeWidth={1.85} />
+              <span>العناوين المحفوظة</span>
+              <span class="dandy-acc-tab-count dandy-tabular" id="addressesCountBadge">0</span>
+            </button>
+
+            <button
+              type="button"
+              role="tab"
+              id="tabProfile"
+              aria-selected="false"
+              aria-controls="panelProfile"
+              data-account-tab="profile"
+              class="dandy-acc-tab"
+              tabindex="-1"
+            >
+              <Icon name="pencil" size={16} strokeWidth={1.85} />
+              <span>بياناتي</span>
+            </button>
+          </nav>
         </div>
 
-        <div id="addressesLoading" style="text-align:center; padding:40px;">
-          <i class="fas fa-spinner fa-spin" style="color:var(--color-blush); font-size:2rem;"></i>
-        </div>
-        <div id="addressesContainer" class="addresses-grid" style="display:none;"></div>
-        <div id="addressesEmpty" class="account-empty-state" style="display:none;">
-          <i class="fas fa-map-pin"></i>
-          <h3>لم تقومي بإضافة أي عناوين بعد</h3>
-          <p>احفظي عنوان منزلكِ أو مكان عملكِ لتوفير الوقت عند إتمام طلباتكِ القادمة.</p>
-          <button type="button" id="emptyAddAddressBtn" class="btn-empty-action">
-            <i class="fas fa-plus"></i> إضافة عنوانكِ الأول
-          </button>
-        </div>
-      </section>
+        <!-- PANEL 1: OVERVIEW -->
+        <section
+          id="panelOverview"
+          role="tabpanel"
+          aria-labelledby="tabOverview"
+          data-account-panel="overview"
+          class="dandy-acc-panel is-active"
+        >
+          <div class="dandy-ov-stats-grid">
+            <button type="button" class="dandy-ov-stat-card" data-jump-tab="orders">
+              <span class="dandy-ov-stat-label">إجمالي الطلبات</span>
+              <strong id="overviewOrdersCount" class="dandy-ov-stat-val dandy-tabular">0</strong>
+              <span class="dandy-ov-stat-link">عرض السجل ←</span>
+            </button>
 
-      <!-- Tab 3: Wishlist Section -->
-      <section id="panelWishlist" class="account-tab-content">
-        <div id="wishlistLoading" style="text-align:center; padding:40px;">
-          <i class="fas fa-spinner fa-spin" style="color:var(--color-blush); font-size:2rem;"></i>
-          <p style="margin-top:10px; color:var(--color-muted);">جاري تحميل مفضلاتكِ...</p>
-        </div>
-        <div id="wishlistContainer" class="wishlist-grid" style="display:none;"></div>
-        <div id="wishlistEmpty" class="account-empty-state" style="display:none;">
-          <i class="fas fa-heart-broken"></i>
-          <h3>قائمة المفضلة فارغة حالياً</h3>
-          <p>لم تقومي بحفظ أي منتجات في مفضلتكِ بعد. تصفحي متجرنا وأضيفي منتجاتكِ المفضلة لتجديها هنا في أي وقت!</p>
-          <a href="/all-products" class="btn-empty-action">
-            <i class="fas fa-heart"></i> تصفح المنتجات المفضلة
-          </a>
-        </div>
-      </section>
+            <button type="button" class="dandy-ov-stat-card" data-jump-tab="wishlist">
+              <span class="dandy-ov-stat-label">المنتجات المحفوظة</span>
+              <strong id="overviewWishlistCount" class="dandy-ov-stat-val dandy-tabular">0</strong>
+              <span class="dandy-ov-stat-link">تصفح المفضلة ←</span>
+            </button>
+
+            <button type="button" class="dandy-ov-stat-card" data-jump-tab="addresses">
+              <span class="dandy-ov-stat-label">عناوين التوصيل</span>
+              <strong id="overviewAddressesCount" class="dandy-ov-stat-val dandy-tabular">0</strong>
+              <span class="dandy-ov-stat-link">إدارة العناوين ←</span>
+            </button>
+          </div>
+
+          <div class="dandy-ov-cards-grid">
+            <article class="dandy-acc-surface">
+              <div class="dandy-acc-surface-head">
+                <h3 class="dandy-acc-surface-title">أحدث طلب</h3>
+              </div>
+              <div id="overviewLatestOrder" class="dandy-ov-surface-body">
+                <p class="dandy-ov-empty">جاري التحميل...</p>
+              </div>
+            </article>
+
+            <article class="dandy-acc-surface">
+              <div class="dandy-acc-surface-head">
+                <h3 class="dandy-acc-surface-title">عنوان الشحن الافتراضي</h3>
+              </div>
+              <div id="overviewDefaultAddress" class="dandy-ov-surface-body">
+                <p class="dandy-ov-empty">جاري التحميل...</p>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <!-- PANEL 2: ORDERS HISTORY -->
+        <section
+          id="panelOrders"
+          role="tabpanel"
+          aria-labelledby="tabOrders"
+          data-account-panel="orders"
+          class="dandy-acc-panel"
+          hidden
+        >
+          <div id="ordersLoading" class="dandy-acc-tab-loading" role="status">
+            <div class="dandy-acc-spinner" aria-hidden="true"></div>
+            <p>جاري تحميل سجل طلباتكِ...</p>
+          </div>
+
+          <div id="ordersContainer" class="dandy-orders-list" hidden></div>
+
+          <div id="ordersEmpty" class="dandy-acc-empty" hidden>
+            <div class="dandy-acc-empty-icon" aria-hidden="true">
+              <Icon name="package" size={28} strokeWidth={1.6} />
+            </div>
+            <h3>لا توجد طلبات سابقة حتى الآن</h3>
+            <p>لم تقومي بأي طلبات بعد. استكشفي مستحضرات العناية الطبيعية بالبشرة والشعر وابدئي روتينكِ اليوم.</p>
+            <a href="/all-products" class="dandy-btn dandy-btn--editorial">
+              <span>استكشاف المنتجات</span>
+              <Icon name="arrow-left" size={16} strokeWidth={1.85} directional={true} />
+            </a>
+          </div>
+        </section>
+
+        <!-- PANEL 3: WISHLIST -->
+        <section
+          id="panelWishlist"
+          role="tabpanel"
+          aria-labelledby="tabWishlist"
+          data-account-panel="wishlist"
+          class="dandy-acc-panel"
+          hidden
+        >
+          <div id="wishlistLoading" class="dandy-acc-tab-loading" role="status">
+            <div class="dandy-acc-spinner" aria-hidden="true"></div>
+            <p>جاري تحميل قائمة المفضلة...</p>
+          </div>
+
+          <div id="wishlistContainer" class="dandy-catalog-grid" hidden></div>
+
+          <div id="wishlistEmpty" class="dandy-acc-empty" hidden>
+            <div class="dandy-acc-empty-icon" aria-hidden="true">
+              <Icon name="heart" size={28} strokeWidth={1.6} />
+            </div>
+            <h3>قائمة المفضلة فارغة حالياً</h3>
+            <p>احفظي منتجاتكِ المفضلة أثناء التصفح لتعودي إليها وتضيفيها إلى الحقيبة بسهولة لاحقاً.</p>
+            <a href="/all-products" class="dandy-btn dandy-btn--editorial">
+              <span>تصفح المنتجات</span>
+              <Icon name="arrow-left" size={16} strokeWidth={1.85} directional={true} />
+            </a>
+          </div>
+        </section>
+
+        <!-- PANEL 4: SAVED ADDRESSES -->
+        <section
+          id="panelAddresses"
+          role="tabpanel"
+          aria-labelledby="tabAddresses"
+          data-account-panel="addresses"
+          class="dandy-acc-panel"
+          hidden
+        >
+          <div class="dandy-acc-section-head">
+            <div>
+              <h2 class="dandy-acc-section-title">عناوين التوصيل المحفوظة</h2>
+              <p class="dandy-acc-section-desc">تُستدعى هذه العناوين تلقائياً في صفحة إتمام الطلب لتسريع التوصيل.</p>
+            </div>
+            <button type="button" id="openAddAddressModalBtn" class="dandy-btn dandy-btn--primary">
+              <Icon name="plus" size={16} strokeWidth={1.9} />
+              <span>إضافة عنوان جديد</span>
+            </button>
+          </div>
+
+          <div id="addressesLoading" class="dandy-acc-tab-loading" role="status">
+            <div class="dandy-acc-spinner" aria-hidden="true"></div>
+            <p>جاري تحميل العناوين...</p>
+          </div>
+
+          <div id="addressesContainer" class="dandy-addresses-grid" hidden></div>
+
+          <div id="addressesEmpty" class="dandy-acc-empty" hidden>
+            <div class="dandy-acc-empty-icon" aria-hidden="true">
+              <Icon name="map-pin" size={28} strokeWidth={1.6} />
+            </div>
+            <h3>لا توجد عناوين محفوظة بعد</h3>
+            <p>أضيفي عنوان منزلكِ أو مقر عملكِ لتعبئة بيانات الشحن بنقرة واحدة عند إتمام الطلب.</p>
+            <button type="button" id="emptyAddAddressBtn" class="dandy-btn dandy-btn--editorial">
+              <Icon name="plus" size={16} strokeWidth={1.9} />
+              <span>إضافة عنوانكِ الأول</span>
+            </button>
+          </div>
+        </section>
+
+        <!-- PANEL 5: PERSONAL PROFILE -->
+        <section
+          id="panelProfile"
+          role="tabpanel"
+          aria-labelledby="tabProfile"
+          data-account-panel="profile"
+          class="dandy-acc-panel"
+          hidden
+        >
+          <div class="dandy-acc-profile-grid">
+            <article class="dandy-acc-surface">
+              <div class="dandy-acc-surface-head">
+                <h2 class="dandy-acc-surface-title">البيانات الشخصية</h2>
+                <p class="dandy-acc-section-desc">حدّثي اسمكِ الظاهر في الفواتير وحسابكِ الشخصي.</p>
+              </div>
+
+              <form id="profileForm" class="dandy-acc-form" novalidate>
+                <div class="dandy-acc-field">
+                  <label for="profName">الاسم الكامل</label>
+                  <input type="text" id="profName" name="name" class="dandy-acc-input" required autocomplete="name" />
+                </div>
+
+                <div class="dandy-acc-field">
+                  <label for="profEmail">البريد الإلكتروني</label>
+                  <input type="email" id="profEmail" class="dandy-acc-input is-readonly" dir="ltr" readonly />
+                </div>
+
+                <div class="dandy-acc-field">
+                  <label for="profPhone">رقم الهاتف المسجل</label>
+                  <input type="tel" id="profPhone" class="dandy-acc-input is-readonly" dir="ltr" readonly />
+                  <small class="dandy-acc-hint">رقم الهاتف مرتبط بسجل الطلبات ولا يمكن تغييره ذاتياً لأغراض التوثيق.</small>
+                </div>
+
+                <button type="submit" id="saveProfileBtn" class="dandy-btn dandy-btn--editorial">
+                  حفظ التغييرات
+                </button>
+              </form>
+            </article>
+
+            <article class="dandy-acc-surface">
+              <div class="dandy-acc-surface-head">
+                <h2 class="dandy-acc-surface-title">أمان الحساب وكلمة المرور</h2>
+                <p class="dandy-acc-section-desc">يمكنكِ طلب رابط آمن عبر البريد الإلكتروني لتعيين كلمة مرور جديدة في أي وقت.</p>
+              </div>
+              <div class="dandy-acc-security-box">
+                <p>سيتم إرسال رسالة إلى بريدكِ الإلكتروني المسجل تحتوي على رابط إعادة التعيين المباشر.</p>
+                <button type="button" id="sendResetPasswordBtn" class="dandy-btn dandy-btn--outline">
+                  <Icon name="lock" size={16} strokeWidth={1.85} />
+                  <span>إرسال رابط تغيير كلمة المرور</span>
+                </button>
+              </div>
+            </article>
+          </div>
+        </section>
+      </div>
     </div>
   </main>
 
-  <!-- Address Modal (Add / Edit) -->
-  <div id="addressModal" class="modal-overlay" role="dialog" aria-modal="true">
-    <div class="modal-card">
-      <div class="modal-header">
+  <!-- DIALOG 1: ADD / EDIT ADDRESS -->
+  <dialog id="addressDialog" class="dandy-dialog" aria-labelledby="modalTitle">
+    <div class="dandy-dialog-card">
+      <header class="dandy-dialog-head">
         <h3 id="modalTitle">إضافة عنوان جديد</h3>
-        <button type="button" id="closeAddressModalBtn" class="btn-modal-close">&times;</button>
-      </div>
+        <button type="button" id="closeAddressModalBtn" class="dandy-dialog-close" aria-label="إغلاق النافذة">
+          <Icon name="x" size={18} strokeWidth={1.9} />
+        </button>
+      </header>
 
-      <form id="addressForm">
+      <form id="addressForm" class="dandy-acc-form" novalidate>
         <input type="hidden" id="editAddressId" value="" />
+        <div id="addressFormError" class="dandy-modal-error" role="alert" hidden></div>
 
-        <div class="modal-form-group">
-          <label for="addrLabel">تسمية العنوان <span style="color:#e11d48;">*</span></label>
-          <input type="text" id="addrLabel" placeholder="مثال: المنزل، العمل، شقة المصيف" required />
+        <div class="dandy-acc-field">
+          <label for="addrLabel">تسمية العنوان <span class="dandy-req" aria-hidden="true">*</span></label>
+          <input type="text" id="addrLabel" class="dandy-acc-input" placeholder="مثال: المنزل، العمل، بيت العائلة" required />
         </div>
 
-        <div class="modal-form-group">
-          <label for="addrGov">المحافظة <span style="color:#e11d48;">*</span></label>
-          <select id="addrGov" required>
+        <div class="dandy-acc-field">
+          <label for="addrGov">المحافظة <span class="dandy-req" aria-hidden="true">*</span></label>
+          <select id="addrGov" class="dandy-acc-input" required>
             <option value="">اختر المحافظة</option>
-            <option value="Cairo">القاهرة</option>
-            <option value="Giza">الجيزة</option>
-            <option value="Alexandria">الإسكندرية</option>
-            <option value="Gharbia">الغربية</option>
-            <option value="Dakahlia">الدقهلية</option>
-            <option value="Sharqia">الشرقية</option>
-            <option value="Kafr El Sheikh">كفر الشيخ</option>
-            <option value="Qalyubia">القليوبية</option>
-            <option value="Port Said">بورسعيد</option>
-            <option value="Damietta">دمياط</option>
-            <option value="Suez">السويس</option>
-            <option value="Ismailia">الإسماعيلية</option>
-            <option value="Beheira">البحيرة</option>
-            <option value="Monufia">المنوفية</option>
-            <option value="Fayoum">الفيوم</option>
-            <option value="Beni Suef">بني سويف</option>
-            <option value="Minya">المنيا</option>
-            <option value="Asyut">أسيوط</option>
-            <option value="Sohag">سوهاج</option>
-            <option value="Qena">قنا</option>
-            <option value="Luxor">الأقصر</option>
-            <option value="Aswan">أسوان</option>
-            <option value="Red Sea">البحر الأحمر</option>
-            <option value="South Sinai">جنوب سيناء</option>
-            <option value="North Sinai">شمال سيناء</option>
-            <option value="Matrouh">مطروح</option>
-            <option value="New Valley">الوادي الجديد</option>
+            {GOVERNORATES.map((gov) => (
+              <option value={gov.value}>{gov.labelAr}</option>
+            ))}
           </select>
         </div>
 
-        <div class="modal-form-group">
-          <label for="addrCity">المدينة / المركز / الحي <span style="color:#e11d48;">*</span></label>
-          <input type="text" id="addrCity" placeholder="مثال: المعادي، مدينة نصر، طنطا" required />
+        <div class="dandy-acc-field">
+          <label for="addrCity">المدينة / المركز / الحي <span class="dandy-req" aria-hidden="true">*</span></label>
+          <input type="text" id="addrCity" class="dandy-acc-input" placeholder="مثال: المعادي، مدينة نصر، طنطا" required />
         </div>
 
-        <div class="modal-form-group">
-          <label for="addrDetail">العنوان بالتفصيل <span style="color:#e11d48;">*</span></label>
-          <textarea id="addrDetail" rows="3" placeholder="اسم الشارع، رقم العمارة، رقم الشقة أو أي علامة مميزة" required></textarea>
+        <div class="dandy-acc-field">
+          <label for="addrDetail">العنوان بالتفصيل <span class="dandy-req" aria-hidden="true">*</span></label>
+          <textarea id="addrDetail" rows="3" class="dandy-acc-input" placeholder="اسم الشارع، رقم العمارة، الدور، الشقة أو أقرب علامة مميزة" required></textarea>
         </div>
 
-        <label class="modal-checkbox-row">
+        <label class="dandy-acc-checkbox-row" for="addrIsDefault">
           <input type="checkbox" id="addrIsDefault" />
-          <span>تعيين كعنوان رئيسي افتراضي للشحن</span>
+          <span>تعيين كعنوان الشحن الافتراضي</span>
         </label>
 
-        <div class="modal-actions">
-          <button type="submit" id="saveAddressBtn" class="btn-modal-save">حفظ العنوان</button>
-          <button type="button" id="cancelAddressBtn" class="btn-modal-cancel">إلغاء</button>
+        <div class="dandy-dialog-actions">
+          <button type="submit" id="saveAddressBtn" class="dandy-btn dandy-btn--editorial">حفظ العنوان</button>
+          <button type="button" id="cancelAddressBtn" class="dandy-btn dandy-btn--outline">إلغاء</button>
         </div>
       </form>
     </div>
-  </div>
+  </dialog>
 
-  <!-- Review Modal (Verified Purchase Review) -->
-  <div id="reviewModalOverlay" class="modal-overlay">
-    <div class="modal-card review-modal-card">
-      <div class="modal-header">
+  <!-- DIALOG 2: CONFIRM ADDRESS REMOVAL -->
+  <dialog id="addressDeleteDialog" class="dandy-dialog" aria-labelledby="deleteDialogTitle">
+    <div class="dandy-dialog-card dandy-dialog-card--narrow">
+      <header class="dandy-dialog-head">
+        <h3 id="deleteDialogTitle">تأكيد حذف العنوان</h3>
+      </header>
+      <p class="dandy-dialog-copy">
+        هل ترغبين في حذف العنوان «<strong id="deleteAddressLabelPreview">المحدد</strong>» من قائمتكِ المحفوظة؟
+      </p>
+      <div class="dandy-dialog-actions">
+        <button type="button" id="confirmDeleteAddressBtn" class="dandy-btn dandy-btn--primary">حذف العنوان</button>
+        <button type="button" id="cancelDeleteAddressBtn" class="dandy-btn dandy-btn--outline">إلغاء</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- DIALOG 3: VERIFIED PURCHASE REVIEW -->
+  <dialog id="reviewDialog" class="dandy-dialog" aria-labelledby="reviewModalTitle">
+    <div class="dandy-dialog-card">
+      <header class="dandy-dialog-head">
         <h3 id="reviewModalTitle">تقييم المنتج</h3>
-        <button type="button" class="btn-modal-close" id="closeReviewModalBtn" aria-label="إغلاق">&times;</button>
-      </div>
+        <button type="button" id="closeReviewModalBtn" class="dandy-dialog-close" aria-label="إغلاق النافذة">
+          <Icon name="x" size={18} strokeWidth={1.9} />
+        </button>
+      </header>
 
-      <div class="review-product-preview">
-        <img id="reviewProductThumb" src="/assets/images/logo.png" alt="المنتج" class="review-preview-thumb" onerror="this.onerror=null;this.src='/assets/images/logo.png';" />
-        <div class="review-preview-meta">
-          <span class="verified-badge"><i class="fas fa-check-circle"></i> تجربة شراء مؤكدة</span>
-          <h4 id="reviewProductName" class="review-preview-title">اسم المنتج</h4>
-          <span id="reviewOrderRef" class="review-preview-order">طلب رقم: #...</span>
+      <div class="dandy-review-preview">
+        <img
+          id="reviewProductThumb"
+          src="/assets/images/logo.png"
+          alt="صورة المنتج"
+          width="54"
+          height="54"
+          class="dandy-review-thumb"
+          onerror="this.onerror=null;this.src='/assets/images/logo.png';"
+        />
+        <div class="dandy-review-meta">
+          <span class="dandy-verified-purchase">
+            <Icon name="check-circle" size={13} strokeWidth={2} />
+            <span>شراء مؤكد</span>
+          </span>
+          <h4 id="reviewProductName">اسم المنتج</h4>
+          <span id="reviewOrderRef" class="dandy-tabular">طلب رقم: #...</span>
         </div>
       </div>
 
-      <form id="productReviewForm">
-        <div class="modal-form-group" style="text-align: center;">
-          <label style="font-size: 0.92rem; margin-bottom: 6px;">تقييمكِ العام للمنتج <span style="color:#e11d48;">*</span></label>
-          <div class="star-rating-selector" id="reviewStarsContainer">
-            <button type="button" class="star-btn" data-val="1" title="1 من 5" aria-label="1 من 5"><i class="fas fa-star" style="color:#f59e0b;"></i></button>
-            <button type="button" class="star-btn" data-val="2" title="2 من 5" aria-label="2 من 5"><i class="fas fa-star" style="color:#f59e0b;"></i></button>
-            <button type="button" class="star-btn" data-val="3" title="3 من 5" aria-label="3 من 5"><i class="fas fa-star" style="color:#f59e0b;"></i></button>
-            <button type="button" class="star-btn" data-val="4" title="4 من 5" aria-label="4 من 5"><i class="fas fa-star" style="color:#f59e0b;"></i></button>
-            <button type="button" class="star-btn" data-val="5" title="5 من 5" aria-label="5 من 5"><i class="fas fa-star" style="color:#f59e0b;"></i></button>
+      <form id="productReviewForm" class="dandy-acc-form" novalidate>
+        <div class="dandy-acc-field dandy-stars-field">
+          <label>تقييمكِ العام للمنتج <span class="dandy-req" aria-hidden="true">*</span></label>
+          <div class="dandy-star-selector" id="reviewStarsContainer" role="radiogroup" aria-label="التقييم بالنجوم">
+            {[1, 2, 3, 4, 5].map((val) => (
+              <button
+                type="button"
+                role="radio"
+                aria-checked={val === 5 ? 'true' : 'false'}
+                class="dandy-star-btn is-active"
+                data-val={val}
+                aria-label={`${val} من 5`}
+              >
+                <Icon name="star" size={24} strokeWidth={1.8} />
+              </button>
+            ))}
           </div>
-          <div class="rating-desc-text" id="reviewRatingDesc">⭐⭐⭐⭐⭐ ممتاز يفوق التوقعات (5/5)</div>
+          <div class="dandy-rating-desc" id="reviewRatingDesc">ممتاز، أنصح به بشدة! (5/5)</div>
         </div>
 
-        <div class="modal-form-group">
+        <div class="dandy-acc-field">
           <label for="reviewComment">تعليقكِ وتجربتكِ (اختياري)</label>
-          <textarea id="reviewComment" rows="3" placeholder="شاركينا رأيكِ في المنتج وتأثيره معكِ..." maxlength="500"></textarea>
-          <div style="font-size: 0.75rem; color: var(--color-muted); text-align: left; margin-top: 4px;">بحد أقصى 500 حرف</div>
+          <textarea
+            id="reviewComment"
+            rows="3"
+            maxlength="500"
+            class="dandy-acc-input"
+            placeholder="شاركينا رأيكِ في التركيبة والنتيجة بعد الاستخدام..."
+          ></textarea>
+          <small class="dandy-acc-hint">بحد أقصى 500 حرف</small>
         </div>
 
-        <div class="modal-actions">
-          <button type="submit" id="saveReviewBtn" class="btn-modal-save">
-            <i class="fas fa-paper-plane" style="margin-left: 6px;"></i> <span>إرسال التقييم</span>
+        <div class="dandy-dialog-actions">
+          <button type="submit" id="saveReviewBtn" class="dandy-btn dandy-btn--editorial">
+            <Icon name="send" size={15} strokeWidth={1.85} />
+            <span id="saveReviewBtnLabel">إرسال التقييم</span>
           </button>
-          <button type="button" id="cancelReviewBtn" class="btn-modal-cancel">إلغاء</button>
+          <button type="button" id="cancelReviewBtn" class="dandy-btn dandy-btn--outline">إلغاء</button>
         </div>
       </form>
     </div>
-  </div>
-
-  <script is:inline>
-    (function() {
-      let currentUser = null;
-      let cachedCustomerData = null;
-      let cachedAddresses = {};
-      let cachedWishlist = {};
-      let userProductReviews = {};
-      let activeReviewProductId = null;
-      let activeReviewOrderId = null;
-      let currentSelectedRating = 5;
-
-      function escapeHtml(str) {
-        if (!str) return '';
-        return String(str)
-          .replace(/&/g, '&amp;')
-          .replace(/</g, '&lt;')
-          .replace(/>/g, '&gt;')
-          .replace(/"/g, '&quot;')
-          .replace(/'/g, '&#039;');
-      }
-
-      const auth = window.auth || (typeof firebase !== 'undefined' ? firebase.auth() : null);
-      const db = window.db || (typeof firebase !== 'undefined' ? firebase.database() : null);
-
-      if (!auth || !db) {
-        console.error('Firebase Auth or DB not available');
-        return;
-      }
-
-      // التحقق من تسجيل الدخول
-      auth.onAuthStateChanged(async function(user) {
-        if (!user) {
-          window.location.href = '/account-login';
-          return;
-        }
-
-        currentUser = user;
-        document.getElementById('accountLoading').style.display = 'none';
-        document.getElementById('accountContent').style.display = 'block';
-
-        initUserProfile();
-        loadOrders();
-        loadAddresses();
-        loadWishlist();
-      });
-
-      // إعداد بيانات المستخدم والهيدر
-      async function initUserProfile() {
-        const emailText = document.getElementById('customerEmailText');
-        const greetingName = document.getElementById('customerGreetingName');
-        const avatarEl = document.getElementById('customerAvatar');
-
-        if (emailText) emailText.textContent = currentUser.email || '';
-
-        try {
-          const snap = await db.ref('customers/' + currentUser.uid).once('value');
-          if (snap.exists()) {
-            cachedCustomerData = snap.val();
-            const name = cachedCustomerData.name || '';
-            if (name && greetingName) {
-              greetingName.textContent = 'أهلاً بكِ، ' + name + ' ✨';
-            }
-            if (name && avatarEl) {
-              avatarEl.textContent = name.trim().charAt(0).toUpperCase();
-            }
-          }
-        } catch (e) {
-          console.warn('Error fetching customer profile:', e);
-        }
-      }
-
-      // تسجيل الخروج
-      document.getElementById('logoutBtn')?.addEventListener('click', async function() {
-        try {
-          await auth.signOut();
-          window.location.href = '/account-login';
-        } catch (e) {
-          console.error('Logout error:', e);
-        }
-      });
-
-      // إدارة التبويبات (Tabs)
-      const tabBtns = document.querySelectorAll('.account-tab-btn');
-      tabBtns.forEach(btn => {
-        btn.addEventListener('click', () => {
-          const targetTab = btn.getAttribute('data-tab');
-          tabBtns.forEach(b => b.classList.remove('active'));
-          btn.classList.add('active');
-
-          document.querySelectorAll('.account-tab-content').forEach(panel => {
-            panel.classList.remove('active');
-          });
-
-          if (targetTab === 'orders') document.getElementById('panelOrders')?.classList.add('active');
-          if (targetTab === 'addresses') document.getElementById('panelAddresses')?.classList.add('active');
-          if (targetTab === 'wishlist') document.getElementById('panelWishlist')?.classList.add('active');
-        });
-      });
-
-      // -------------------------------------------------------------
-      // أ) سجل الطلبات (Orders History)
-      // -------------------------------------------------------------
-      async function loadOrders() {
-        const loadingEl = document.getElementById('ordersLoading');
-        const container = document.getElementById('ordersContainer');
-        const emptyEl = document.getElementById('ordersEmpty');
-        const countBadge = document.getElementById('ordersCountBadge');
-
-        try {
-          const snap = await db.ref('orders').orderByChild('customerId').equalTo(currentUser.uid).once('value');
-
-          loadingEl.style.display = 'none';
-
-          if (!snap.exists()) {
-            container.style.display = 'none';
-            emptyEl.style.display = 'block';
-            if (countBadge) countBadge.textContent = '0';
-            return;
-          }
-
-          const ordersObj = snap.val();
-          const ordersList = [];
-          Object.keys(ordersObj).forEach(key => {
-            ordersList.push({ id: key, ...ordersObj[key] });
-          });
-
-          // ترتيب الأحدث أولاً
-          ordersList.sort((a, b) => {
-            const timeA = a.createdAt || (a.date ? new Date(a.date).getTime() : 0);
-            const timeB = b.createdAt || (b.date ? new Date(b.date).getTime() : 0);
-            return timeB - timeA;
-          });
-
-          if (countBadge) countBadge.textContent = String(ordersList.length);
-
-          // جمع جميع المنتجات في الطلبات المستلمة لفحص التقييمات السابقة للعميل
-          const deliveredProductIds = new Set();
-          ordersList.forEach(order => {
-            const s = (order.status || '').toLowerCase();
-            const isDelivered = s.includes('deliver') || s.includes('توصيل') || s.includes('مكتمل');
-            if (isDelivered && order.products) {
-              let prods = Array.isArray(order.products) ? order.products : Object.values(order.products);
-              prods.forEach(p => {
-                const pid = p.id || p.productId;
-                if (pid) deliveredProductIds.add(String(pid));
-              });
-            }
-          });
-
-          if (deliveredProductIds.size > 0) {
-            const reviewFetches = Array.from(deliveredProductIds).map(async (pid) => {
-              try {
-                const revSnap = await db.ref(`reviews/${pid}/${currentUser.uid}`).once('value');
-                if (revSnap.exists()) {
-                  userProductReviews[pid] = revSnap.val();
-                }
-              } catch (e) {
-                console.warn('Error fetching review for:', pid, e);
-              }
-            });
-            await Promise.all(reviewFetches);
-          }
-
-          container.innerHTML = '';
-          ordersList.forEach(order => {
-            const card = document.createElement('div');
-            card.className = 'order-history-card';
-
-            const invoiceCode = order.invoiceCode || order.id || 'DNY-ORDER';
-            let dateStr = 'تاريخ حديث';
-            if (order.createdAt) {
-              const d = new Date(order.createdAt);
-              dateStr = d.toLocaleDateString('ar-EG', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-            } else if (order.date) {
-              dateStr = String(order.date);
-            }
-
-            const totalAmount = order.totalAmount || 0;
-            const itemsCount = Array.isArray(order.products) ? order.products.length : (order.products ? Object.keys(order.products).length : 1);
-
-            // حالة الطلب
-            let statusText = 'قيد المراجعة';
-            let statusClass = 'status-new';
-            const s = (order.status || '').toLowerCase();
-            const isDelivered = s.includes('deliver') || s.includes('توصيل') || s.includes('مكتمل');
-
-            if (isDelivered) {
-              statusText = 'تم التوصيل بنجاح';
-              statusClass = 'status-delivered';
-            } else if (s.includes('ship') || s.includes('شحن')) {
-              statusText = 'جاري الشحن';
-              statusClass = 'status-shipped';
-            } else if (s.includes('process') || s.includes('تجهيز') || s.includes('تحضير')) {
-              statusText = 'قيد التجهيز';
-              statusClass = 'status-processing';
-            } else if (s.includes('cancel') || s.includes('ملغي')) {
-              statusText = 'تم الإلغاء';
-              statusClass = 'status-cancelled';
-            }
-
-            // تفاصيل المنتجات داخل الطلب وإمكانية التقييم للطلبات المستلمة
-            let productsList = [];
-            if (Array.isArray(order.products)) {
-              productsList = order.products;
-            } else if (order.products && typeof order.products === 'object') {
-              productsList = Object.values(order.products);
-            }
-
-            let productsHtml = '';
-            if (productsList.length > 0) {
-              productsHtml = `
-                <div class="order-products-section">
-                  <div class="order-products-title">
-                    <i class="fas fa-box-open"></i> <span>المنتجات في هذا الطلب (${productsList.length}):</span>
-                  </div>
-                  <div class="order-products-list">
-                    ${productsList.map(p => {
-                      const pId = String(p.id || p.productId || '');
-                      const pName = p.name || 'منتج داندي';
-                      const pImg = p.image || '/assets/images/logo.png';
-                      const pQty = p.quantity || 1;
-                      const pPrice = p.effectiveUnitPrice || p.price || 0;
-                      const pVariants = p.variantName || (Array.isArray(p.selectedVariants) ? p.selectedVariants.map(v => v.name).join('، ') : '');
-
-                      let reviewBtnHtml = '';
-                      if (isDelivered && pId) {
-                        const existingReview = userProductReviews[pId];
-                        if (existingReview) {
-                          reviewBtnHtml = `
-                            <button type="button" class="btn-review-product has-review" onclick="openReviewModal('${escapeHtml(pId)}', '${escapeHtml(pName).replace(/'/g, "\\'")}', '${escapeHtml(invoiceCode)}', '${escapeHtml(pImg).replace(/'/g, "\\'")}')" title="تعديل تقييمكِ">
-                              <i class="fas fa-star" style="color: #f59e0b;"></i>
-                              <span>عدّلي تقييمكِ (${existingReview.rating}★)</span>
-                            </button>
-                          `;
-                        } else {
-                          reviewBtnHtml = `
-                            <button type="button" class="btn-review-product" onclick="openReviewModal('${escapeHtml(pId)}', '${escapeHtml(pName).replace(/'/g, "\\'")}', '${escapeHtml(invoiceCode)}', '${escapeHtml(pImg).replace(/'/g, "\\'")}')" title="تقييم هذا المنتج">
-                              <i class="far fa-star"></i>
-                              <span>قيّمي هذا المنتج</span>
-                            </button>
-                          `;
-                        }
-                      }
-
-                      return `
-                        <div class="order-product-row">
-                          <div class="order-product-info">
-                            <img src="${escapeHtml(pImg)}" alt="${escapeHtml(pName)}" class="order-product-thumb" onerror="this.onerror=null;this.src='/assets/images/logo.png';" />
-                            <div class="order-product-details">
-                              <div class="order-product-name">${escapeHtml(pName)}</div>
-                              <div class="order-product-meta">الكمية: ${pQty} · السعر: ${pPrice} ج.م ${pVariants ? `· الرائحة: ${escapeHtml(pVariants)}` : ''}</div>
-                            </div>
-                          </div>
-                          ${reviewBtnHtml}
-                        </div>
-                      `;
-                    }).join('')}
-                  </div>
-                </div>
-              `;
-            }
-
-            card.innerHTML = `
-              <div class="order-card-header">
-                <div>
-                  <span class="order-code-badge"><i class="fas fa-receipt"></i> ${invoiceCode}</span>
-                  <div class="order-date-text" style="margin-top:4px;"><i class="far fa-clock"></i> ${dateStr}</div>
-                </div>
-                <div>
-                  <span class="order-status-pill ${statusClass}">${statusText}</span>
-                </div>
-              </div>
-
-              <div class="order-card-body">
-                <div class="order-info-item">
-                  <div class="label">إجمالي الطلب</div>
-                  <div class="val" style="color:var(--color-blush); font-size:1.15rem;">${totalAmount} ج.م</div>
-                </div>
-                <div class="order-info-item">
-                  <div class="label">عدد المنتجات</div>
-                  <div class="val">${itemsCount} منتج/منتجات</div>
-                </div>
-                <div class="order-info-item">
-                  <div class="label">عنوان التوصيل</div>
-                  <div class="val" style="font-size:0.88rem;">${order.governorate || ''} - ${order.city || ''}</div>
-                </div>
-              </div>
-
-              ${productsHtml}
-
-              <div class="order-card-footer">
-                <a href="/invoice?invoice=${encodeURIComponent(invoiceCode)}" class="btn-order-action primary" target="_blank">
-                  <i class="fas fa-file-invoice"></i> عرض الفاتورة
-                </a>
-                <a href="/track-order?invoice=${encodeURIComponent(invoiceCode)}" class="btn-order-action secondary">
-                  <i class="fas fa-truck"></i> تتبع الطلب
-                </a>
-              </div>
-            `;
-            container.appendChild(card);
-          });
-
-          container.style.display = 'flex';
-          emptyEl.style.display = 'none';
-
-        } catch (err) {
-          console.error('Error loading orders:', err);
-          loadingEl.style.display = 'none';
-          emptyEl.style.display = 'block';
-        }
-      }
-
-      // -------------------------------------------------------------
-      // ب) العناوين المحفوظة (Addresses CRUD)
-      // -------------------------------------------------------------
-      const addressModal = document.getElementById('addressModal');
-      const addressForm = document.getElementById('addressForm');
-      const openModalBtn = document.getElementById('openAddAddressModalBtn');
-      const emptyAddBtn = document.getElementById('emptyAddAddressBtn');
-      const closeModalBtn = document.getElementById('closeAddressModalBtn');
-      const cancelModalBtn = document.getElementById('cancelAddressBtn');
-
-      function showAddressModal(isEdit = false, addrId = '', data = null) {
-        document.getElementById('modalTitle').textContent = isEdit ? 'تعديل العنوان' : 'إضافة عنوان جديد';
-        document.getElementById('editAddressId').value = addrId;
-
-        if (isEdit && data) {
-          document.getElementById('addrLabel').value = data.label || '';
-          document.getElementById('addrGov').value = data.governorate || '';
-          document.getElementById('addrCity').value = data.city || '';
-          document.getElementById('addrDetail').value = data.address || '';
-          document.getElementById('addrIsDefault').checked = !!data.isDefault;
-        } else {
-          addressForm.reset();
-          document.getElementById('editAddressId').value = '';
-          // إذا كان أول عنوان، اجعله افتراضياً
-          if (Object.keys(cachedAddresses).length === 0) {
-            document.getElementById('addrIsDefault').checked = true;
-          }
-        }
-
-        addressModal.classList.add('active');
-      }
-
-      function hideAddressModal() {
-        addressModal.classList.remove('active');
-      }
-
-      openModalBtn?.addEventListener('click', () => showAddressModal(false));
-      emptyAddBtn?.addEventListener('click', () => showAddressModal(false));
-      closeModalBtn?.addEventListener('click', hideAddressModal);
-      cancelModalBtn?.addEventListener('click', hideAddressModal);
-
-      addressModal?.addEventListener('click', (e) => {
-        if (e.target === addressModal) hideAddressModal();
-      });
-
-      async function loadAddresses() {
-        const loadingEl = document.getElementById('addressesLoading');
-        const container = document.getElementById('addressesContainer');
-        const emptyEl = document.getElementById('addressesEmpty');
-        const countBadge = document.getElementById('addressesCountBadge');
-
-        try {
-          const snap = await db.ref('customers/' + currentUser.uid + '/addresses').once('value');
-          loadingEl.style.display = 'none';
-
-          if (!snap.exists()) {
-            cachedAddresses = {};
-            container.style.display = 'none';
-            emptyEl.style.display = 'block';
-            if (countBadge) countBadge.textContent = '0';
-            return;
-          }
-
-          cachedAddresses = snap.val() || {};
-          const addrKeys = Object.keys(cachedAddresses);
-          if (countBadge) countBadge.textContent = String(addrKeys.length);
-
-          if (addrKeys.length === 0) {
-            container.style.display = 'none';
-            emptyEl.style.display = 'block';
-            return;
-          }
-
-          container.innerHTML = '';
-          addrKeys.forEach(key => {
-            const addr = cachedAddresses[key];
-            const card = document.createElement('div');
-            card.className = 'address-card' + (addr.isDefault ? ' is-default' : '');
-
-            const govSelect = document.getElementById('addrGov');
-            let govArabic = addr.governorate || '';
-            if (govSelect) {
-              const opt = Array.from(govSelect.options).find(o => o.value === addr.governorate);
-              if (opt) govArabic = opt.text;
-            }
-
-            card.innerHTML = `
-              <div>
-                <div class="address-card-top">
-                  <span class="address-label"><i class="fas fa-home"></i> ${addr.label || 'عنوان'}</span>
-                  ${addr.isDefault ? '<span class="badge-default-address"><i class="fas fa-check-circle"></i> افتراضي</span>' : ''}
-                </div>
-
-                <div class="address-details">
-                  <div><strong>المحافظة:</strong> ${govArabic}</div>
-                  <div><strong>المدينة / المنطقة:</strong> ${addr.city || ''}</div>
-                  <div><strong>العنوان:</strong> ${addr.address || ''}</div>
-                </div>
-              </div>
-
-              <div class="address-card-actions">
-                <button type="button" class="btn-addr-action edit" onclick="window.editAddress('${key}')">
-                  <i class="fas fa-edit"></i> تعديل
-                </button>
-                <button type="button" class="btn-addr-action delete" onclick="window.deleteAddress('${key}')">
-                  <i class="fas fa-trash-alt"></i> حذف
-                </button>
-                ${!addr.isDefault ? `
-                  <button type="button" class="btn-addr-action set-default" onclick="window.setDefaultAddress('${key}')">
-                    <i class="fas fa-star"></i> تعيين كافتراضي
-                  </button>
-                ` : ''}
-              </div>
-            `;
-            container.appendChild(card);
-          });
-
-          container.style.display = 'grid';
-          emptyEl.style.display = 'none';
-
-        } catch (err) {
-          console.error('Error loading addresses:', err);
-          loadingEl.style.display = 'none';
-        }
-      }
-
-      // حفظ العنوان (إضافة أو تعديل)
-      addressForm?.addEventListener('submit', async function(e) {
-        e.preventDefault();
-        const editId = document.getElementById('editAddressId').value;
-        const label = document.getElementById('addrLabel').value.trim();
-        const governorate = document.getElementById('addrGov').value;
-        const city = document.getElementById('addrCity').value.trim();
-        const address = document.getElementById('addrDetail').value.trim();
-        const isDefault = document.getElementById('addrIsDefault').checked;
-
-        if (!label || !governorate || !city || !address) {
-          alert('يرجى ملء جميع الحقول المطلوبة');
-          return;
-        }
-
-        const saveBtn = document.getElementById('saveAddressBtn');
-        saveBtn.disabled = true;
-        saveBtn.textContent = 'جاري الحفظ...';
-
-        try {
-          const addrRef = db.ref('customers/' + currentUser.uid + '/addresses');
-
-          // إذا تم تحديده كافتراضي، قم بإلغاء الافتراضي من باقي العناوين
-          if (isDefault) {
-            const allSnap = await addrRef.once('value');
-            if (allSnap.exists()) {
-              const updates = {};
-              allSnap.forEach(child => {
-                if (child.key !== editId && child.val().isDefault) {
-                  updates[child.key + '/isDefault'] = false;
-                }
-              });
-              if (Object.keys(updates).length > 0) {
-                await addrRef.update(updates);
-              }
-            }
-          }
-
-          const addressData = {
-            label,
-            governorate,
-            city,
-            address,
-            isDefault,
-            updatedAt: firebase.database.ServerValue.TIMESTAMP
-          };
-
-          if (editId) {
-            await addrRef.child(editId).update(addressData);
-          } else {
-            addressData.createdAt = firebase.database.ServerValue.TIMESTAMP;
-            await addrRef.push(addressData);
-          }
-
-          hideAddressModal();
-          await loadAddresses();
-        } catch (err) {
-          console.error('Error saving address:', err);
-          alert('حدث خطأ أثناء حفظ العنوان. يرجى المحاولة مرة أخرى.');
-        } finally {
-          saveBtn.disabled = false;
-          saveBtn.textContent = 'حفظ العنوان';
-        }
-      });
-
-      window.editAddress = function(key) {
-        const data = cachedAddresses[key];
-        if (data) showAddressModal(true, key, data);
-      };
-
-      window.deleteAddress = async function(key) {
-        if (!confirm('هل أنتِ متأكدة من رغبتكِ في حذف هذا العنوان؟')) return;
-        try {
-          await db.ref('customers/' + currentUser.uid + '/addresses/' + key).remove();
-          await loadAddresses();
-        } catch (err) {
-          console.error('Error deleting address:', err);
-          alert('تعذر حذف العنوان.');
-        }
-      };
-
-      window.setDefaultAddress = async function(key) {
-        try {
-          const addrRef = db.ref('customers/' + currentUser.uid + '/addresses');
-          const allSnap = await addrRef.once('value');
-          if (allSnap.exists()) {
-            const updates = {};
-            allSnap.forEach(child => {
-              updates[child.key + '/isDefault'] = (child.key === key);
-            });
-            await addrRef.update(updates);
-            await loadAddresses();
-          }
-        } catch (err) {
-          console.error('Error setting default address:', err);
-        }
-      };
-
-      // -------------------------------------------------------------
-      // ج) قائمة المفضلة (Wishlist)
-      // -------------------------------------------------------------
-      async function loadWishlist() {
-        const loadingEl = document.getElementById('wishlistLoading');
-        const container = document.getElementById('wishlistContainer');
-        const emptyEl = document.getElementById('wishlistEmpty');
-        const countBadge = document.getElementById('wishlistCountBadge');
-
-        try {
-          const snap = await db.ref('wishlists/' + currentUser.uid).once('value');
-          loadingEl.style.display = 'none';
-
-          if (!snap.exists()) {
-            cachedWishlist = {};
-            container.style.display = 'none';
-            emptyEl.style.display = 'block';
-            if (countBadge) countBadge.textContent = '0';
-            return;
-          }
-
-          cachedWishlist = snap.val() || {};
-          const productIds = Object.keys(cachedWishlist).filter(k => !!cachedWishlist[k]);
-
-          if (countBadge) countBadge.textContent = String(productIds.length);
-
-          if (productIds.length === 0) {
-            container.style.display = 'none';
-            emptyEl.style.display = 'block';
-            return;
-          }
-
-          container.innerHTML = '';
-
-          // جلب تفاصيل كل منتج من products/{id}
-          for (const pid of productIds) {
-            try {
-              const pSnap = await db.ref('products/' + pid).once('value');
-              if (pSnap.exists()) {
-                const data = pSnap.val();
-                data.id = pid;
-                renderWishlistProduct(data, container);
-              }
-            } catch (pErr) {
-              console.warn('Error fetching product ' + pid, pErr);
-            }
-          }
-
-          container.style.display = 'grid';
-          emptyEl.style.display = 'none';
-
-        } catch (err) {
-          console.error('Error loading wishlist:', err);
-          loadingEl.style.display = 'none';
-          emptyEl.style.display = 'block';
-        }
-      }
-
-      function renderWishlistProduct(data, container) {
-        const productEl = document.createElement('div');
-        productEl.className = 'wishlist-product-card';
-        productEl.id = 'wishlist-item-' + data.id;
-
-        const productLink = (typeof window.getProductLink === 'function')
-          ? window.getProductLink(data)
-          : (data.slug ? `/product/${encodeURIComponent(data.slug)}` : `/product?id=${data.id}`);
-
-        const priceRaw = parseFloat(data.price) || 0;
-        let priceStr = `${priceRaw} ج.م`;
-        let badgeStr = '';
-
-        if (data.originalPrice) {
-          const oldPrice = parseFloat(data.originalPrice) || 0;
-          priceStr = `<span class="old-price">${oldPrice} ج.م</span>${priceRaw} ج.م`;
-          badgeStr = `<div class="wishlist-sale-badge">خصم</div>`;
-        } else if (data.onSale && data.discount) {
-          const discountPercent = parseFloat(data.discount) || 0;
-          const oldPrice = priceRaw / (1 - (discountPercent / 100));
-          priceStr = `<span class="old-price">${oldPrice.toFixed(0)} ج.م</span>${priceRaw} ج.م`;
-          badgeStr = `<div class="wishlist-sale-badge">خصم ${data.discount}%</div>`;
-        }
-
-        const hasVars = typeof hasSelectableVariants === 'function'
-          ? hasSelectableVariants(data)
-          : (data.hasVariants === true || data.hasVariants === 'true');
-
-        let actionBtn = `
-          <button type="button" class="btn-wishlist-add-cart" onclick="event.stopPropagation(); window.quickAddWishlist('${data.id}', \`${(data.name || '').replace(/`/g, '')}\`, '${data.price}', '${data.image}', '${data.discount || ''}', ${data.onSale || false}, false, '${data.slug || ''}')">
-            <i class="fas fa-shopping-bag"></i> أضف للسلة
-          </button>
-        `;
-
-        if (hasVars) {
-          actionBtn = `
-            <button type="button" class="btn-wishlist-add-cart" onclick="event.stopPropagation(); window.location.href='${productLink}'">
-              <i class="fas fa-spray-can"></i> اختاري الرائحة
-            </button>
-          `;
-        }
-
-        if (data.isSoldOut) {
-          badgeStr += `<div class="wishlist-sale-badge" style="background:#222; top:${badgeStr ? '35px' : '10px'};">نفذت الكمية</div>`;
-          actionBtn = `
-            <button type="button" disabled class="btn-wishlist-add-cart" style="background:#aaa; cursor:not-allowed;">
-              <i class="fas fa-ban"></i> نفذت الكمية
-            </button>
-          `;
-        }
-
-        productEl.innerHTML = `
-          <div class="wishlist-img-wrap" onclick="window.location.href='${productLink}'">
-            ${badgeStr}
-            <img src="${data.image}" alt="${data.name}" loading="lazy" onerror="this.onerror=null;this.src='https://images.unsplash.com/photo-1608248597481-496100c80836?auto=format&fit=crop&w=400&q=80';">
-          </div>
-          <div class="wishlist-card-content">
-            <h3 class="wishlist-product-title" onclick="window.location.href='${productLink}'">${data.name}</h3>
-            <div class="wishlist-price-row">${priceStr}</div>
-            <div class="wishlist-actions">
-              ${actionBtn}
-              <button type="button" class="btn-wishlist-remove" onclick="window.removeFromWishlist('${data.id}')">
-                <i class="fas fa-trash-alt"></i> إزالة من المفضلة
-              </button>
-            </div>
-          </div>
-        `;
-
-        container.appendChild(productEl);
-      }
-
-      window.removeFromWishlist = async function(productId) {
-        if (!currentUser) return;
-        try {
-          await db.ref('wishlists/' + currentUser.uid + '/' + productId).remove();
-          delete cachedWishlist[productId];
-
-          const el = document.getElementById('wishlist-item-' + productId);
-          if (el) el.remove();
-
-          const remaining = Object.keys(cachedWishlist).length;
-          const countBadge = document.getElementById('wishlistCountBadge');
-          if (countBadge) countBadge.textContent = String(remaining);
-
-          if (remaining === 0) {
-            document.getElementById('wishlistContainer').style.display = 'none';
-            document.getElementById('wishlistEmpty').style.display = 'block';
-          }
-        } catch (err) {
-          console.error('Error removing from wishlist:', err);
-          alert('تعذر إزالة المنتج من المفضلة.');
-        }
-      };
-
-      window.quickAddWishlist = function(id, name, price, image, discount, onSale, hasVariants, slug) {
-        if (typeof window.quickAdd === 'function') {
-          window.quickAdd(id, name, price, image, discount, onSale, hasVariants, slug);
-        } else {
-          let cart = JSON.parse(localStorage.getItem("cart")) || [];
-          const existIndex = cart.findIndex(item => (item.productId || item.id) === id);
-          if (existIndex !== -1) {
-            cart[existIndex].quantity = (parseInt(cart[existIndex].quantity) || 0) + 1;
-          } else {
-            cart.push({ id, productId: id, name, price, image, discount, onSale, quantity: 1 });
-          }
-          localStorage.setItem("cart", JSON.stringify(cart));
-          if (typeof window.updateSharedCartCount === 'function') window.updateSharedCartCount();
-        }
-
-        alert('تمت إضافة المنتج إلى سلة مشترياتك بنجاح! 🛍️');
-      };
-
-      // -------------------------------------------------------------
-      // د) إدارة تقييمات المنتجات (Verified Reviews & Ratings)
-      // -------------------------------------------------------------
-      function updateStarsUI(rating) {
-        const stars = document.querySelectorAll('#reviewStarsContainer .star-btn');
-        stars.forEach(btn => {
-          const val = parseInt(btn.getAttribute('data-val') || '0', 10);
-          if (val <= rating) {
-            btn.innerHTML = '<i class="fas fa-star" style="color: #f59e0b;"></i>';
-          } else {
-            btn.innerHTML = '<i class="far fa-star" style="color: #d1d5db;"></i>';
-          }
-        });
-
-        const descEl = document.getElementById('reviewRatingDesc');
-        const labels = {
-          1: '⭐ سيء (1/5)',
-          2: '⭐⭐ مقبول (2/5)',
-          3: '⭐⭐⭐ جيد (3/5)',
-          4: '⭐⭐⭐⭐ رائع جداً (4/5)',
-          5: '⭐⭐⭐⭐⭐ ممتاز يفوق التوقعات (5/5)'
-        };
-        if (descEl) descEl.textContent = labels[rating] || 'اضغطي على النجوم لاختيار التقييم';
-      }
-
-      window.openReviewModal = function(productId, productName, orderId, productImg) {
-        activeReviewProductId = productId;
-        activeReviewOrderId = orderId;
-
-        const modal = document.getElementById('reviewModalOverlay');
-        const titleEl = document.getElementById('reviewModalTitle');
-        const nameEl = document.getElementById('reviewProductName');
-        const thumbEl = document.getElementById('reviewProductThumb');
-        const orderRefEl = document.getElementById('reviewOrderRef');
-        const commentEl = document.getElementById('reviewComment');
-        const submitBtn = document.getElementById('saveReviewBtn');
-
-        if (nameEl) nameEl.textContent = productName || 'منتج داندي';
-        if (thumbEl) thumbEl.src = productImg || '/assets/images/logo.png';
-        if (orderRefEl) orderRefEl.textContent = 'طلب رقم: #' + orderId;
-
-        const existing = userProductReviews[productId];
-        if (existing) {
-          if (titleEl) titleEl.textContent = 'تعديل تقييمكِ للمنتج';
-          if (submitBtn) {
-            const span = submitBtn.querySelector('span');
-            if (span) span.textContent = 'تحديث التقييم';
-          }
-          currentSelectedRating = Number(existing.rating) || 5;
-          if (commentEl) commentEl.value = existing.comment || '';
-        } else {
-          if (titleEl) titleEl.textContent = 'تقييم المنتج';
-          if (submitBtn) {
-            const span = submitBtn.querySelector('span');
-            if (span) span.textContent = 'إرسال التقييم';
-          }
-          currentSelectedRating = 5;
-          if (commentEl) commentEl.value = '';
-        }
-
-        updateStarsUI(currentSelectedRating);
-        if (modal) modal.classList.add('active');
-      };
-
-      window.closeReviewModal = function() {
-        const modal = document.getElementById('reviewModalOverlay');
-        if (modal) modal.classList.remove('active');
-        activeReviewProductId = null;
-        activeReviewOrderId = null;
-      };
-
-      // تفاعل النجوم (Hover & Click)
-      const starBtns = document.querySelectorAll('#reviewStarsContainer .star-btn');
-      starBtns.forEach(btn => {
-        btn.addEventListener('click', () => {
-          currentSelectedRating = parseInt(btn.getAttribute('data-val') || '5', 10);
-          updateStarsUI(currentSelectedRating);
-        });
-        btn.addEventListener('mouseenter', () => {
-          const hoverVal = parseInt(btn.getAttribute('data-val') || '5', 10);
-          updateStarsUI(hoverVal);
-        });
-      });
-
-      document.getElementById('reviewStarsContainer')?.addEventListener('mouseleave', () => {
-        updateStarsUI(currentSelectedRating);
-      });
-
-      // أزرار إغلاق المودال
-      document.getElementById('closeReviewModalBtn')?.addEventListener('click', window.closeReviewModal);
-      document.getElementById('cancelReviewBtn')?.addEventListener('click', window.closeReviewModal);
-      document.getElementById('reviewModalOverlay')?.addEventListener('click', (e) => {
-        if (e.target && e.target.id === 'reviewModalOverlay') {
-          window.closeReviewModal();
-        }
-      });
-
-      // إرسال نموذج التقييم عبر السيرفر الآمن (/api/submit-review)
-      document.getElementById('productReviewForm')?.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        if (!currentUser) return;
-        if (!activeReviewProductId) return;
-
-        if (currentSelectedRating < 1 || currentSelectedRating > 5) {
-          alert('يرجى اختيار عدد النجوم من 1 إلى 5.');
-          return;
-        }
-
-        const commentText = (document.getElementById('reviewComment')?.value || '').trim();
-        const currentUserName = cachedCustomerData?.name || currentUser.displayName || (currentUser.email ? currentUser.email.split('@')[0] : 'عميلة داندي');
-        const orderId = activeReviewOrderId || 'N/A';
-        const productId = activeReviewProductId;
-
-        const saveBtn = document.getElementById('saveReviewBtn');
-        const span = saveBtn?.querySelector('span');
-        const origText = span ? span.textContent : 'إرسال التقييم';
-
-        if (saveBtn) {
-          saveBtn.disabled = true;
-          saveBtn.style.opacity = '0.7';
-          if (span) span.textContent = 'جاري الحفظ...';
-        }
-
-        try {
-          const idToken = await currentUser.getIdToken();
-          const response = await fetch('/api/submit-review', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-              idToken,
-              productId,
-              rating: currentSelectedRating,
-              comment: commentText,
-              customerName: currentUserName,
-              orderId
-            })
-          });
-
-          const result = await response.json().catch(() => ({}));
-          if (!response.ok || !result.success) {
-            throw new Error(result.message || 'فشل حفظ التقييم على السيرفر.');
-          }
-
-          // تحديث الكاش المحلي
-          userProductReviews[productId] = {
-            rating: currentSelectedRating,
-            comment: commentText || '',
-            customerName: currentUserName,
-            orderId: orderId,
-            createdAt: Date.now()
-          };
-
-          window.closeReviewModal();
-          await loadOrders();
-
-          alert('تم حفظ تقييمكِ بنجاح! شكرًا لكِ على مشاركة تجربتكِ مع داندي ✨');
-        } catch (err) {
-          console.error('Error saving review:', err);
-          alert('حدث خطأ أثناء حفظ التقييم: ' + (err.message || 'يرجى المحاولة مرة أخرى'));
-        } finally {
-          if (saveBtn) {
-            saveBtn.disabled = false;
-            saveBtn.style.opacity = '1';
-            if (span) span.textContent = origText;
-          }
-        }
-      });
-
-    })();
+  </dialog>
+
+  <script>
+    import { initCustomerAccountPage } from '../scripts/account-client';
+    initCustomerAccountPage();
   </script>
 </BaseLayout>
+
+<style is:global>
+  [hidden] {
+    display: none !important;
+  }
+
+  .dandy-acc-auth-loading,
+  .dandy-acc-tab-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 56px 20px;
+    color: var(--dandy-ink-muted);
+    font-size: var(--dandy-text-sm);
+    text-align: center;
+  }
+
+  .dandy-acc-spinner {
+    width: 28px;
+    height: 28px;
+    border: 2.5px solid var(--dandy-border-default);
+    border-top-color: var(--dandy-accent-primary);
+    border-radius: 50%;
+    animation: dandyAccSpin 750ms linear infinite;
+  }
+
+  @keyframes dandyAccSpin {
+    to { transform: rotate(360deg); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .dandy-acc-spinner {
+      animation: none;
+      border-top-color: var(--dandy-ink-primary);
+    }
+  }
+
+  /* Identity Bar */
+  .dandy-acc-identity {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 16px;
+    padding: 20px 24px;
+    background-color: var(--dandy-bg-editorial);
+    border: 1px solid var(--dandy-border-subtle);
+    border-radius: var(--dandy-radius-md);
+    margin-bottom: 24px;
+  }
+
+  .dandy-acc-user {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    min-width: 0;
+  }
+
+  .dandy-acc-avatar {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background-color: var(--dandy-ink-primary);
+    color: var(--dandy-ink-inverse);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--dandy-font-en-display);
+    font-size: 1.25rem;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+
+  .dandy-acc-user-meta {
+    min-width: 0;
+  }
+
+  .dandy-acc-greeting {
+    margin: 0 0 2px;
+    font-size: clamp(1.15rem, 2vw, 1.4rem);
+    font-weight: 700;
+    color: var(--dandy-ink-primary);
+  }
+
+  .dandy-acc-email {
+    margin: 0;
+    font-size: var(--dandy-text-xs);
+    color: var(--dandy-ink-muted);
+    text-align: start;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .dandy-acc-top-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .dandy-acc-logout-btn {
+    color: var(--dandy-danger);
+    border-color: #F3C4D0;
+  }
+
+  .dandy-acc-logout-btn:hover:not(:disabled) {
+    background-color: var(--dandy-danger-soft);
+    border-color: var(--dandy-danger);
+    color: var(--dandy-danger);
+  }
+
+  /* Navigation Tabs */
+  .dandy-acc-tabs-wrap {
+    border-bottom: 1px solid var(--dandy-border-subtle);
+    margin-bottom: 28px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .dandy-acc-tabs-wrap::-webkit-scrollbar {
+    display: none;
+  }
+
+  .dandy-acc-tabs {
+    display: flex;
+    align-items: stretch;
+    gap: 6px;
+    min-width: max-content;
+  }
+
+  .dandy-acc-tab {
+    appearance: none;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    padding: 12px 16px;
+    min-height: 46px;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--dandy-font-ar-sans);
+    font-size: var(--dandy-text-sm);
+    font-weight: 600;
+    color: var(--dandy-ink-muted);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: color var(--dandy-transition-fast), border-color var(--dandy-transition-fast);
+  }
+
+  .dandy-acc-tab:hover {
+    color: var(--dandy-ink-primary);
+  }
+
+  .dandy-acc-tab.is-active {
+    color: var(--dandy-ink-primary);
+    border-bottom-color: var(--dandy-accent-primary);
+  }
+
+  .dandy-acc-tab-count {
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: var(--dandy-ink-secondary);
+    background-color: var(--dandy-bg-stage);
+    padding: 1px 7px;
+    border-radius: var(--dandy-radius-xs);
+  }
+
+  .dandy-acc-tab.is-active .dandy-acc-tab-count {
+    background-color: var(--dandy-accent-soft);
+    color: var(--dandy-accent-text);
+  }
+
+  /* Overview Panel */
+  .dandy-ov-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+
+  .dandy-ov-stat-card {
+    appearance: none;
+    text-align: start;
+    background-color: var(--dandy-bg-page);
+    border: 1px solid var(--dandy-border-subtle);
+    border-radius: var(--dandy-radius-md);
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    cursor: pointer;
+    font-family: var(--dandy-font-ar-sans);
+    transition: border-color var(--dandy-transition-fast), box-shadow var(--dandy-transition-fast);
+  }
+
+  .dandy-ov-stat-card:hover {
+    border-color: var(--dandy-border-default);
+    box-shadow: var(--dandy-shadow-sm);
+  }
+
+  .dandy-ov-stat-label {
+    font-size: var(--dandy-text-xs);
+    color: var(--dandy-ink-muted);
+    font-weight: 600;
+  }
+
+  .dandy-ov-stat-val {
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: var(--dandy-ink-primary);
+    line-height: 1.2;
+  }
+
+  .dandy-ov-stat-link {
+    font-size: var(--dandy-text-xs);
+    font-weight: 600;
+    color: var(--dandy-accent-text);
+    margin-top: 4px;
+  }
+
+  .dandy-ov-cards-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 20px;
+  }
+
+  .dandy-acc-surface {
+    background-color: var(--dandy-bg-page);
+    border: 1px solid var(--dandy-border-subtle);
+    border-radius: var(--dandy-radius-md);
+    padding: 22px;
+  }
+
+  .dandy-acc-surface-head {
+    margin-bottom: 14px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--dandy-border-subtle);
+  }
+
+  .dandy-acc-surface-title {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--dandy-ink-primary);
+  }
+
+  .dandy-ov-surface-body {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .dandy-ov-empty {
+    margin: 0;
+    font-size: var(--dandy-text-sm);
+    color: var(--dandy-ink-muted);
+  }
+
+  .dandy-ov-order-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .dandy-ov-code {
+    font-weight: 700;
+    color: var(--dandy-ink-primary);
+    font-size: 0.95rem;
+  }
+
+  .dandy-ov-date {
+    font-size: var(--dandy-text-xs);
+    color: var(--dandy-ink-muted);
+    margin-top: 2px;
+  }
+
+  .dandy-ov-order-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    font-size: var(--dandy-text-sm);
+    color: var(--dandy-ink-secondary);
+  }
+
+  .dandy-ov-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 4px;
+  }
+
+  .dandy-ov-addr-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: var(--dandy-text-base);
+    color: var(--dandy-ink-primary);
+  }
+
+  .dandy-ov-default-tag {
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: var(--dandy-botanical-deep);
+    background-color: var(--dandy-botanical-soft);
+    padding: 2px 8px;
+    border-radius: var(--dandy-radius-xs);
+  }
+
+  .dandy-ov-addr-lines {
+    margin: 0;
+    font-size: var(--dandy-text-sm);
+    color: var(--dandy-ink-secondary);
+    line-height: 1.65;
+  }
+
+  /* Status Badges */
+  .dandy-status-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 10px;
+    border-radius: var(--dandy-radius-xs);
+    font-size: var(--dandy-text-xs);
+    font-weight: 700;
+    line-height: 1.3;
+  }
+
+  .dandy-status-badge.is-new {
+    background-color: var(--dandy-bg-stage);
+    color: var(--dandy-ink-primary);
+  }
+
+  .dandy-status-badge.is-processing {
+    background-color: var(--dandy-warning-soft);
+    color: var(--dandy-warning);
+  }
+
+  .dandy-status-badge.is-shipped {
+    background-color: var(--dandy-gold-soft);
+    color: var(--dandy-gold-editorial);
+  }
+
+  .dandy-status-badge.is-delivered {
+    background-color: var(--dandy-botanical-soft);
+    color: var(--dandy-botanical-deep);
+  }
+
+  .dandy-status-badge.is-cancelled {
+    background-color: var(--dandy-danger-soft);
+    color: var(--dandy-danger);
+  }
+
+  /* Orders History */
+  .dandy-orders-list {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
+
+  .dandy-order-card {
+    background-color: var(--dandy-bg-page);
+    border: 1px solid var(--dandy-border-subtle);
+    border-radius: var(--dandy-radius-md);
+    padding: 20px 22px;
+  }
+
+  .dandy-order-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--dandy-border-subtle);
+    margin-bottom: 14px;
+  }
+
+  .dandy-order-code {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--dandy-ink-primary);
+  }
+
+  .dandy-order-date {
+    font-size: var(--dandy-text-xs);
+    color: var(--dandy-ink-muted);
+    margin-top: 2px;
+  }
+
+  .dandy-order-summary-row {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+    padding-bottom: 14px;
+    margin-bottom: 14px;
+    border-bottom: 1px solid var(--dandy-border-subtle);
+  }
+
+  .dandy-order-label {
+    display: block;
+    font-size: var(--dandy-text-xs);
+    color: var(--dandy-ink-muted);
+    margin-bottom: 2px;
+  }
+
+  .dandy-order-summary-row strong {
+    font-size: var(--dandy-text-sm);
+    color: var(--dandy-ink-primary);
+  }
+
+  .dandy-order-items {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+
+  .dandy-ord-item-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    padding: 10px 12px;
+    background-color: var(--dandy-bg-editorial);
+    border: 1px solid var(--dandy-border-subtle);
+    border-radius: var(--dandy-radius-sm);
+  }
+
+  .dandy-ord-thumb {
+    width: 52px;
+    height: 52px;
+    border-radius: var(--dandy-radius-xs);
+    object-fit: cover;
+    background-color: var(--dandy-bg-page);
+    border: 1px solid var(--dandy-border-subtle);
+    flex-shrink: 0;
+  }
+
+  .dandy-ord-item-info {
+    flex: 1 1 200px;
+    min-width: 0;
+  }
+
+  .dandy-ord-item-title {
+    font-size: var(--dandy-text-sm);
+    font-weight: 600;
+    color: var(--dandy-ink-primary);
+    margin-bottom: 3px;
+  }
+
+  .dandy-ord-item-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    font-size: var(--dandy-text-xs);
+    color: var(--dandy-ink-muted);
+  }
+
+  .dandy-ord-subitems {
+    list-style: none;
+    margin: 6px 0 0;
+    padding: 0;
+    font-size: var(--dandy-text-xs);
+    color: var(--dandy-ink-secondary);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .dandy-ord-subitems span {
+    color: var(--dandy-ink-muted);
+  }
+
+  .dandy-order-foot {
+    display: flex;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  /* Addresses Grid */
+  .dandy-acc-section-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    flex-wrap: wrap;
+    gap: 16px;
+    margin-bottom: 20px;
+  }
+
+  .dandy-acc-section-title {
+    margin: 0 0 4px;
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: var(--dandy-ink-primary);
+  }
+
+  .dandy-acc-section-desc {
+    margin: 0;
+    font-size: var(--dandy-text-sm);
+    color: var(--dandy-ink-muted);
+  }
+
+  .dandy-addresses-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+    gap: 16px;
+  }
+
+  .dandy-addr-card {
+    background-color: var(--dandy-bg-page);
+    border: 1px solid var(--dandy-border-subtle);
+    border-radius: var(--dandy-radius-md);
+    padding: 18px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .dandy-addr-card.is-default {
+    border-color: var(--dandy-botanical-deep);
+    background-color: var(--dandy-bg-editorial);
+  }
+
+  .dandy-addr-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .dandy-addr-title {
+    margin: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: var(--dandy-text-base);
+    font-weight: 700;
+    color: var(--dandy-ink-primary);
+  }
+
+  .dandy-addr-default-flag {
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: var(--dandy-botanical-deep);
+    background-color: var(--dandy-botanical-soft);
+    padding: 2px 8px;
+    border-radius: var(--dandy-radius-xs);
+  }
+
+  .dandy-addr-body {
+    font-size: var(--dandy-text-sm);
+    color: var(--dandy-ink-secondary);
+    line-height: 1.7;
+  }
+
+  .dandy-addr-body strong {
+    color: var(--dandy-ink-primary);
+    font-weight: 600;
+  }
+
+  .dandy-addr-actions {
+    margin-top: auto;
+    padding-top: 12px;
+    border-top: 1px solid var(--dandy-border-subtle);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .dandy-addr-actions .dandy-btn {
+    min-height: 36px;
+    padding-block: 6px;
+    padding-inline: 12px;
+    font-size: var(--dandy-text-xs);
+  }
+
+  .dandy-addr-del-btn {
+    color: var(--dandy-danger);
+    margin-inline-start: auto;
+  }
+
+  .dandy-addr-del-btn:hover:not(:disabled) {
+    border-color: var(--dandy-danger);
+    background-color: var(--dandy-danger-soft);
+  }
+
+  /* Wishlist ProductCard Parity Styles */
+  .dandy-pcard {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    background-color: var(--dandy-bg-page);
+    border: 1px solid var(--dandy-border-subtle);
+    border-radius: var(--dandy-radius-md);
+    overflow: hidden;
+    transition: transform var(--dandy-transition-base), border-color var(--dandy-transition-base), box-shadow var(--dandy-transition-base);
+  }
+
+  .dandy-pcard:hover {
+    transform: translateY(-2px);
+    border-color: var(--dandy-border-default);
+    box-shadow: var(--dandy-shadow-sm);
+  }
+
+  .dandy-pcard-stage {
+    position: relative;
+    display: block;
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    background-color: var(--dandy-bg-stage);
+    overflow: hidden;
+    text-decoration: none;
+  }
+
+  .dandy-pcard-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+
+  .dandy-pcard-stage.is-fallback .dandy-pcard-img {
+    object-fit: contain;
+    padding: var(--dandy-space-8);
+    opacity: 0.78;
+  }
+
+  .dandy-pcard-tag {
+    position: absolute;
+    top: 10px;
+    inset-inline-start: 10px;
+    z-index: 2;
+    padding: 4px 9px;
+    border-radius: var(--dandy-radius-xs);
+    font-size: 0.72rem;
+    font-weight: 700;
+    pointer-events: none;
+  }
+
+  .dandy-pcard-tag.is-discount {
+    background-color: var(--dandy-ink-primary);
+    color: var(--dandy-ink-inverse);
+  }
+
+  .dandy-pcard-tag.is-campaign {
+    background-color: var(--dandy-plum-ink);
+    color: var(--dandy-ink-inverse);
+  }
+
+  .dandy-pcard-tag.is-soldout {
+    background-color: var(--dandy-bg-elevated);
+    color: var(--dandy-ink-secondary);
+    border: 1px solid var(--dandy-border-default);
+  }
+
+  .dandy-pcard-body {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    padding: 16px;
+    gap: 8px;
+  }
+
+  .dandy-pcard-meta {
+    font-size: var(--dandy-text-xs);
+    color: var(--dandy-ink-muted);
+  }
+
+  .dandy-pcard-category {
+    color: var(--dandy-ink-muted);
+    text-decoration: none;
+  }
+
+  .dandy-pcard-title {
+    margin: 0;
+    font-size: 0.9375rem;
+    font-weight: 600;
+    line-height: 1.5;
+    color: var(--dandy-ink-primary);
+  }
+
+  .dandy-pcard-title a {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  .dandy-pcard-price-row {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: auto;
+    padding-top: 4px;
+  }
+
+  .dandy-pcard-price {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--dandy-ink-primary);
+  }
+
+  .dandy-pcard-old-price {
+    font-size: 0.82rem;
+    color: var(--dandy-ink-muted);
+  }
+
+  .dandy-pcard-btn {
+    width: 100%;
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 10px 14px;
+    border-radius: var(--dandy-radius-sm);
+    font-family: var(--dandy-font-ar-sans);
+    font-size: var(--dandy-text-sm);
+    font-weight: 600;
+    text-decoration: none;
+    cursor: pointer;
+    border: 1px solid var(--dandy-ink-primary);
+    background-color: var(--dandy-ink-primary);
+    color: var(--dandy-ink-inverse);
+  }
+
+  .dandy-pcard-btn.is-variant {
+    background-color: transparent;
+    border-color: var(--dandy-border-default);
+    color: var(--dandy-ink-primary);
+  }
+
+  .dandy-pcard-btn.is-soldout {
+    background-color: var(--dandy-bg-stage);
+    border-color: var(--dandy-border-subtle);
+    color: var(--dandy-ink-muted);
+    cursor: not-allowed;
+  }
+
+  .dandy-wish-card-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 6px;
+  }
+
+  .dandy-wish-remove-btn {
+    width: 100%;
+    min-height: 38px;
+    padding-block: 6px;
+    font-size: var(--dandy-text-xs);
+    color: var(--dandy-ink-muted);
+  }
+
+  .dandy-wish-remove-btn:hover:not(:disabled) {
+    color: var(--dandy-danger);
+    border-color: var(--dandy-danger);
+    background-color: var(--dandy-danger-soft);
+  }
+
+  /* Empty State */
+  .dandy-acc-empty {
+    text-align: center;
+    padding: 48px 20px;
+    background-color: var(--dandy-bg-editorial);
+    border: 1px dashed var(--dandy-border-default);
+    border-radius: var(--dandy-radius-md);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .dandy-acc-empty-icon {
+    width: 54px;
+    height: 54px;
+    border-radius: 50%;
+    background-color: var(--dandy-bg-page);
+    border: 1px solid var(--dandy-border-subtle);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--dandy-ink-muted);
+  }
+
+  .dandy-acc-empty h3 {
+    margin: 4px 0 0;
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--dandy-ink-primary);
+  }
+
+  .dandy-acc-empty p {
+    margin: 0 0 8px;
+    max-width: 420px;
+    font-size: var(--dandy-text-sm);
+    color: var(--dandy-ink-muted);
+    line-height: 1.65;
+  }
+
+  /* Profile Tab */
+  .dandy-acc-profile-grid {
+    display: grid;
+    grid-template-columns: 1.2fr 0.8fr;
+    gap: 20px;
+    align-items: start;
+  }
+
+  .dandy-acc-form {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .dandy-acc-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .dandy-acc-field label {
+    font-size: var(--dandy-text-sm);
+    font-weight: 600;
+    color: var(--dandy-ink-primary);
+  }
+
+  .dandy-req {
+    color: var(--dandy-danger);
+  }
+
+  .dandy-acc-input {
+    width: 100%;
+    min-height: 44px;
+    padding: 10px 14px;
+    border: 1px solid var(--dandy-border-default);
+    border-radius: var(--dandy-radius-sm);
+    background-color: var(--dandy-bg-page);
+    color: var(--dandy-ink-primary);
+    font-family: var(--dandy-font-ar-sans);
+    font-size: var(--dandy-text-base);
+    box-sizing: border-box;
+  }
+
+  .dandy-acc-input:focus {
+    outline: none;
+    border-color: var(--dandy-ink-primary);
+  }
+
+  .dandy-acc-input.is-readonly {
+    background-color: var(--dandy-bg-stage);
+    color: var(--dandy-ink-muted);
+    cursor: default;
+  }
+
+  .dandy-acc-hint {
+    font-size: var(--dandy-text-xs);
+    color: var(--dandy-ink-muted);
+    line-height: 1.5;
+  }
+
+  .dandy-acc-security-box {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .dandy-acc-security-box p {
+    margin: 0;
+    font-size: var(--dandy-text-sm);
+    color: var(--dandy-ink-secondary);
+    line-height: 1.65;
+  }
+
+  .dandy-acc-checkbox-row {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    font-size: var(--dandy-text-sm);
+    font-weight: 600;
+    color: var(--dandy-ink-primary);
+  }
+
+  .dandy-acc-checkbox-row input {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--dandy-accent-primary);
+  }
+
+  /* Native <dialog> */
+  .dandy-dialog {
+    padding: 0;
+    border: 1px solid var(--dandy-border-default);
+    border-radius: var(--dandy-radius-md);
+    background-color: var(--dandy-bg-page);
+    color: var(--dandy-ink-primary);
+    width: min(480px, calc(100vw - 32px));
+    max-height: 90dvh;
+    margin: auto;
+    box-shadow: var(--dandy-shadow-lg);
+  }
+
+  .dandy-dialog::backdrop {
+    background-color: rgba(26, 23, 21, 0.45);
+    backdrop-filter: blur(3px);
+  }
+
+  .dandy-dialog-card {
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .dandy-dialog-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--dandy-border-subtle);
+  }
+
+  .dandy-dialog-head h3 {
+    margin: 0;
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--dandy-ink-primary);
+  }
+
+  .dandy-dialog-close {
+    appearance: none;
+    background: transparent;
+    border: 1px solid transparent;
+    width: 36px;
+    height: 36px;
+    border-radius: var(--dandy-radius-sm);
+    color: var(--dandy-ink-muted);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+  }
+
+  .dandy-dialog-close:hover {
+    background-color: var(--dandy-bg-stage);
+    color: var(--dandy-ink-primary);
+  }
+
+  .dandy-dialog-copy {
+    margin: 0;
+    font-size: var(--dandy-text-sm);
+    color: var(--dandy-ink-secondary);
+    line-height: 1.65;
+  }
+
+  .dandy-dialog-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 6px;
+  }
+
+  .dandy-dialog-actions > .dandy-btn:first-child {
+    flex: 1 1 auto;
+  }
+
+  .dandy-modal-error {
+    padding: 10px 12px;
+    border-radius: var(--dandy-radius-sm);
+    background-color: var(--dandy-danger-soft);
+    border: 1px solid #F4C7D2;
+    color: var(--dandy-danger);
+    font-size: var(--dandy-text-xs);
+    font-weight: 600;
+  }
+
+  /* Review Dialog Preview */
+  .dandy-review-preview {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px;
+    background-color: var(--dandy-bg-editorial);
+    border: 1px solid var(--dandy-border-subtle);
+    border-radius: var(--dandy-radius-sm);
+  }
+
+  .dandy-review-thumb {
+    width: 54px;
+    height: 54px;
+    border-radius: var(--dandy-radius-xs);
+    object-fit: cover;
+    border: 1px solid var(--dandy-border-subtle);
+    flex-shrink: 0;
+  }
+
+  .dandy-review-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+  }
+
+  .dandy-verified-purchase {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: var(--dandy-botanical-deep);
+  }
+
+  .dandy-review-meta h4 {
+    margin: 0;
+    font-size: var(--dandy-text-sm);
+    font-weight: 700;
+    color: var(--dandy-ink-primary);
+  }
+
+  .dandy-review-meta span:last-child {
+    font-size: var(--dandy-text-xs);
+    color: var(--dandy-ink-muted);
+  }
+
+  .dandy-stars-field {
+    align-items: center;
+    text-align: center;
+  }
+
+  .dandy-star-selector {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    direction: ltr;
+  }
+
+  .dandy-star-btn {
+    appearance: none;
+    background: transparent;
+    border: none;
+    padding: 6px;
+    min-width: 40px;
+    min-height: 40px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: var(--dandy-border-default);
+    transition: color var(--dandy-transition-fast), transform var(--dandy-transition-fast);
+  }
+
+  .dandy-star-btn.is-active {
+    color: var(--dandy-gold-editorial);
+  }
+
+  .dandy-star-btn.is-active svg {
+    fill: var(--dandy-gold-editorial);
+  }
+
+  .dandy-rating-desc {
+    font-size: var(--dandy-text-xs);
+    font-weight: 600;
+    color: var(--dandy-ink-secondary);
+    min-height: 20px;
+  }
+
+  @media (max-width: 899px) {
+    .dandy-ov-stats-grid,
+    .dandy-ov-cards-grid,
+    .dandy-acc-profile-grid,
+    .dandy-order-summary-row {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

@@ -232,21 +232,22 @@ const canonicalUrl = `${SITE_URL}/pink-friday`;
     />
   </Fragment>
 
-  <main class="dandy-pf-page" id="pink-friday-main" dir="rtl">
+  <main class="dandy-pf-page" id="pink-friday-main" dir="rtl" data-dandy-motion="expressive">
     {/* Botanical Editorial + Deep Plum Campaign Hero */}
     <section class="dandy-pf-hero" aria-label="حملة Pink Friday">
       <div class="dandy-container">
         <div class="dandy-pf-hero-grid">
           <div class="dandy-pf-hero-copy">
-            <p class="dandy-pf-kicker">{badgeLabel}</p>
-            <h1 class="dandy-pf-hero-title dandy-font-ar-display">{heroHeadline}</h1>
-            <p class="dandy-pf-hero-subtitle">{heroSubtitle}</p>
+            <p class="dandy-pf-kicker" data-dandy-entrance="0">{badgeLabel}</p>
+            <h1 class="dandy-pf-hero-title dandy-font-ar-display" data-dandy-entrance="1">{heroHeadline}</h1>
+            <p class="dandy-pf-hero-subtitle" data-dandy-entrance="2">{heroSubtitle}</p>
 
             {showCountdown && targetCountdownIso && (
               <div
                 class="dandy-pf-countdown-wrap"
                 id="dandy-pf-countdown"
                 data-target-iso={targetCountdownIso}
+                data-dandy-entrance="3"
                 aria-label={status === 'upcoming' ? 'العد التنازلي لانطلاق الحملة' : 'الوقت المتبقي لنهاية الحملة بتوقيت القاهرة'}
               >
                 <p class="dandy-pf-countdown-label">
@@ -274,7 +275,7 @@ const canonicalUrl = `${SITE_URL}/pink-friday`;
             )}
 
             {status === 'active' && (validCampaignItems.length > 0 || validCollections.length > 0) && (
-              <div class="dandy-pf-hero-actions">
+              <div class="dandy-pf-hero-actions" data-dandy-entrance="4">
                 <a
                   href={validCampaignItems.length > 0 ? '#pink-friday-products' : '#pink-friday-collections'}
                   class="dandy-pf-hero-cta"
@@ -289,7 +290,7 @@ const canonicalUrl = `${SITE_URL}/pink-friday`;
             )}
           </div>
 
-          <div class="dandy-pf-hero-media">
+          <div class="dandy-pf-hero-media" data-dandy-media-settle>
             <img
               src={heroArtworkUrl}
               alt={heroHeadline}
@@ -311,7 +312,7 @@ const canonicalUrl = `${SITE_URL}/pink-friday`;
       <div class="dandy-container">
         {displayMode === 'active-full' || displayMode === 'active-offers-only' ? (
           <div id="pink-friday-products" class="dandy-pf-block">
-            <header class="dandy-pf-sec-header">
+            <header class="dandy-pf-sec-header" data-dandy-reveal>
               <p class="dandy-pf-sec-kicker">عروض الحملة الفردية</p>
               <h2 class="dandy-pf-sec-title dandy-font-ar-display">المنتجات المشمولة بأسعار Pink Friday</h2>
               <p class="dandy-pf-sec-note dandy-tabular">
@@ -319,9 +320,9 @@ const canonicalUrl = `${SITE_URL}/pink-friday`;
               </p>
             </header>
 
-            <div class="dandy-catalog-grid">
+            <div class="dandy-catalog-grid" data-dandy-stagger="grid">
               {validCampaignItems.map(({ product, pricing }, index) => (
-                <div class="dandy-catalog-slot">
+                <div class="dandy-catalog-slot" data-dandy-reveal-child>
                   <ProductCard
                     product={product}
                     pinkFridayPricing={pricing}
@@ -335,7 +336,7 @@ const canonicalUrl = `${SITE_URL}/pink-friday`;
 
         {(displayMode === 'active-full' || displayMode === 'active-bundles-only') && (
           <div id="pink-friday-collections" class="dandy-pf-block">
-            <header class="dandy-pf-sec-header">
+            <header class="dandy-pf-sec-header" data-dandy-reveal>
               <p class="dandy-pf-sec-kicker">باقات Pink Friday المختارة</p>
               <h2 class="dandy-pf-sec-title dandy-font-ar-display">الكوليكشنز والعروض المجمعة</h2>
               <p class="dandy-pf-sec-note">
@@ -345,9 +346,9 @@ const canonicalUrl = `${SITE_URL}/pink-friday`;
               </p>
             </header>
 
-            <div class="dandy-pf-collections-grid">
+            <div class="dandy-pf-collections-grid" data-dandy-stagger="grid">
               {validCollections.map((col, idx) => (
-                <article class="dandy-pf-col-card">
+                <article class="dandy-pf-col-card" data-dandy-reveal-child>
                   <div class="dandy-pf-col-stage">
                     <span class="dandy-pf-col-tag">{col.badgeText}</span>
                     <img

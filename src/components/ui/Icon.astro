@@ -51,6 +51,17 @@ import Banknote from '@lucide/astro/icons/banknote';
 import Package from '@lucide/astro/icons/package';
 import Receipt from '@lucide/astro/icons/receipt';
 import Lock from '@lucide/astro/icons/lock';
+import EyeOff from '@lucide/astro/icons/eye-off';
+import Pencil from '@lucide/astro/icons/pencil';
+import CircleQuestionMark from '@lucide/astro/icons/circle-question-mark';
+import Calendar from '@lucide/astro/icons/calendar';
+import Play from '@lucide/astro/icons/play';
+import Send from '@lucide/astro/icons/send';
+import ExternalLink from '@lucide/astro/icons/external-link';
+import Shield from '@lucide/astro/icons/shield';
+import UserPlus from '@lucide/astro/icons/user-plus';
+import Award from '@lucide/astro/icons/award';
+import FileText from '@lucide/astro/icons/file-text';
 
 const ICON_MAP = {
   'check': Check,
@@ -78,6 +89,7 @@ const ICON_MAP = {
   'minus': Minus,
   'trash': Trash,
   'eye': Eye,
+  'eye-off': EyeOff,
   'sliders': SlidersHorizontal,
   'home': House,
   'grid': LayoutGrid,
@@ -103,6 +115,16 @@ const ICON_MAP = {
   'package': Package,
   'receipt': Receipt,
   'lock': Lock,
+  'pencil': Pencil,
+  'circle-help': CircleQuestionMark,
+  'calendar': Calendar,
+  'play': Play,
+  'send': Send,
+  'external-link': ExternalLink,
+  'shield': Shield,
+  'user-plus': UserPlus,
+  'award': Award,
+  'file-text': FileText,
 } as const;
 
 export type LucideIconName = keyof typeof ICON_MAP;

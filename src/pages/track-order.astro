@@ -32,11 +32,11 @@ const pageDescription =
     hideOnPrint={true}
   />
 
-  <main class="dandy-page-band dandy-track-page">
+  <main class="dandy-page-band dandy-track-page" data-dandy-motion="calm">
     <div class="dandy-container">
       <div class="dandy-track-shell">
         <!-- Lookup Card -->
-        <section class="dandy-track-lookup-card dandy-no-print" aria-labelledby="trackFormTitle">
+        <section class="dandy-track-lookup-card dandy-no-print" aria-labelledby="trackFormTitle" data-dandy-entrance="1">
           <h2 id="trackFormTitle" class="dandy-track-card-title">
             <Icon name="search" size={18} strokeWidth={1.85} />
             <span>البحث عن طلبكِ</span>
@@ -108,7 +108,7 @@ const pageDescription =
         </section>
 
         <!-- Initial Idle Guide -->
-        <section id="trackEmptyPrompt" class="dandy-track-guide-card">
+        <section id="trackEmptyPrompt" class="dandy-track-guide-card" data-dandy-entrance="2">
           <div class="dandy-track-guide-icon" aria-hidden="true">
             <Icon name="package-check" size={26} strokeWidth={1.75} />
           </div>

@@ -41,7 +41,7 @@ const headingId = `home-story-heading-${sectionId}`;
   hidden={hidden || undefined}
 >
   <div class="dandy-container dandy-story-grid">
-    <div class="dandy-story-media">
+    <div class="dandy-story-media" data-dandy-media-settle>
       <figure class="dandy-story-frame">
         <img
           src={image}
@@ -58,7 +58,7 @@ const headingId = `home-story-heading-${sectionId}`;
       </figure>
     </div>
 
-    <div class="dandy-story-copy">
+    <div class="dandy-story-copy" data-dandy-reveal>
       <p class="dandy-section-kicker" data-promo-eyebrow dir="auto">{eyebrow}</p>
       <h2 id={headingId} class="dandy-story-title" data-promo-title dir="auto">
         {title}

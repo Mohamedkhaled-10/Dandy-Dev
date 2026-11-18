@@ -34,19 +34,19 @@ const multiSlide = activeSlides.length > 1;
 >
   <div class="dandy-container dandy-hero-grid">
     <div class="dandy-hero-copy">
-      <p class="dandy-hero-kicker" data-hero-kicker>
+      <p class="dandy-hero-kicker" data-hero-kicker data-dandy-entrance="0">
         Dandy Cosmetics <span aria-hidden="true">·</span> عناية طبيعية برؤية صيدلانية
       </p>
 
-      <h1 class="dandy-hero-title" data-hero-title dir="auto">
+      <h1 class="dandy-hero-title" data-hero-title dir="auto" data-dandy-entrance="1">
         {firstSlide.title}
       </h1>
 
-      <p class="dandy-hero-subtitle" data-hero-subtitle dir="auto">
+      <p class="dandy-hero-subtitle" data-hero-subtitle dir="auto" data-dandy-entrance="2">
         {firstSlide.subtitle}
       </p>
 
-      <div class="dandy-hero-actions">
+      <div class="dandy-hero-actions" data-dandy-entrance="3">
         <a
           href={firstSlide.link}
           class="dandy-btn dandy-btn--editorial dandy-hero-cta"
@@ -60,7 +60,7 @@ const multiSlide = activeSlides.length > 1;
         </a>
       </div>
 
-      <dl class="dandy-hero-facts" aria-label="مميزات المتجر">
+      <dl class="dandy-hero-facts" aria-label="مميزات المتجر" data-dandy-entrance="4">
         <div class="dandy-hero-fact">
           <dt>التركيبات</dt>
           <dd>زيوت نباتية وزبدات مغذية</dd>
@@ -83,7 +83,7 @@ const multiSlide = activeSlides.length > 1;
         data-active-index="0"
         data-slide-count={activeSlides.length}
       >
-        <div class="dandy-hero-slides" data-hero-slides>
+        <div class="dandy-hero-slides" data-hero-slides data-dandy-media-settle>
           {activeSlides.map((slide, idx) => (
             <figure
               class:list={['dandy-hero-frame', { 'is-active': idx === 0 }]}
